@@ -1,0 +1,20 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+main([ConfigFile, BinDir]) ->
+    {ok, [Config]} = file:consult(ConfigFile),
+    {ok, Server} = reltool:start_server([Config]),
+    ok = make_boot(BinDir, Server, "start"),
+    ok = make_boot(BinDir, Server, "start_clean"),
+    ok = reltool:stop(Server);
+main(_) ->
+    io:format("usage: mkboot ConfigFile BinDir~n"),
+    halt(1).
+
+make_boot(BinDir, Server, Relname) ->
+    {ok, ScriptFile} = reltool:get_script(Server, Relname),
+    AbsoluteRelname = filename:join([BinDir, Relname]),
+    ScriptFilename = AbsoluteRelname++".script",
+     ok = file:write_file(ScriptFilename,
+                         list_to_binary(io_lib:format("~p.", [ScriptFile]))),
+    ok = systools:script2boot(AbsoluteRelname),
+    file:delete(ScriptFilename).

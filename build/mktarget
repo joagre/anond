@@ -1,0 +1,10 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+main([ConfigFile, TargetDir]) ->
+    {ok, [Config]} = file:consult(ConfigFile),
+    {ok, Server} = reltool:start_server([Config]),
+    ok = reltool:create_target(Server, TargetDir),
+    ok = reltool:stop(Server);
+main(_) ->
+    io:format("Usage: mktarget ConfigFile TargetDir~n"),
+    halt(1).

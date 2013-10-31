@@ -1,0 +1,23 @@
+-ifndef(SHORTHAND_HRL).
+-define(SHORTHAND_HRL, true).
+
+-define(a2l, atom_to_list).
+-define(l2a, list_to_atom).
+-define(l2ea, list_to_existing_atom).
+-define(b2l, binary_to_list).
+-define(l2b, list_to_binary).
+-define(i2l, integer_to_list).
+-define(l2i, list_to_integer).
+-define(l2f, list_to_float).
+-define(f2l, float_to_list).
+-define(l2t, list_to_tuple).
+-define(t2l, tuple_to_list).
+-define(t2b, term_to_binary).
+-define(b2t, binary_to_term).
+-define(a2b(Atom), ?l2b(?a2l(Atom))).
+-define(i2b(Atom), ?l2b(?i2l(Atom))).
+-define(b2a(Bin), ?l2a(?b2l(Bin))).
+-define(b2i(Bin), ?l2i(?b2l(Bin))).
+-define(iof(Format, Args), io:format(Format, Args)).
+
+-endif.

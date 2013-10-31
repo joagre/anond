@@ -1,0 +1,86 @@
+#!/bin/sh
+
+short_options="c:"
+long_options="config:,stop,reload,control-address:,control-port:,interactive"
+
+if ! options=$(getopt -u -o ${short_options} -l ${long_options} -- "$@"); then
+    echo "Usage: $0 [-c|--config FILENAME] [--interactive]"
+    echo "Usage: $0 --stop [--control-address ADDRESS] [--control-port PORT]"
+    echo "Usage: $0 --reload [--control-address ADDRESS] [--control-port PORT]"
+    exit 1
+fi
+
+set -- $options
+
+bindir=`dirname $0`
+erl=${bindir}/erl
+boot=" -boot ${bindir}/start"
+mode="daemon"
+config=""
+address=""
+port=""
+interactive=false
+pa=""
+# @DEVEL_ONLY_START
+if [ ! -f ${erl} ]; then
+    erl="erl"
+    interactive=true
+    pa=" -pa ${bindir}/../lib/common/ebin -pa ${bindir}/../lib/ds/ebin -pa ${bindir}/../lib/node/ebin -pa ${bindir}/../lib/overseer/ebin -pa ${bindir}/../lib/socks/ebin -pa ${bindir}/../lib/util/ebin"
+fi
+# @DEVEL_ONLY_STOP
+
+while [ $# -gt 0 ]; do
+    case $1 in
+        -c|--config)
+            config=" --config $2"
+            shift
+            ;;
+        --stop)
+            mode="stop"
+            boot=" -boot ${bindir}/start_clean"
+            ;;
+        --reload)
+            mode="reload"
+            boot=" -boot ${bindir}/start_clean"
+            ;;
+        --control-address)
+            address=" --control-address $2"
+            shift
+            ;;
+        --control-port)
+            port=" --control-port $2"
+            shift
+            ;;
+        --interactive)
+            interactive=true
+            ;;
+        *)
+            ;;
+    esac
+    shift
+done
+
+if ${interactive}; then
+    shell=""
+else
+    if [ ${mode} = "daemon" ]; then
+        shell=" -detached"
+    else 
+        shell=" -noinput"
+    fi
+fi
+
+case ${mode} in
+    daemon)
+        exec ${erl}${shell}${pa}${boot}${config}
+        break
+        ;;
+    stop)
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_serv stop
+        break
+        ;;
+    reload)
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_serv reload
+        break
+        ;;
+esac
