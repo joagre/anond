@@ -129,7 +129,8 @@ recalc(Ip) ->
 -spec update_link_quality(ip(), ip(), link_quality()) -> 'ok'.
 
 update_link_quality(Ip, PeerIp, LinkQuality) ->
-    serv:call(Ip, {link_quality, Ip, PeerIp, LinkQuality}).
+    Ip ! {link_quality, PeerIp, LinkQuality},
+    ok.
 
 %%%
 %%% server loop
@@ -213,7 +214,7 @@ loop(#state{parent = Parent,
             RotatedPeerIps = rotate_peer_ips(PeerIps),
             PeerIp = hd(RotatedPeerIps),
             Self = self(),
-            spawn_link(
+            spawn(
               fun() ->
                       measure_link_quality(Ip, PeerIp, Simulation),
                       timelib:start_timer(MeasureLinkQualityTimeout, Self,
@@ -268,9 +269,8 @@ loop(#state{parent = Parent,
                 true ->
                     loop(S)
             end;
-	{From, {link_quality, PeerIp, LinkQuality}}  ->
+	{link_quality, PeerIp, LinkQuality}  ->
 	    ok = node_route:update_link_quality(NodeDb, PeerIp, LinkQuality),
-	    From ! {self(), ok},
 	    loop(S);
 	{'EXIT', Parent, Reason} ->
 	    ok = node_route:delete_node_db(NodeDb),
@@ -330,14 +330,14 @@ measure_link_quality(_Ip, _PeerIp, _Simulation = false) ->
 
 refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, Simulation, NumberOfPeers,
               RefreshPeersTimeout) ->
-    ?daemon_log("Known peers: ~p", [PeerIps]),
+    ?daemon_log("Known peers: ~w", [PeerIps]),
     {ok, PublishedPeerIps} = ds_serv:published_peers(PeerIps),
-    ?daemon_log("Still published peers: ~p", [PublishedPeerIps]),
+    ?daemon_log("Still published peers: ~w", [PublishedPeerIps]),
     UnreachablePeerIps =
         ets:match(NodeDb, #node{ip = '$1', link_quality = -1, _ = '_'}),
-    ?daemon_log("Unreachable peers: ~p", [UnreachablePeerIps]),
+    ?daemon_log("Unreachable peers: ~w", [UnreachablePeerIps]),
     RemainingPeerIps = PublishedPeerIps--UnreachablePeerIps,
-    ?daemon_log("Remaining published and reachable peers: ~p",
+    ?daemon_log("Remaining published and reachable peers: ~w",
                 [RemainingPeerIps]),
     NumberOfMissingPeers = NumberOfPeers-length(RemainingPeerIps),
     ?daemon_log("Need ~w additional peers...", [NumberOfMissingPeers]),
@@ -349,11 +349,11 @@ refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, Simulation, NumberOfPeers,
             timelib:start_timer(?FIVE_SECONDS_TIMEOUT, refresh_peers);
         {ok, NewPeers} ->
             NewPeerIps = [NewPeer#peer.ip || NewPeer <- NewPeers],
-            ?daemon_log("Found ~w new peers: ~p", [NumberOfMissingPeers,
+            ?daemon_log("Found ~w new peers: ~w", [NumberOfMissingPeers,
                                                    NewPeerIps]),
             purge_peers(NodeDb, RoutingDb, RemainingPeerIps, PeerIps),
             ?daemon_log("Measures initial link qualities to new nodes...", []),
-            spawn_link(
+            spawn(
               fun() ->
                       measure_link_qualities(Ip, NewPeers, Simulation)
               end),

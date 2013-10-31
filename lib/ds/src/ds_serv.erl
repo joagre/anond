@@ -167,7 +167,7 @@ loop(#state{parent = Parent,
             lists:foreach(fun(Ip) ->
                                   true = ets:delete(PeerTid, Ip),
                                   true = ets:match_delete(OaTid, {'_', Ip}),
-                                  ?daemon_log("Removed stale peer ~p.", [Ip])
+                                  ?daemon_log("Removed stale peer ~w.", [Ip])
                           end, StalePeerIps),
             timelib:start_timer(PeerTTL, enforce_peer_ttl),
             loop(S);
@@ -184,11 +184,11 @@ loop(#state{parent = Parent,
         {From, {get_random_peers, Ip, 2}} when Simulation == true ->
             {SimulatedPeerOas, SimulatedPeers} =
                 get_simulated_peers(PeerTid, OaTid, Ip),
-            ?daemon_log("~w simulated peers returned: ~p",
+            ?daemon_log("~w simulated peers returned: ~w",
                         [length(SimulatedPeerOas), SimulatedPeerOas]),
             RandomPeers = get_random_peers(PeerTid, Ip, 2),
             RandomPeerIps = [RandomPeer#peer.ip || RandomPeer <- RandomPeers],
-            ?daemon_log("~w random peers generated but not returned: ~p",
+            ?daemon_log("~w random peers generated but not returned: ~w",
                         [length(RandomPeerIps), RandomPeerIps]),
             From ! {self(), {ok, SimulatedPeers}},
 	    loop(S);
@@ -196,7 +196,7 @@ loop(#state{parent = Parent,
             Size = ets:info(PeerTid, size),
             RandomPeers = get_random_peers(PeerTid, Ip, trunc(N/100*Size)),
             RandomPeerIps = [RandomPeer#peer.ip || RandomPeer <- RandomPeers],
-            ?daemon_log("~w random peers returned: ~p",
+            ?daemon_log("~w random peers returned: ~w",
                         [length(RandomPeerIps), RandomPeerIps]),
             From ! {self(), {ok, RandomPeers}},
             loop(S);
@@ -211,7 +211,7 @@ loop(#state{parent = Parent,
                     RandomPeers = get_random_peers(PeerTid, Ip, N),
                     RandomPeerIps =
                         [RandomPeer#peer.ip || RandomPeer <- RandomPeers],
-                    ?daemon_log("~w random peers returned: ~p",
+                    ?daemon_log("~w random peers returned: ~w",
                                 [length(RandomPeerIps), RandomPeerIps]),
                     From ! {self(), {ok, RandomPeers}},
                     loop(S)
@@ -219,14 +219,14 @@ loop(#state{parent = Parent,
         {From, {publish_peer, #peer{ip = Ip} = Peer}} ->
             UpdatedPeer = Peer#peer{last_updated = timelib:ugnow()},
             true = ets:insert(PeerTid, UpdatedPeer),
-            ?daemon_log("Peer ~p published.", [Ip]),
+            ?daemon_log("Peer ~w published.", [Ip]),
             From ! {self(), {ok, PeerTTL}},
             loop(S);
         {From, {reserve_oa, Oa, Ip}} ->
             case ets:lookup(PeerTid, Ip) of
                 [] ->
-                    ?daemon_log("Rejected reservation of overlay address ~p to "
-                                "unknown peer ~p.", [Oa, Ip]),
+                    ?daemon_log("Rejected reservation of overlay address ~w to "
+                                "unknown peer ~w.", [Oa, Ip]),
                     From ! {self(), no_such_peer},
                     loop(S);
                 _ ->
@@ -235,12 +235,12 @@ loop(#state{parent = Parent,
                         NumberOfOas =< MaxOasPerPeer ->
                             true = ets:insert(OaTid, {Oa, Ip}),
                             ?daemon_log(
-                               "Reserved overlay address ~p to peer ~p.",
+                               "Reserved overlay address ~w to peer ~w.",
                                [Oa, Ip]),
                             From ! {self(), ok},
                             loop(S);
                         true ->
-                            ?daemon_log("Peer ~p tried to reserve more than ~w "
+                            ?daemon_log("Peer ~w tried to reserve more than ~w "
                                         "overlay addresses.",
                                         [Ip, MaxOasPerPeer]),
                             From ! {self(), too_many_oas},

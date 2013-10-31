@@ -7,6 +7,7 @@
 -export([read_config/0]).
 
 %%% include files
+-include_lib("util/include/shorthand.hrl").
 -include_lib("util/include/config.hrl").
 -include_lib("util/include/log_serv.hrl").
 
@@ -45,29 +46,29 @@ read_config() ->
 
 daemon_log_info() ->
     [Enabled] = ?cfg([logs, daemon, enabled]),
-    [Tty] = ?cfg([logs, daemon, enabled]),
+    [Tty] = ?cfg([logs, daemon, tty]),
     [FileEnabled] = ?cfg([logs, daemon, file, enabled]),
     [FilePath] = ?cfg([logs, daemon, file, path]),
     #daemon_log_info{enabled = Enabled,
-                     tty = Tty,
+                     tty = ?b2a(Tty),
                      file = {FileEnabled, FilePath}}.
 
 dbg_log_info() ->
     [Enabled] = ?cfg([logs, dbg, enabled]),
-    [Tty] = ?cfg([logs, dbg, enabled]),
+    [Tty] = ?cfg([logs, dbg, tty]),
     ModuleFilters = ?cfg([logs, dbg, filter]),
     [FileEnabled] = ?cfg([logs, dbg, file, enabled]),
     [FilePath] = ?cfg([logs, dbg, file, path]),
     #dbg_log_info{enabled = Enabled,
-                  tty = Tty,
+                  tty = ?b2a(Tty),
                   module_filter = ModuleFilters,
                   file = {FileEnabled, FilePath}}.
 
 error_log_info() ->
     [Enabled] = ?cfg([logs, error, enabled]),
-    [Tty] = ?cfg([logs, error, enabled]),
+    [Tty] = ?cfg([logs, error, tty]),
     [FileEnabled] = ?cfg([logs, error, file, enabled]),
     [FilePath] = ?cfg([logs, error, file, path]),
     #error_log_info{enabled = Enabled,
-                    tty = Tty,
+                    tty = ?b2a(Tty),
                     file = {FileEnabled, FilePath}}.

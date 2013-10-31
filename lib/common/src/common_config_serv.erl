@@ -87,7 +87,7 @@ convert_value(['measure-link-quality-timeout'|_], Value) ->
     {ok, ?l2i(Value)*1000};
 convert_value(['refresh-peers-timeout'|_], Value) ->
     {ok, ?l2i(Value)*1000*60};
-convert_value(['recalc-quality'|_], Value) ->
+convert_value(['recalc-timeout'|_], Value) ->
     {ok, ?l2i(Value)*1000};
 %% directory-server
 convert_value(['peer-ttl'|_], Value) ->

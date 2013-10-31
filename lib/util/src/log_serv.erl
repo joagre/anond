@@ -207,6 +207,7 @@ write_to_daemon_log(true, #daemon_log_info{enabled = true,
                                            file = {FileEnabled, _Path}},
                     DaemonDiskLog, Pid, Module, Format, Args)
   when Tty == true; FileEnabled == true ->
+    %% this is too costly
     case erlang:process_info(Pid, registered_name) of
         [] ->
             String = io_lib:format("~w: ~w: "++Format, [Module, Pid|Args]);
@@ -274,29 +275,3 @@ write_to_dbg_tty(false, _String) ->
     ok;
 write_to_dbg_tty(true, String) ->
     io:format("~s", [["<DBG> ", String, $\n]]).
-
-%%% http://www.evanmiller.org/joy-of-erlang.html
-%word_wrap(Input) ->
-%    word_wrap(Input, 72).
-%
-%word_wrap(Input, WrapAt) when length(Input) > WrapAt ->
-%    word_wrap(Input, [], [], 0, WrapAt);
-%word_wrap(Input, _WrapAt) ->
-%    Input.
-%
-%word_wrap([], Acc, WordAcc, _LineLength, _WrapAt) ->
-%    lists:reverse(WordAcc++Acc);
-%word_wrap([$\n|Rest], Acc, WordAcc, _LineLength, WrapAt) ->
-%    word_wrap(Rest, [$\n|WordAcc++Acc], [], 0, WrapAt);
-%word_wrap([$\ |Rest], Acc, WordAcc, WrapAt, WrapAt) ->
-%    word_wrap(Rest, [$\n|WordAcc++Acc], [], 0, WrapAt);
-%word_wrap([$\ |Rest], Acc, WordAcc, LineLength, WrapAt) ->
-%    word_wrap(Rest, [$\ |WordAcc++Acc], [], LineLength+1+length(WordAcc),
-%              WrapAt);
-%word_wrap([C|Rest], Acc, WordAcc, 0, WrapAt) when length(WordAcc) > WrapAt ->
-%    word_wrap(Rest, Acc, [C|WordAcc], 0, WrapAt);
-%word_wrap([C|Rest], Acc, WordAcc, LineLength, WrapAt) 
-%  when length(WordAcc)+LineLength > WrapAt ->
-%    word_wrap(Rest, [$\n|Acc], [C|WordAcc], 0, WrapAt);
-%word_wrap([C|Rest], Acc, WordAcc, LineLength, WrapAt) ->
-%    word_wrap(Rest, Acc, [C|WordAcc], LineLength, WrapAt).
