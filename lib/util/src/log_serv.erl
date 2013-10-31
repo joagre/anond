@@ -230,7 +230,7 @@ write_to_daemon_log(Log, String) ->
 write_to_daemon_tty(false, _String) ->
     ok;
 write_to_daemon_tty(true, String) ->
-    io:format("~s", [word_wrap(lists:flatten(["<DAEMON> ", String, $\n]))]).
+    io:format("~s", [lists:flatten(["<DAEMON> ", String, $\n])]).
 
 %%% dbg log
 
@@ -276,27 +276,27 @@ write_to_dbg_tty(true, String) ->
     io:format("~s", [["<DBG> ", String, $\n]]).
 
 %%% http://www.evanmiller.org/joy-of-erlang.html
-word_wrap(Input) ->
-    word_wrap(Input, 72).
-
-word_wrap(Input, WrapAt) when length(Input) > WrapAt ->
-    word_wrap(Input, [], [], 0, WrapAt);
-word_wrap(Input, _WrapAt) ->
-    Input.
-
-word_wrap([], Acc, WordAcc, _LineLength, _WrapAt) ->
-    lists:reverse(WordAcc++Acc);
-word_wrap([$\n|Rest], Acc, WordAcc, _LineLength, WrapAt) ->
-    word_wrap(Rest, [$\n|WordAcc++Acc], [], 0, WrapAt);
-word_wrap([$\ |Rest], Acc, WordAcc, WrapAt, WrapAt) ->
-    word_wrap(Rest, [$\n|WordAcc++Acc], [], 0, WrapAt);
-word_wrap([$\ |Rest], Acc, WordAcc, LineLength, WrapAt) ->
-    word_wrap(Rest, [$\ |WordAcc++Acc], [], LineLength+1+length(WordAcc),
-              WrapAt);
-word_wrap([C|Rest], Acc, WordAcc, 0, WrapAt) when length(WordAcc) > WrapAt ->
-    word_wrap(Rest, Acc, [C|WordAcc], 0, WrapAt);
-word_wrap([C|Rest], Acc, WordAcc, LineLength, WrapAt) 
-  when length(WordAcc)+LineLength > WrapAt ->
-    word_wrap(Rest, [$\n|Acc], [C|WordAcc], 0, WrapAt);
-word_wrap([C|Rest], Acc, WordAcc, LineLength, WrapAt) ->
-    word_wrap(Rest, Acc, [C|WordAcc], LineLength, WrapAt).
+%word_wrap(Input) ->
+%    word_wrap(Input, 72).
+%
+%word_wrap(Input, WrapAt) when length(Input) > WrapAt ->
+%    word_wrap(Input, [], [], 0, WrapAt);
+%word_wrap(Input, _WrapAt) ->
+%    Input.
+%
+%word_wrap([], Acc, WordAcc, _LineLength, _WrapAt) ->
+%    lists:reverse(WordAcc++Acc);
+%word_wrap([$\n|Rest], Acc, WordAcc, _LineLength, WrapAt) ->
+%    word_wrap(Rest, [$\n|WordAcc++Acc], [], 0, WrapAt);
+%word_wrap([$\ |Rest], Acc, WordAcc, WrapAt, WrapAt) ->
+%    word_wrap(Rest, [$\n|WordAcc++Acc], [], 0, WrapAt);
+%word_wrap([$\ |Rest], Acc, WordAcc, LineLength, WrapAt) ->
+%    word_wrap(Rest, [$\ |WordAcc++Acc], [], LineLength+1+length(WordAcc),
+%              WrapAt);
+%word_wrap([C|Rest], Acc, WordAcc, 0, WrapAt) when length(WordAcc) > WrapAt ->
+%    word_wrap(Rest, Acc, [C|WordAcc], 0, WrapAt);
+%word_wrap([C|Rest], Acc, WordAcc, LineLength, WrapAt) 
+%  when length(WordAcc)+LineLength > WrapAt ->
+%    word_wrap(Rest, [$\n|Acc], [C|WordAcc], 0, WrapAt);
+%word_wrap([C|Rest], Acc, WordAcc, LineLength, WrapAt) ->
+%    word_wrap(Rest, Acc, [C|WordAcc], LineLength, WrapAt).

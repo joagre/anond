@@ -19,6 +19,7 @@
 
 %%% constants
 -define(STATIC_LINK_QUALITY, 10).
+-define(BOOTSTRAP_TIMEOUT, 1000*2).
 -define(FIVE_SECONDS_TIMEOUT, 1000*5).
 
 %%% records
@@ -153,10 +154,7 @@ init(Parent, Oa, PublicKey, AutoRecalc) ->
     timelib:start_timer(
       S#state.measure_link_quality_timeout, measure_link_quality),
     ?daemon_log("Peer refresh started...", []),
-    PeerIps =
-        refresh_peers(
-          Ip, [], NodeDb, RoutingDb, S#state.simulation,
-          S#state.number_of_peers, S#state.refresh_peers_timeout),
+    timelib:start_timer(?BOOTSTRAP_TIMEOUT, bootstrap),
     if
         AutoRecalc ->
             RandomRecalcTimeout = random:uniform(S#state.recalc_timeout),
@@ -168,7 +166,7 @@ init(Parent, Oa, PublicKey, AutoRecalc) ->
     loop(S#state{parent = Parent,
                  oa = Oa,
                  ip = Ip,
-                 peer_ips = PeerIps,
+                 peer_ips = [],
                  ttl = TTL,
                  public_key = PublicKey,
                  node_db = NodeDb,
@@ -190,6 +188,12 @@ loop(#state{parent = Parent,
             refresh_peers_timeout = RefreshPeersTimeout,
             recalc_timeout = RecalcTimeout} = S) ->
     receive
+        bootstrap ->
+            UpdatedPeerIps =
+                refresh_peers(
+                  Ip, PeerIps, NodeDb, RoutingDb, Simulation, NumberOfPeers,
+                  RefreshPeersTimeout),
+            loop(S#state{peer_ips = UpdatedPeerIps});
         config_updated ->
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
@@ -345,8 +349,8 @@ refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, Simulation, NumberOfPeers,
             timelib:start_timer(?FIVE_SECONDS_TIMEOUT, refresh_peers);
         {ok, NewPeers} ->
             NewPeerIps = [NewPeer#peer.ip || NewPeer <- NewPeers],
-            ?daemon_log("Found ~w new peers: ", [NumberOfMissingPeers,
-                                                 NewPeerIps]),
+            ?daemon_log("Found ~w new peers: ~p", [NumberOfMissingPeers,
+                                                   NewPeerIps]),
             purge_peers(NodeDb, RoutingDb, RemainingPeerIps, PeerIps),
             ?daemon_log("Measures initial link qualities to new nodes...", []),
             spawn_link(

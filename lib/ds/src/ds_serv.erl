@@ -187,15 +187,17 @@ loop(#state{parent = Parent,
             ?daemon_log("~w simulated peers returned: ~p",
                         [length(SimulatedPeerOas), SimulatedPeerOas]),
             RandomPeers = get_random_peers(PeerTid, Ip, 2),
+            RandomPeerIps = [RandomPeer#peer.ip || RandomPeer <- RandomPeers],
             ?daemon_log("~w random peers generated but not returned: ~p",
-                        [length(RandomPeers), RandomPeers]),
+                        [length(RandomPeerIps), RandomPeerIps]),
             From ! {self(), {ok, SimulatedPeers}},
 	    loop(S);
         {From, {get_random_peers, Ip, {percent, N}}} ->
             Size = ets:info(PeerTid, size),
             RandomPeers = get_random_peers(PeerTid, Ip, trunc(N/100*Size)),
+            RandomPeerIps = [RandomPeer#peer.ip || RandomPeer <- RandomPeers],
             ?daemon_log("~w random peers returned: ~p",
-                        [length(RandomPeers), RandomPeers]),
+                        [length(RandomPeerIps), RandomPeerIps]),
             From ! {self(), {ok, RandomPeers}},
             loop(S);
         {From, {get_random_peers, Ip, N}} when is_integer(N) ->
@@ -207,8 +209,10 @@ loop(#state{parent = Parent,
                     loop(S);
                 _Size ->
                     RandomPeers = get_random_peers(PeerTid, Ip, N),
+                    RandomPeerIps =
+                        [RandomPeer#peer.ip || RandomPeer <- RandomPeers],
                     ?daemon_log("~w random peers returned: ~p",
-                                [length(RandomPeers), RandomPeers]),
+                                [length(RandomPeerIps), RandomPeerIps]),
                     From ! {self(), {ok, RandomPeers}},
                     loop(S)
             end;
