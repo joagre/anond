@@ -80,6 +80,8 @@ convert_callback(LeafPath, Value) ->
 
 convert_value(['simulation'|_], Value) ->
     {ok, ?l2a(Value)};
+convert_value(['number-of-nodes'|_], Value) ->
+    {ok, ?l2i(Value)};
 %% node
 convert_value(['number-of-peers'|_], Value) ->
     {ok, ?l2i(Value)};

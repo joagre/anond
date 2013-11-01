@@ -20,7 +20,6 @@
 -include_lib("ds/include/ds.hrl").
 
 %%% constants
--define(STATIC_LINK_QUALITY, 10).
 -define(BOOTSTRAP_TIMEOUT, 1000*2).
 -define(FIVE_SECONDS_TIMEOUT, 1000*5).
 
@@ -35,7 +34,6 @@
           node_db                      :: node_db(),
           routing_db                   :: routing_db(),
           auto_recalc                  :: boolean(),
-          simulation                   :: boolean(),
           number_of_peers              :: integer(),
           measure_link_quality_timeout :: integer(),
           refresh_peers_timeout        :: integer(),
@@ -194,7 +192,6 @@ loop(#state{parent = Parent,
             node_db = NodeDb,
 	    routing_db = RoutingDb,
             auto_recalc = AutoRecalc,
-            simulation = Simulation,
             number_of_peers = NumberOfPeers,
             measure_link_quality_timeout = MeasureLqTimeout,
             refresh_peers_timeout = RefreshPeersTimeout,
@@ -203,7 +200,7 @@ loop(#state{parent = Parent,
         bootstrap ->
             UpdatedPeerIps =
                 refresh_peers(
-                  Ip, PeerIps, NodeDb, RoutingDb, Simulation, NumberOfPeers,
+                  Ip, PeerIps, NodeDb, RoutingDb, NumberOfPeers,
                   RefreshPeersTimeout),
             loop(S#state{peer_ips = UpdatedPeerIps});
         config_updated ->
@@ -218,8 +215,8 @@ loop(#state{parent = Parent,
         refresh_peers ->
             ?daemon_log("Peer refresh started...", []),
             UpdatedPeerIps = 
-                refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, Simulation,
-                              NumberOfPeers, RefreshPeersTimeout),
+                refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, NumberOfPeers,
+                              RefreshPeersTimeout),
             loop(S#state{peer_ips = UpdatedPeerIps});
         measure_link_quality ->
             RotatedPeerIps = rotate_peer_ips(PeerIps),
@@ -227,7 +224,7 @@ loop(#state{parent = Parent,
             Self = self(),
             spawn(
               fun() ->
-                      measure_link_quality(Ip, PeerIp, Simulation),
+                      measure_link_quality(Ip, PeerIp),
                       timelib:start_timer(MeasureLqTimeout, Self,
                                           measure_link_quality)
               end),
@@ -327,13 +324,11 @@ loop(#state{parent = Parent,
 %%%
 
 read_config(S) ->
-    [Simulation] = ?cfg([simulation]),
     [NumberOfPeers] = ?cfg([node, 'number-of-peers']),
     [MeasureLqTimeout] = ?cfg([node, 'measure-link-quality-timeout']),
     [RefreshPeersTimeout] = ?cfg([node, 'refresh-peers-timeout']),
     [RecalcTimeout] = ?cfg([node, 'recalc-timeout']),
-    S#state{simulation = Simulation,
-            number_of_peers = NumberOfPeers,
+    S#state{number_of_peers = NumberOfPeers,
             measure_link_quality_timeout = MeasureLqTimeout,
             refresh_peers_timeout = RefreshPeersTimeout,
             recalc_timeout = RecalcTimeout}.
@@ -342,34 +337,27 @@ read_config(S) ->
 %%% link quality measurements
 %%%
 
-measure_link_qualities(_Ip, [], _Simulation) ->
+measure_link_qualities(_Ip, []) ->
     ok;
-measure_link_qualities(Ip, [#peer{ip = PeerIp}|Rest], Simulation = true) ->
+measure_link_qualities(Ip, [#peer{ip = PeerIp}|Rest]) ->
     {ok, Lq} = overseer_serv:get_link_quality(Ip, PeerIp),
     Ip ! {link_quality, PeerIp, Lq},
-    measure_link_qualities(Ip, Rest, Simulation);
-measure_link_qualities(Ip, [#peer{ip = PeerIp}|Rest], Simulation = false) ->
-    %% to be implemented
-    Ip ! {link_quality, PeerIp, ?STATIC_LINK_QUALITY},
-    measure_link_qualities(Ip, Rest, Simulation).
+    measure_link_qualities(Ip, Rest).
 
 rotate_peer_ips([]) ->
     [];
 rotate_peer_ips([PeerIp|Rest]) ->
     lists:reverse([PeerIp|lists:reverse(Rest)]).
 
-measure_link_quality(Ip, PeerIp, _Simulation = true) ->
+measure_link_quality(Ip, PeerIp) ->
     {ok, Lq} = overseer_serv:get_link_quality(Ip, PeerIp),
-    Ip ! {link_quality, PeerIp, Lq};
-measure_link_quality(_Ip, _PeerIp, _Simulation = false) ->
-    %% to be implemented
-    ok.
+    Ip ! {link_quality, PeerIp, Lq}.
 
 %%
 %% refresh_peers
 %%
 
-refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, Simulation, NumberOfPeers,
+refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, NumberOfPeers,
               RefreshPeersTimeout) ->
     ?daemon_log("Known peers: ~w", [PeerIps]),
     {ok, PublishedPeerIps} = ds_serv:published_peers(PeerIps),
@@ -396,7 +384,7 @@ refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, Simulation, NumberOfPeers,
             ?daemon_log("Measures initial link qualities to new nodes...", []),
             spawn(
               fun() ->
-                      measure_link_qualities(Ip, NewPeers, Simulation)
+                      measure_link_qualities(Ip, NewPeers)
               end),
             lists:foreach(
               fun(#peer{ip = PeerIp, public_key = PeerPublicKey}) ->

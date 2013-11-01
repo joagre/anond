@@ -21,17 +21,20 @@
 
 %%% constants
 -define(NUMBER_OF_SIMULATION_NODES, 10).
+-define(MAX_LINK_QUALITY, 100).
 
 %%% records
 -record(state, {
 	  parent          :: pid(),
-	  link_qualities :: [{{oa(), oa()}, link_quality()}],
-	  nodes           :: [{oa(), ip()}]
+	  link_qualities  :: [{{oa(), oa()}, link_quality()}],
+	  nodes           :: [{oa(), ip()}],
+          simulation      :: boolean(),
+          number_of_nodes :: integer()
 	 }).
 
 %%% types
--type global_routing_table() :: [{oa(), {oa(), [oa()]}}].
--type routing_table() :: [{oa(), [oa()]}].
+-type global_routing_table() :: [{oa(), {oa(), link_quality(), [oa()]}}].
+-type routing_table() :: [{oa(), link_quality(), [oa()]}].
 -type neighbours() :: [{oa(), link_quality()}].
 
 %%%
@@ -152,11 +155,11 @@ get_link_quality(Ip, PeerIp) ->
 %%% exported: update_link_quality
 %%%
 
--spec update_link_quality(oa(), oa(), link_quality()) -> 'ok'.
+-spec update_link_quality(oa(), oa(), link_quality()) ->
+                                 'ok' | 'unknown_link_quality'.
 
 update_link_quality(Oa, PeerOa, Lq) ->
-    ?MODULE ! {update_link_quality, Oa, PeerOa, Lq},
-    ok.
+    serv:call(?MODULE, {update_link_quality, Oa, PeerOa, Lq}).
 
 %%%
 %%% server loop
@@ -168,7 +171,12 @@ init(Parent) ->
         true ->
             S = read_config(#state{}),
             ok = config_serv:subscribe(),
-            Nodes = start_nodes(?NUMBER_OF_SIMULATION_NODES),
+            case S#state.simulation of
+                true ->
+                    Nodes = start_nodes(?NUMBER_OF_SIMULATION_NODES);
+                false ->
+                    Nodes = start_nodes(S#state.number_of_nodes)
+            end,
 	    Parent ! {self(), started},
 	    loop(S#state{parent = Parent,
                          link_qualities = ?NON_RANDOM_LINK_QUALITIES,
@@ -179,7 +187,8 @@ init(Parent) ->
 
 loop(#state{parent = Parent,
 	    link_qualities = Lqs,
-	    nodes = Nodes} = S) ->
+	    nodes = Nodes,
+            simulation = Simulation} = S) ->
     receive
         config_updated ->
             loop(read_config(S));
@@ -196,8 +205,10 @@ loop(#state{parent = Parent,
                 Ip ->
                     {ok, Res} = node_serv:get_routing_entries(Ip),
                     RoutingTable =
-                        [{ReOa, lookup_oa(Nodes, Hops)} ||
-                            #routing_entry{oa = ReOa, hops = Hops} <- Res],
+                        [{ReOa, Lq, lookup_oa(Nodes, Hops)} ||
+                            #routing_entry{oa = ReOa,
+                                           link_quality = Lq,
+                                           hops = Hops} <- Res],
                     From ! {self(), {ok, RoutingTable}},
                     loop(S)
             end;
@@ -271,21 +282,35 @@ loop(#state{parent = Parent,
                     From ! {self(), node_serv:recalc(Ip)},
                     loop(S)
             end;
+        {From, {get_link_quality, Ip, PeerIp}} when Simulation == true ->
+            Oa = lookup_oa(Nodes, Ip),
+            PeerOa = lookup_oa(Nodes, PeerIp),
+            {value, {_, Lq}} = lists:keysearch({Oa, PeerOa}, 1, Lqs),
+            From ! {self(), {ok, Lq}},
+            loop(S);
         {From, {get_link_quality, Ip, PeerIp}} ->
             Oa = lookup_oa(Nodes, Ip),
             PeerOa = lookup_oa(Nodes, PeerIp),
-            {value, {_, Lq}} =
-                lists:keysearch({Oa, PeerOa}, 1, Lqs),
-            From ! {self(), {ok, Lq}},
-            loop(S);
-	{update_link_quality, Oa, PeerOa, Lq} ->
-                                                 UpdatedLqs0 =
-                lists:keyreplace({Oa, PeerOa}, 1, Lqs,
-                                 {{Oa, PeerOa}, Lq}),
-            UpdatedLqs =
-                lists:keyreplace({PeerOa, Oa}, 1, UpdatedLqs0,
-                                 {{PeerOa, Oa}, Lq}),
-            loop(S#state{link_qualities = UpdatedLqs});
+            case lists:keysearch({Oa, PeerOa}, 1, Lqs) of
+                {value, {_, Lq}} ->
+                    From ! {self(), {ok, Lq}},
+                    loop(S);
+                false ->
+                    RandomLq = random:uniform(?MAX_LINK_QUALITY),
+                    From ! {self(), {ok, RandomLq}},
+                    UpdatedLqs = [{{Oa, PeerOa}, RandomLq},
+                                  {{PeerOa, Oa}, RandomLq}|Lqs],
+                    loop(S#state{link_qualities = UpdatedLqs})
+            end;
+	{From, {update_link_quality, Oa, PeerOa, Lq}} ->
+            case update_link_qualities(Oa, PeerOa, Lq, Lqs) of
+                unknown_link_quality ->
+                    From ! {self(), unknown_link_quality},
+                    loop(S);
+                UpdatedLqs ->
+                    From ! {self(), ok},
+                    loop(S#state{link_qualities = UpdatedLqs})
+            end;
         {'EXIT', Parent, Reason} ->
             exit(Reason);
 	UnknownMessage ->
@@ -298,7 +323,9 @@ loop(#state{parent = Parent,
 %%%
 
 read_config(S) ->
-    S.
+    [Simulation] = ?cfg(['simulation']),
+    [NumberOfNodes] = ?cfg(['number-of-nodes']),
+    S#state{simulation = Simulation, number_of_nodes = NumberOfNodes}.
 
 start_nodes(0) ->
     [];
@@ -331,10 +358,11 @@ traverse_each_destination(_FromOa, [], _AllRoutingEntries) ->
 traverse_each_destination(Oa, [#routing_entry{oa = Oa}|Rest],
                           AllRoutingEntries) ->
     traverse_each_destination(Oa, Rest, AllRoutingEntries);
-traverse_each_destination(FromOa, [#routing_entry{oa = ToOa, ip = Ip}|Rest],
+traverse_each_destination(FromOa, [#routing_entry{oa = ToOa, ip = Ip,
+                                                  link_quality = Lq}|Rest],
                           AllRoutingEntries) ->
     OaTrail = walk_to_destination(ToOa, Ip, AllRoutingEntries, []),
-    [{FromOa, ToOa, OaTrail}|
+    [{FromOa, ToOa, Lq, OaTrail}|
      traverse_each_destination(FromOa, Rest, AllRoutingEntries)].
 
 walk_to_destination(ToOa, Ip, AllRoutingEntries, Acc) ->
@@ -352,6 +380,23 @@ walk_to_destination(ToOa, Ip, AllRoutingEntries, Acc) ->
                     []
             end
     end.
+
+%%
+%% update_link_quality
+%%
+
+update_link_qualities(_Oa, _PeerOa, _Lq, []) ->
+    unknown_link_quality;
+update_link_qualities(Oa, PeerOa, NewLq,
+                      [{{Oa, PeerOa}, _OldLq}, {{PeerOa, Oa}, _OldLq}|Rest]) ->
+    [{{Oa, PeerOa}, NewLq}, {{PeerOa, Oa}, NewLq}|Rest];
+update_link_qualities(Oa, PeerOa, NewLq,
+                      [{{PeerOa, Oa}, _OldLq}, {{Oa, PeerOa}, _OldLq}|Rest]) ->
+    [{{PeerOa, Oa}, NewLq}, {{Oa, PeerOa}, NewLq}|Rest];
+update_link_qualities(Oa, PeerOa, NewLq, [_, _|Rest]) ->
+    update_link_qualities(Oa, PeerOa, NewLq, Rest).
+    
+
 
 %%
 %% node lookup functions

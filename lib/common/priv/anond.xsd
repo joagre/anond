@@ -5,6 +5,7 @@
     <xs:complexType>
       <xs:all>
         <xs:element name="simulation" type="xs:boolean"/> 
+        <xs:element name="number-of-nodes" type="xs:positiveInteger"/> 
         
         <!-- node -->
         
