@@ -3,8 +3,10 @@
 %%% external exports
 -export([start_link/3, stop/1, stop/2]).
 -export([get_routing_entries/1, update_routing_entry/2]).
+-export([get_nodes/1]).
 -export([enable_recalc/1, disable_recalc/1, recalc/1]).
 -export([update_link_quality/3]).
+
 
 %%% internal exports
 -export([init/4]).
@@ -93,6 +95,15 @@ update_routing_entry(Ip, Re) ->
     ok.
 
 %%%
+%%% exported: get_nodes
+%%%
+
+-spec get_nodes(ip()) -> {'ok', [#node{}]}.
+
+get_nodes(Ip) ->
+    serv:call(Ip, get_nodes).
+
+%%%
 %%% exported: enable_recalc
 %%%
 
@@ -128,8 +139,8 @@ recalc(Ip) ->
 
 -spec update_link_quality(ip(), ip(), link_quality()) -> 'ok'.
 
-update_link_quality(Ip, PeerIp, LinkQuality) ->
-    Ip ! {link_quality, PeerIp, LinkQuality},
+update_link_quality(Ip, PeerIp, Lq) ->
+    Ip ! {link_quality, PeerIp, Lq},
     ok.
 
 %%%
@@ -151,7 +162,7 @@ init(Parent, Oa, PublicKey, AutoRecalc) ->
     ok = ds_serv:reserve_oa(Oa, Ip),
     ?daemon_log("Reserved my oa (~w) on directory server.", [Oa]),
     SelfRe = #routing_entry{oa = Oa, ip = Ip, link_quality = 0},
-    ok = node_route:update_routing_entry(RoutingDb, SelfRe),
+    new = node_route:update_routing_entry(RoutingDb, SelfRe),
     timelib:start_timer(
       S#state.measure_link_quality_timeout, measure_link_quality),
     ?daemon_log("Peer refresh started...", []),
@@ -185,7 +196,7 @@ loop(#state{parent = Parent,
             auto_recalc = AutoRecalc,
             simulation = Simulation,
             number_of_peers = NumberOfPeers,
-            measure_link_quality_timeout = MeasureLinkQualityTimeout,
+            measure_link_quality_timeout = MeasureLqTimeout,
             refresh_peers_timeout = RefreshPeersTimeout,
             recalc_timeout = RecalcTimeout} = S) ->
     receive
@@ -217,7 +228,7 @@ loop(#state{parent = Parent,
             spawn(
               fun() ->
                       measure_link_quality(Ip, PeerIp, Simulation),
-                      timelib:start_timer(MeasureLinkQualityTimeout, Self,
+                      timelib:start_timer(MeasureLqTimeout, Self,
                                           measure_link_quality)
               end),
             loop(S#state{peer_ips = RotatedPeerIps});
@@ -226,33 +237,63 @@ loop(#state{parent = Parent,
 	    ok = node_route:delete_routing_db(RoutingDb),
 	    From ! {self(), ok};
 	{From, get_routing_entries} ->
-	    {ok, RoutingTable} = node_route:get_routing_entries(RoutingDb),
-	    From ! {self(), {ok, RoutingTable}},
+	    {ok, Res} = node_route:get_routing_entries(RoutingDb),
+	    From ! {self(), {ok, Res}},
 	    loop(S);
 	#routing_entry{oa = Oa} ->
 	    loop(S);
-	#routing_entry{oa = DestOa, ip = ViaIp, link_quality = LinkQuality,
+	#routing_entry{oa = DestOa, ip = ViaIp, link_quality = Lq,
                        hops = Hops} = Re ->
             case node_route:member_node(NodeDb, ViaIp) of
                 true ->
                     ok;
-                false->
+                false ->
                     ?daemon_log("~w added incoming peer ~w.", [Oa, ViaIp]),
-                    Node = #node{ip = ViaIp, flags = ?F_NODE_UPDATED},
+                    Node = #node{ip = ViaIp, link_quality = Lq,
+                                 flags = ?F_NODE_UPDATED},
                     ok = node_route:add_node(NodeDb, Node)
             end,
             case lists:member(Ip, Hops) of
                 true ->
                     ?daemon_log(
                        "~w rejected looping routing entry: ~w -> ~w (~w)",
-                       [Oa, DestOa, ViaIp, LinkQuality]),
+                       [Oa, DestOa, ViaIp, Lq]),
                     loop(S);
                 false ->
-                    ?daemon_log("~w accepted routing entry: ~w -> ~w (~w)",
-                                [Oa, DestOa, ViaIp, LinkQuality]),
-                    ok = node_route:update_routing_entry(RoutingDb, Re),
-                    loop(S)
+                    case node_route:update_routing_entry(RoutingDb, Re) of
+                        {replaced,
+                         #routing_entry{
+                           oa = DestOa, ip = OldViaIp, link_quality = OldLq,
+                           hops = OldHops}} ->
+                            ?daemon_log(
+                               "~w replaced route to ~w: (~w, ~w, ~w) "
+                               "with (~w, ~w, ~w)",
+                               [Oa, DestOa,
+                                OldViaIp, OldLq, OldHops,
+                                ViaIp, Lq, Hops]),
+                            loop(S);
+                        new ->
+                            ?daemon_log(
+                               "~w got new route to ~w: (~w, ~w, ~w)",
+                               [Oa, DestOa, ViaIp, Lq, Hops]),
+                            loop(S);
+                        {kept,
+                         #routing_entry{
+                           oa = DestOa, ip = OldViaIp, link_quality = OldLq,
+                           hops = OldHops}} ->
+                            ?daemon_log(
+                               "~w kept route to ~w: (~w, ~w, ~w) "
+                               "rejecting (~w, ~w, ~w)",
+                               [Oa, DestOa,
+                                OldViaIp, OldLq, OldHops,
+                                ViaIp, Lq, Hops]),
+                            loop(S)
+                    end
             end;
+	{From, get_nodes} ->
+	    {ok, Nodes} = node_route:get_nodes(NodeDb),
+	    From ! {self(), {ok, Nodes}},
+	    loop(S);
 	enable_recalc ->
             self() ! recalc,
             loop(S#state{auto_recalc = true});
@@ -269,8 +310,8 @@ loop(#state{parent = Parent,
                 true ->
                     loop(S)
             end;
-	{link_quality, PeerIp, LinkQuality}  ->
-	    ok = node_route:update_link_quality(NodeDb, PeerIp, LinkQuality),
+	{link_quality, PeerIp, Lq}  ->
+	    ok = node_route:update_link_quality(NodeDb, PeerIp, Lq),
 	    loop(S);
 	{'EXIT', Parent, Reason} ->
 	    ok = node_route:delete_node_db(NodeDb),
@@ -288,12 +329,12 @@ loop(#state{parent = Parent,
 read_config(S) ->
     [Simulation] = ?cfg([simulation]),
     [NumberOfPeers] = ?cfg([node, 'number-of-peers']),
-    [MeasureLinkQualityTimeout] = ?cfg([node, 'measure-link-quality-timeout']),
+    [MeasureLqTimeout] = ?cfg([node, 'measure-link-quality-timeout']),
     [RefreshPeersTimeout] = ?cfg([node, 'refresh-peers-timeout']),
     [RecalcTimeout] = ?cfg([node, 'recalc-timeout']),
     S#state{simulation = Simulation,
             number_of_peers = NumberOfPeers,
-            measure_link_quality_timeout = MeasureLinkQualityTimeout,
+            measure_link_quality_timeout = MeasureLqTimeout,
             refresh_peers_timeout = RefreshPeersTimeout,
             recalc_timeout = RecalcTimeout}.
 
@@ -304,8 +345,8 @@ read_config(S) ->
 measure_link_qualities(_Ip, [], _Simulation) ->
     ok;
 measure_link_qualities(Ip, [#peer{ip = PeerIp}|Rest], Simulation = true) ->
-    {ok, LinkQuality} = overseer_serv:get_link_quality(Ip, PeerIp),
-    Ip ! {link_quality, PeerIp, LinkQuality},
+    {ok, Lq} = overseer_serv:get_link_quality(Ip, PeerIp),
+    Ip ! {link_quality, PeerIp, Lq},
     measure_link_qualities(Ip, Rest, Simulation);
 measure_link_qualities(Ip, [#peer{ip = PeerIp}|Rest], Simulation = false) ->
     %% to be implemented
@@ -318,8 +359,8 @@ rotate_peer_ips([PeerIp|Rest]) ->
     lists:reverse([PeerIp|lists:reverse(Rest)]).
 
 measure_link_quality(Ip, PeerIp, _Simulation = true) ->
-    {ok, LinkQuality} = overseer_serv:get_link_quality(Ip, PeerIp),
-    Ip ! {link_quality, PeerIp, LinkQuality};
+    {ok, Lq} = overseer_serv:get_link_quality(Ip, PeerIp),
+    Ip ! {link_quality, PeerIp, Lq};
 measure_link_quality(_Ip, _PeerIp, _Simulation = false) ->
     %% to be implemented
     ok.

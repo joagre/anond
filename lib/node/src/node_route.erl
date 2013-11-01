@@ -2,7 +2,7 @@
 
 %%% external exports
 -export([create_node_db/0, delete_node_db/1, add_node/2, delete_node/2,
-         member_node/2]).
+         member_node/2, get_nodes/1]).
 -export([create_routing_db/0, delete_routing_db/1, get_routing_entries/1,
          update_routing_entry/2, delete_routing_entry/2]).
 -export([recalc/3]).
@@ -69,6 +69,16 @@ member_node(NodeDb, Ip) ->
     ets:member(NodeDb, Ip).
 
 %%%
+%%% exported: get_nodes
+%%%
+
+-spec get_nodes(node_db()) -> {'ok', [#node{}]}.
+
+get_nodes(NodeDb) ->
+    Nodes = ets:foldl(fun(Node, Acc) -> [Node|Acc] end, [], NodeDb),
+    {ok, Nodes}.
+
+%%%
 %%% exported: create_routing_db
 %%%
 
@@ -94,30 +104,33 @@ delete_routing_db(RoutingDb) ->
 -spec get_routing_entries(routing_db()) -> {'ok', [#routing_entry{}]}.
 
 get_routing_entries(RoutingDb) ->
-    RoutingTable = ets:foldl(fun(Re, Acc) -> [Re|Acc] end, [], RoutingDb),
-    {ok, RoutingTable}.
+    Res = ets:foldl(fun(Re, Acc) -> [Re|Acc] end, [], RoutingDb),
+    {ok, Res}.
 
 %%%
 %%% exported: update_routing_entry
 %%%
 
--spec update_routing_entry(routing_db(), #routing_entry{}) -> 'ok'.
+-spec update_routing_entry(routing_db(), #routing_entry{}) ->
+                                  {'replaced', #routing_entry{}} |
+                                  'new' |
+                                  {'kept', #routing_entry{}}.
 
 update_routing_entry(RoutingDb, Re) ->
     case ets:lookup(RoutingDb, Re#routing_entry.oa) of
-	[#routing_entry{link_quality = LinkQuality}]
-	  when Re#routing_entry.link_quality < LinkQuality ->
+        [#routing_entry{link_quality = LinkQuality} = CurrentRe]
+          when Re#routing_entry.link_quality < LinkQuality ->
 	    UpdatedFlags = ?bit_set(Re#routing_entry.flags, ?F_RE_UPDATED),
 	    true =
                 ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
-            ok;
+            {replaced, CurrentRe};
         [] ->
             UpdatedFlags = ?bit_set(Re#routing_entry.flags, ?F_RE_UPDATED),
 	    true =
                 ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
-            ok;
-        _ ->            
-            ok
+            new;
+        [CurrentRe] ->            
+            {kept, CurrentRe}
     end.
 
 %%%

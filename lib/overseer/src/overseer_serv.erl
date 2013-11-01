@@ -2,7 +2,8 @@
 
 %%% external exports
 -export([start_link/0, stop/0, stop/1]).
--export([get_global_routing_table/0, get_routing_entries/1]).
+-export([get_global_routing_table/0, get_routing_table/1]).
+-export([get_neighbours/0, get_neighbours/1]).
 -export([enable_recalc/0, enable_recalc/1, disable_recalc/0, disable_recalc/1]).
 -export([recalc/0, recalc/1]).
 -export([get_link_quality/2, update_link_quality/3]).
@@ -29,7 +30,9 @@
 	 }).
 
 %%% types
--type global_routing_table() :: [{oa(), oa(), [oa()]}].
+-type global_routing_table() :: [{oa(), {oa(), [oa()]}}].
+-type routing_table() :: [{oa(), [oa()]}].
+-type neighbours() :: [{oa(), link_quality()}].
 
 %%%
 %%% exported: start_link
@@ -72,13 +75,27 @@ get_global_routing_table() ->
     serv:call(?MODULE, get_global_routing_table).
 
 %%%
-%%% exported: get_routing_entries
+%%% exported: get_routing_table
 %%%
 
--spec get_routing_entries(oa()) -> {'ok', [#routing_entry{}]} | 'unknown_oa'.
+-spec get_routing_table(oa()) -> {'ok', routing_table()} | 'unknown_oa'.
 
-get_routing_entries(Oa) ->
-    serv:call(?MODULE, {get_routing_entries, Oa}).
+get_routing_table(Oa) ->
+    serv:call(?MODULE, {get_routing_table, Oa}).
+
+%%%
+%%% exported: get_neighbours
+%%%
+
+-spec get_neighbours() -> {'ok', [{oa(), neighbours()}]}.
+
+get_neighbours() ->
+    serv:call(?MODULE, get_neighbours).
+
+-spec get_neighbours(oa()) -> {'ok', neighbours()} | 'unknown_oa'.
+
+get_neighbours(Oa) ->
+    serv:call(?MODULE, {get_neighbours, Oa}).
 
 %%%
 %%% exported: enable_recalc
@@ -137,8 +154,8 @@ get_link_quality(Ip, PeerIp) ->
 
 -spec update_link_quality(oa(), oa(), link_quality()) -> 'ok'.
 
-update_link_quality(Oa, PeerOa, LinkQuality) ->
-    ?MODULE ! {update_link_quality, Oa, PeerOa, LinkQuality},
+update_link_quality(Oa, PeerOa, Lq) ->
+    ?MODULE ! {update_link_quality, Oa, PeerOa, Lq},
     ok.
 
 %%%
@@ -161,7 +178,7 @@ init(Parent) ->
     end.
 
 loop(#state{parent = Parent,
-	    link_qualities = LinkQualities,
+	    link_qualities = Lqs,
 	    nodes = Nodes} = S) ->
     receive
         config_updated ->
@@ -171,16 +188,42 @@ loop(#state{parent = Parent,
 	{From, get_global_routing_table} ->
 	    From ! {self(), get_global_routing_table(Nodes)},
 	    loop(S);
-	{From, {get_routing_entries, Oa}} ->
-            case lists:keysearch(Oa, 1, Nodes) of
-                {value, {Oa, Ip}} ->
-                    {ok, RoutingEntries} = node_serv:get_routing_entries(Ip),
-                    From ! {self(),
-                            {ok, prettify_routing_entries(
-                                   Nodes, RoutingEntries)}},
-                    loop(S);
-                false ->
+	{From, {get_routing_table, Oa}} ->
+            case lookup_ip(Nodes, Oa) of
+                unknown_oa ->
                     From ! {self(), unknown_oa},
+                    loop(S);
+                Ip ->
+                    {ok, Res} = node_serv:get_routing_entries(Ip),
+                    RoutingTable =
+                        [{ReOa, lookup_oa(Nodes, Hops)} ||
+                            #routing_entry{oa = ReOa, hops = Hops} <- Res],
+                    From ! {self(), {ok, RoutingTable}},
+                    loop(S)
+            end;
+	{From, get_neighbours} ->
+            AllNeighbours =
+                lists:map(
+                  fun({Oa, Ip}) ->
+                          {ok, ActualNodes} = node_serv:get_nodes(Ip),
+                          {Oa, [{lookup_oa(Nodes, ActualNode#node.ip),
+                                 ActualNode#node.link_quality} ||
+                                   ActualNode <- ActualNodes]}
+                  end, Nodes),
+            From ! {self(), {ok, AllNeighbours}},
+            loop(S);
+	{From, {get_neighbours, Oa}} ->
+            case lookup_ip(Nodes, Oa) of
+                unknown_oa ->
+                    From ! {self(), unknown_oa},
+                    loop(S);
+                Ip ->
+                    {ok, ActualNodes} = node_serv:get_nodes(Ip),
+                    Neighbours =
+                        [{lookup_oa(Nodes, ActualNode#node.ip),
+                          ActualNode#node.link_quality} ||
+                            ActualNode <- ActualNodes],
+                    From ! {self(), {ok, Neighbours}},
                     loop(S)
             end;
 	{From, enable_recalc} ->
@@ -190,12 +233,12 @@ loop(#state{parent = Parent,
             From ! {self(), ok},
             loop(S);
         {From, {enable_recalc, Oa}} ->
-            case lists:keysearch(Oa, 1, Nodes) of
-                {value, {Oa, Ip}} ->
-                    From ! {self(), node_serv:enable_recalc(Ip)},
-                    loop(S);
-                _ ->
+            case lookup_ip(Nodes, Oa) of
+                unknown_oa ->
                     From ! {self(), unknown_oa},
+                    loop(S);
+                Ip ->
+                    From ! {self(), node_serv:enable_recalc(Ip)},
                     loop(S)
             end;
 	{From, disable_recalc} ->
@@ -205,12 +248,12 @@ loop(#state{parent = Parent,
             From ! {self(), ok},
             loop(S);
         {From, {disable_recalc, Oa}} ->
-            case lists:keysearch(Oa, 1, Nodes) of
-                {value, {Oa, Ip}} ->
-                    From ! {self(), node_serv:disable_recalc(Ip)},
-                    loop(S);
-                _ ->
+            case lookup_ip(Nodes, Oa) of
+                unknown_oa ->
                     From ! {self(), unknown_oa},
+                    loop(S);
+                Ip ->
+                    From ! {self(), node_serv:disable_recalc(Ip)},
                     loop(S)
             end;
 	{From, recalc} ->
@@ -220,29 +263,29 @@ loop(#state{parent = Parent,
             From ! {self(), ok},
             loop(S);
         {From, {recalc, Oa}} ->
-            case lists:keysearch(Oa, 1, Nodes) of
-                {value, {Oa, Ip}} ->
-                    From ! {self(), node_serv:recalc(Ip)},
-                    loop(S);
-                _ ->
+            case lookup_ip(Nodes, Oa) of
+                unknown_oa ->
                     From ! {self(), unknown_oa},
+                    loop(S);
+                Ip ->
+                    From ! {self(), node_serv:recalc(Ip)},
                     loop(S)
             end;
         {From, {get_link_quality, Ip, PeerIp}} ->
             Oa = lookup_oa(Nodes, Ip),
             PeerOa = lookup_oa(Nodes, PeerIp),
-            {value, {_, LinkQuality}} =
-                lists:keysearch({Oa, PeerOa}, 1, LinkQualities),
-            From ! {self(), {ok, LinkQuality}},
+            {value, {_, Lq}} =
+                lists:keysearch({Oa, PeerOa}, 1, Lqs),
+            From ! {self(), {ok, Lq}},
             loop(S);
-	{update_link_quality, Oa, PeerOa, LinkQuality} ->
-            UpdatedLinkQualities0 =
-                lists:keyreplace({Oa, PeerOa}, 1, LinkQualities,
-                                 {{Oa, PeerOa}, LinkQuality}),
-            UpdatedLinkQualities =
-                lists:keyreplace({PeerOa, Oa}, 1, UpdatedLinkQualities0,
-                                 {{PeerOa, Oa}, LinkQuality}),
-            loop(S#state{link_qualities = UpdatedLinkQualities});
+	{update_link_quality, Oa, PeerOa, Lq} ->
+                                                 UpdatedLqs0 =
+                lists:keyreplace({Oa, PeerOa}, 1, Lqs,
+                                 {{Oa, PeerOa}, Lq}),
+            UpdatedLqs =
+                lists:keyreplace({PeerOa, Oa}, 1, UpdatedLqs0,
+                                 {{PeerOa, Oa}, Lq}),
+            loop(S#state{link_qualities = UpdatedLqs});
         {'EXIT', Parent, Reason} ->
             exit(Reason);
 	UnknownMessage ->
@@ -310,21 +353,24 @@ walk_to_destination(ToOa, Ip, AllRoutingEntries, Acc) ->
             end
     end.
 
-%%%
-%%% get_routing_entries
-%%%
+%%
+%% node lookup functions
+%%
 
-prettify_routing_entries(_Nodes, []) ->
+lookup_oa(_Nodes, []) ->
     [];
-prettify_routing_entries(Nodes,
-                         [#routing_entry{ip = Ip, hops = Hops} = Re|Rest]) ->
-    [Re#routing_entry{ip = lookup_oa(Nodes, Ip),
-                      hops = [lookup_oa(Nodes, HopIp) || HopIp <- Hops]}|
-     prettify_routing_entries(Nodes, Rest)].
-
+lookup_oa(Nodes, [Ip|Rest]) ->
+    [lookup_oa(Nodes, Ip)|lookup_oa(Nodes, Rest)];
 lookup_oa([], Ip) ->
     Ip;
 lookup_oa([{Oa, Ip}|_Rest], Ip) ->
     Oa;
 lookup_oa([_Node|Rest], Ip) ->
     lookup_oa(Rest, Ip).
+
+lookup_ip([], _Oa) ->
+    unknown_oa;
+lookup_ip([{Oa, Ip}|_Rest], Oa) ->
+    Ip;
+lookup_ip([_Node|Rest], Oa) ->
+    lookup_ip(Rest, Oa).
