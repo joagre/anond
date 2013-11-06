@@ -6,7 +6,7 @@
 -export([create_routing_db/0, delete_routing_db/1, get_routing_entries/1,
          foreach_routing_entry/2, update_routing_entry/2]).
 -export([recalc/3]).
--export([update_link_quality/3, update_link_qualities/3]).
+-export([update_path_cost/3, update_path_costs/3]).
 
 %%% internal exports
 
@@ -99,7 +99,7 @@ foreach_node(Fun, NodeDb) ->
 %%%
 
 unreachable_nodes(NodeDb) ->
-    ets:match_object(NodeDb, #node{link_quality = -1, _ = '_'}).
+    ets:match_object(NodeDb, #node{path_cost = -1, _ = '_'}).
 
 %%%
 %%% exported: create_routing_db
@@ -155,17 +155,17 @@ foreach_routing_entry(Fun, RoutingDb) ->
                                   {'got_worse', #routing_entry{}}.
 
 update_routing_entry(RoutingDb,
-                     #routing_entry{oa = ReOa, ip = ReIp, link_quality = ReLq,
+                     #routing_entry{oa = ReOa, ip = ReIp, path_cost = RePc,
                                     flags = ReFlags} = Re) ->
     case ets:lookup(RoutingDb, ReOa) of
-        %% existing routing entry got new link quality
-        [#routing_entry{ip = ReIp, link_quality = CurrentLq} = CurrentRe]
-          when ReLq /= CurrentLq ->
+        %% existing routing entry got new path cost
+        [#routing_entry{ip = ReIp, path_cost = CurrentPc} = CurrentRe]
+          when RePc /= CurrentPc ->
 	    UpdatedFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
 	    true =
                 ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
             {updated, CurrentRe};
-        %% existing routing entry not changed (same link quality as before)
+        %% existing routing entry not changed (same path cost as before)
         [#routing_entry{ip = ReIp} = CurrentRe] ->
             {kept, CurrentRe};
         %% new routing entry
@@ -175,8 +175,8 @@ update_routing_entry(RoutingDb,
                 ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
             got_new;
         %% better routing entry
-        [#routing_entry{link_quality = Lq} = CurrentRe]
-          when ReLq /= -1 andalso ReLq < Lq ->
+        [#routing_entry{path_cost = Pc} = CurrentRe]
+          when RePc /= -1 andalso RePc < Pc ->
 	    UpdatedFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
 	    true =
                 ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
@@ -197,8 +197,7 @@ recalc(Ip, NodeDb, RoutingDb) ->
     propagate_routing_entries(Ip, NodeDb, RoutingDb),
     clear_node_flags(NodeDb),
     clear_routing_entry_flags(RoutingDb),
-    true = ets:match_delete(RoutingDb,
-                            #routing_entry{link_quality = -1, _ = '_'}),
+    true = ets:match_delete(RoutingDb, #routing_entry{path_cost = -1, _ = '_'}),
     ok.
 
 touch_routing_entries(NodeDb, RoutingDb) ->
@@ -230,29 +229,29 @@ update_routing_entries(_Ip, _NodeDb, _RoutingDb, '$end_of_table', _Node) ->
     ok;
 update_routing_entries(Ip, NodeDb, RoutingDb, Oa,
                        #node{ip = PeerIp,
-                             link_quality = PeerLq,
+                             path_cost = PeerPc,
                              flags = PeerFlags} = Node) ->
     [#routing_entry{ip = ReIp,
-                    link_quality = ReLq,
+                    path_cost = RePc,
                     flags = ReFlags,
                     hops = Hops} = Re] =
         ets:lookup(RoutingDb, Oa),
     if
         PeerIp /= ReIp andalso
-        PeerLq /= undefined andalso
-        PeerLq /= -1 andalso
+        PeerPc /= undefined andalso
+        PeerPc /= -1 andalso
         (?bit_is_set(PeerFlags, ?F_NODE_UPDATED) orelse
          ?bit_is_set(ReFlags, ?F_RE_UPDATED)) ->
             if
-                PeerLq == -1 ->
-                    UpdatedLq = -1;
+                PeerPc == -1 ->
+                    UpdatedPc = -1;
                 true ->
-                    UpdatedLq = ReLq+PeerLq
+                    UpdatedPc = RePc+PeerPc
             end,
             UpdatedRe =
                 Re#routing_entry{
                   ip = Ip,
-                  link_quality = UpdatedLq,
+                  path_cost = UpdatedPc,
                   hops = [Ip|Hops]},
             ok = node_serv:update_routing_entry(PeerIp, UpdatedRe),
             update_routing_entries(Ip, NodeDb, RoutingDb,
@@ -264,7 +263,7 @@ update_routing_entries(Ip, NodeDb, RoutingDb, Oa,
 
 clear_node_flags(NodeDb) ->
     foreach_node(
-      fun(#node{link_quality = undefined}) ->
+      fun(#node{path_cost = undefined}) ->
               ok;
          (#node{flags = Flags} = Node)
             when ?bit_is_set(Flags, ?F_NODE_UPDATED) ->
@@ -286,18 +285,18 @@ clear_routing_entry_flags(RoutingDb) ->
       end, RoutingDb).
 
 %%%
-%%% exported: update_link_quality
+%%% exported: update_path_cost
 %%%
 
--spec update_link_quality(node_db(), ip(), link_quality()) -> ok.
+-spec update_path_cost(node_db(), ip(), path_cost()) -> ok.
 
-update_link_quality(NodeDb, PeerIp, UpdatedLq) ->
+update_path_cost(NodeDb, PeerIp, UpdatedPc) ->
     case ets:lookup(NodeDb, PeerIp) of
-        [#node{link_quality = Lq} = Node]
-          when Lq /= UpdatedLq ->
+        [#node{path_cost = Pc} = Node]
+          when Pc /= UpdatedPc ->
             UpdatedFlags = ?bit_set(Node#node.flags, ?F_NODE_UPDATED),
 	    true = ets:insert(NodeDb,
-                              Node#node{link_quality = UpdatedLq,
+                              Node#node{path_cost = UpdatedPc,
                                         flags = UpdatedFlags}),
             ok;
         _ ->
@@ -305,26 +304,26 @@ update_link_quality(NodeDb, PeerIp, UpdatedLq) ->
     end.
 
 %%%
-%%% exported: update_link_qualities
+%%% exported: update_path_costs
 %%%
 
--spec update_link_qualities(routing_db(), ip(), link_quality()) -> ok.
+-spec update_path_costs(routing_db(), ip(), path_cost()) -> ok.
 
-update_link_qualities(RoutingDb, PeerIp, UpdatedLq) ->
-    update_link_qualities(RoutingDb, ets:first(RoutingDb), PeerIp, UpdatedLq).
+update_path_costs(RoutingDb, PeerIp, UpdatedPc) ->
+    update_path_costs(RoutingDb, ets:first(RoutingDb), PeerIp, UpdatedPc).
 
-update_link_qualities(_RoutingDb, '$end_of_table', _PeerIp, _UpdatedLq) ->
+update_path_costs(_RoutingDb, '$end_of_table', _PeerIp, _UpdatedPc) ->
     ok;
-update_link_qualities(RoutingDb, Oa, PeerIp, UpdatedLq) ->
+update_path_costs(RoutingDb, Oa, PeerIp, UpdatedPc) ->
     case ets:lookup(RoutingDb, Oa) of
         [#routing_entry{ip = PeerIp} = Re] ->
             UpdatedFlags = ?bit_set(Re#routing_entry.flags, ?F_RE_UPDATED),
 	    true = ets:insert(RoutingDb,
-                              Re#routing_entry{link_quality = UpdatedLq,
+                              Re#routing_entry{path_cost = UpdatedPc,
                                                flags = UpdatedFlags}),
-            update_link_qualities(RoutingDb, ets:next(RoutingDb, Oa),
-                                  PeerIp, UpdatedLq);
+            update_path_costs(
+              RoutingDb, ets:next(RoutingDb, Oa), PeerIp, UpdatedPc);
         _ ->
-            update_link_qualities(RoutingDb, ets:next(RoutingDb, Oa),
-                                  PeerIp, UpdatedLq)
+            update_path_costs(
+              RoutingDb, ets:next(RoutingDb, Oa), PeerIp, UpdatedPc)
     end.

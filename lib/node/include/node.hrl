@@ -3,6 +3,6 @@
 
 -type oa() :: integer().
 -type ip() :: pid().
--type link_quality() :: integer().
+-type path_cost() :: integer().
 
 -endif.

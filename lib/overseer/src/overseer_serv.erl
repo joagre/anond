@@ -6,7 +6,7 @@
 -export([get_neighbours/0, get_neighbours/1]).
 -export([enable_recalc/0, enable_recalc/1, disable_recalc/0, disable_recalc/1]).
 -export([recalc/0, recalc/1]).
--export([get_link_quality/2, update_link_quality/3]).
+-export([get_path_cost/2, update_path_cost/3]).
 
 %%% internal exports
 -export([init/1]).
@@ -21,22 +21,22 @@
 
 %%% constants
 -define(NUMBER_OF_SIMULATION_NODES, 10).
--define(MAX_LINK_QUALITY, 100).
+-define(MAX_PATH_COST, 100).
 -define(PERCENT_NUDGE, 5).
 
 %%% records
 -record(state, {
 	  parent          :: pid(),
-	  link_qualities  :: [{{oa(), oa()}, link_quality()}],
+	  path_costs  :: [{{oa(), oa()}, path_cost()}],
 	  nodes           :: [{oa(), ip()}],
           simulation      :: boolean(),
           number_of_nodes :: integer()
 	 }).
 
 %%% types
--type global_routing_table() :: [{oa(), {oa(), link_quality(), [oa()]}}].
--type routing_table() :: [{oa(), link_quality(), [oa()]}].
--type neighbours() :: [{oa(), link_quality()}].
+-type global_routing_table() :: [{oa(), {oa(), path_cost(), [oa()]}}].
+-type routing_table() :: [{oa(), path_cost(), [oa()]}].
+-type neighbours() :: [{oa(), path_cost()}].
 
 %%%
 %%% exported: start_link
@@ -144,23 +144,23 @@ recalc(Oa) ->
     serv:call(?MODULE, {recalc, Oa}).
 
 %%%
-%%% exported: get_link_quality
+%%% exported: get_path_cost
 %%%
 
--spec get_link_quality(ip(), ip()) -> {'ok', link_quality()}.
+-spec get_path_cost(ip(), ip()) -> {'ok', path_cost()}.
 
-get_link_quality(Ip, PeerIp) ->
-    serv:call(?MODULE, {get_link_quality, Ip, PeerIp}).
+get_path_cost(Ip, PeerIp) ->
+    serv:call(?MODULE, {get_path_cost, Ip, PeerIp}).
 
 %%%
-%%% exported: update_link_quality
+%%% exported: update_path_cost
 %%%
 
--spec update_link_quality(oa(), oa(), link_quality()) ->
-                                 'ok' | 'unknown_link_quality'.
+-spec update_path_cost(oa(), oa(), path_cost()) ->
+                                 'ok' | 'unknown_path_cost'.
 
-update_link_quality(Oa, PeerOa, Lq) ->
-    serv:call(?MODULE, {update_link_quality, Oa, PeerOa, Lq}).
+update_path_cost(Oa, PeerOa, Pc) ->
+    serv:call(?MODULE, {update_path_cost, Oa, PeerOa, Pc}).
 
 %%%
 %%% server loop
@@ -180,14 +180,14 @@ init(Parent) ->
             end,
 	    Parent ! {self(), started},
 	    loop(S#state{parent = Parent,
-                         link_qualities = ?NON_RANDOM_LINK_QUALITIES,
+                         path_costs = ?NON_RANDOM_PATH_COSTS,
                          nodes = Nodes});
         _ ->
             Parent ! {self(), already_started}
     end.
 
 loop(#state{parent = Parent,
-	    link_qualities = Lqs,
+	    path_costs = Pcs,
 	    nodes = Nodes,
             simulation = Simulation} = S) ->
     receive
@@ -206,9 +206,9 @@ loop(#state{parent = Parent,
                 Ip ->
                     {ok, Res} = node_serv:get_routing_entries(Ip),
                     RoutingTable =
-                        [{ReOa, Lq, lookup_oa(Nodes, Hops)} ||
+                        [{ReOa, Pc, lookup_oa(Nodes, Hops)} ||
                             #routing_entry{oa = ReOa,
-                                           link_quality = Lq,
+                                           path_cost = Pc,
                                            hops = Hops} <- Res],
                     From ! {self(), {ok, RoutingTable}},
                     loop(S)
@@ -219,7 +219,7 @@ loop(#state{parent = Parent,
                   fun({Oa, Ip}) ->
                           {ok, ActualNodes} = node_serv:get_nodes(Ip),
                           {Oa, [{lookup_oa(Nodes, ActualNode#node.ip),
-                                 ActualNode#node.link_quality} ||
+                                 ActualNode#node.path_cost} ||
                                    ActualNode <- ActualNodes]}
                   end, Nodes),
             From ! {self(), {ok, AllNeighbours}},
@@ -233,7 +233,7 @@ loop(#state{parent = Parent,
                     {ok, ActualNodes} = node_serv:get_nodes(Ip),
                     Neighbours =
                         [{lookup_oa(Nodes, ActualNode#node.ip),
-                          ActualNode#node.link_quality} ||
+                          ActualNode#node.path_cost} ||
                             ActualNode <- ActualNodes],
                     From ! {self(), {ok, Neighbours}},
                     loop(S)
@@ -283,35 +283,35 @@ loop(#state{parent = Parent,
                     From ! {self(), node_serv:recalc(Ip)},
                     loop(S)
             end;
-        {From, {get_link_quality, Ip, PeerIp}} when Simulation == true ->
+        {From, {get_path_cost, Ip, PeerIp}} when Simulation == true ->
             Oa = lookup_oa(Nodes, Ip),
             PeerOa = lookup_oa(Nodes, PeerIp),
-            {value, {_, Lq}} = lists:keysearch({Oa, PeerOa}, 1, Lqs),
-            From ! {self(), {ok, nudge_link_quality(Lq, ?PERCENT_NUDGE)}},
+            {value, {_, Pc}} = lists:keysearch({Oa, PeerOa}, 1, Pcs),
+            From ! {self(), {ok, nudge_path_cost(Pc, ?PERCENT_NUDGE)}},
             loop(S);
-        {From, {get_link_quality, Ip, PeerIp}} ->
+        {From, {get_path_cost, Ip, PeerIp}} ->
             Oa = lookup_oa(Nodes, Ip),
             PeerOa = lookup_oa(Nodes, PeerIp),
-            case lists:keysearch({Oa, PeerOa}, 1, Lqs) of
-                {value, {_, Lq}} ->
+            case lists:keysearch({Oa, PeerOa}, 1, Pcs) of
+                {value, {_, Pc}} ->
                     From ! {self(),
-                            {ok, nudge_link_quality(Lq, ?PERCENT_NUDGE)}},
+                            {ok, nudge_path_cost(Pc, ?PERCENT_NUDGE)}},
                     loop(S);
                 false ->
-                    RandomLq = random:uniform(?MAX_LINK_QUALITY),
-                    From ! {self(), {ok, RandomLq}},
-                    UpdatedLqs = [{{Oa, PeerOa}, RandomLq},
-                                  {{PeerOa, Oa}, RandomLq}|Lqs],
-                    loop(S#state{link_qualities = UpdatedLqs})
+                    RandomPc = random:uniform(?MAX_PATH_COST),
+                    From ! {self(), {ok, RandomPc}},
+                    UpdatedPcs = [{{Oa, PeerOa}, RandomPc},
+                                  {{PeerOa, Oa}, RandomPc}|Pcs],
+                    loop(S#state{path_costs = UpdatedPcs})
             end;
-	{From, {update_link_quality, Oa, PeerOa, Lq}} ->
-            case update_link_qualities(Oa, PeerOa, Lq, Lqs) of
-                unknown_link_quality ->
-                    From ! {self(), unknown_link_quality},
+	{From, {update_path_cost, Oa, PeerOa, Pc}} ->
+            case update_path_costs(Oa, PeerOa, Pc, Pcs) of
+                unknown_path_cost ->
+                    From ! {self(), unknown_path_cost},
                     loop(S);
-                UpdatedLqs ->
+                UpdatedPcs ->
                     From ! {self(), ok},
-                    loop(S#state{link_qualities = UpdatedLqs})
+                    loop(S#state{path_costs = UpdatedPcs})
             end;
         {'EXIT', Parent, Reason} ->
             exit(Reason);
@@ -361,10 +361,10 @@ traverse_each_destination(Oa, [#routing_entry{oa = Oa}|Rest],
                           AllRoutingEntries) ->
     traverse_each_destination(Oa, Rest, AllRoutingEntries);
 traverse_each_destination(FromOa, [#routing_entry{oa = ToOa, ip = Ip,
-                                                  link_quality = Lq}|Rest],
+                                                  path_cost = Pc}|Rest],
                           AllRoutingEntries) ->
     OaTrail = walk_to_destination(ToOa, Ip, AllRoutingEntries, []),
-    [{FromOa, ToOa, Lq, OaTrail}|
+    [{FromOa, ToOa, Pc, OaTrail}|
      traverse_each_destination(FromOa, Rest, AllRoutingEntries)].
 
 walk_to_destination(ToOa, Ip, AllRoutingEntries, Acc) ->
@@ -373,7 +373,7 @@ walk_to_destination(ToOa, Ip, AllRoutingEntries, Acc) ->
             [];
         {value, {NextOa, Ip, RoutingEntries}} ->
             case lists:keysearch(ToOa, 2, RoutingEntries) of
-                {value, #routing_entry{oa = ToOa, link_quality = 0}} ->
+                {value, #routing_entry{oa = ToOa, path_cost = 0}} ->
                     lists:reverse([NextOa|Acc]);
                 {value, #routing_entry{oa = ToOa, ip = NextIp}} ->
                     walk_to_destination(ToOa, NextIp, AllRoutingEntries,
@@ -384,26 +384,26 @@ walk_to_destination(ToOa, Ip, AllRoutingEntries, Acc) ->
     end.
 
 %%%
-%%% update_link_quality
+%%% update_path_cost
 %%%
 
-update_link_qualities(_Oa, _PeerOa, _Lq, []) ->
-    unknown_link_quality;
-update_link_qualities(Oa, PeerOa, NewLq,
-                      [{{Oa, PeerOa}, _OldLq}, {{PeerOa, Oa}, _OldLq}|Rest]) ->
-    [{{Oa, PeerOa}, NewLq}, {{PeerOa, Oa}, NewLq}|Rest];
-update_link_qualities(Oa, PeerOa, NewLq,
-                      [{{PeerOa, Oa}, _OldLq}, {{Oa, PeerOa}, _OldLq}|Rest]) ->
-    [{{PeerOa, Oa}, NewLq}, {{Oa, PeerOa}, NewLq}|Rest];
-update_link_qualities(Oa, PeerOa, NewLq, [Lq, Ql|Rest]) ->
-    [Lq, Ql|update_link_qualities(Oa, PeerOa, NewLq, Rest)].
+update_path_costs(_Oa, _PeerOa, _Pc, []) ->
+    unknown_path_cost;
+update_path_costs(Oa, PeerOa, NewPc,
+                  [{{Oa, PeerOa}, _OldPc}, {{PeerOa, Oa}, _OldPc}|Rest]) ->
+    [{{Oa, PeerOa}, NewPc}, {{PeerOa, Oa}, NewPc}|Rest];
+update_path_costs(Oa, PeerOa, NewPc,
+                  [{{PeerOa, Oa}, _OldPc}, {{Oa, PeerOa}, _OldPc}|Rest]) ->
+    [{{PeerOa, Oa}, NewPc}, {{Oa, PeerOa}, NewPc}|Rest];
+update_path_costs(Oa, PeerOa, NewPc, [Pc, Cp|Rest]) ->
+    [Pc, Cp|update_path_costs(Oa, PeerOa, NewPc, Rest)].
 
 %%%
-%%% get_link_quality 
+%%% get_path_cost 
 %%%
 
-nudge_link_quality(Lq, Percent) ->
-    random:uniform(Percent)/100*Lq+Lq.
+nudge_path_cost(Pc, Percent) ->
+    random:uniform(Percent)/100*Pc+Pc.
 
 %%%
 %%% node lookup functions

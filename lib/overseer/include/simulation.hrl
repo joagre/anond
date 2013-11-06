@@ -10,7 +10,7 @@
          {9, [7, 8]},
          {10, [6, 3]}]).
 
--define(NON_RANDOM_LINK_QUALITIES,
+-define(NON_RANDOM_PATH_COSTS,
         [{{10, 3}, 8},
          {{3, 10}, 8},
 

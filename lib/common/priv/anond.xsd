@@ -13,7 +13,7 @@
 	  <xs:complexType>
 	    <xs:all>
               <xs:element name="number-of-peers" type="xs:positiveInteger"/> 
-              <xs:element name="measure-link-quality-timeout" type="seconds"/> 
+              <xs:element name="measure-path-cost-timeout" type="seconds"/> 
               <xs:element name="refresh-peers-timeout" type="minutes"/>
               <xs:element name="recalc-timeout" type="seconds"/>
 	    </xs:all>

@@ -85,7 +85,7 @@ convert_value(['number-of-nodes'|_], Value) ->
 %% node
 convert_value(['number-of-peers'|_], Value) ->
     {ok, ?l2i(Value)};
-convert_value(['measure-link-quality-timeout'|_], Value) ->
+convert_value(['measure-path-cost-timeout'|_], Value) ->
     {ok, ?l2i(Value)*1000};
 convert_value(['refresh-peers-timeout'|_], Value) ->
     {ok, ?l2i(Value)*1000*60};
