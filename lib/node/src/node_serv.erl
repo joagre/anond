@@ -7,7 +7,6 @@
 -export([enable_recalc/1, disable_recalc/1, recalc/1]).
 -export([update_link_quality/3]).
 
-
 %%% internal exports
 -export([init/4]).
 
@@ -25,8 +24,8 @@
 
 %%% records
 -record(state, {
-	  parent                       :: pid(),
-	  oa                           :: oa(),
+          parent                       :: pid(),
+          oa                           :: oa(),
           ip                           :: ip(),
           ttl                          :: integer(),
           peer_ips                     :: [ip()],
@@ -160,7 +159,7 @@ init(Parent, Oa, PublicKey, AutoRecalc) ->
     ok = ds_serv:reserve_oa(Oa, Ip),
     ?daemon_log("Reserved my oa (~w) on directory server.", [Oa]),
     SelfRe = #routing_entry{oa = Oa, ip = Ip, link_quality = 0},
-    new = node_route:update_routing_entry(RoutingDb, SelfRe),
+    got_new = node_route:update_routing_entry(RoutingDb, SelfRe),
     timelib:start_timer(
       S#state.measure_link_quality_timeout, measure_link_quality),
     ?daemon_log("Peer refresh started...", []),
@@ -200,7 +199,7 @@ loop(#state{parent = Parent,
         bootstrap ->
             UpdatedPeerIps =
                 refresh_peers(
-                  Ip, PeerIps, NodeDb, RoutingDb, NumberOfPeers,
+                  Ip, PeerIps, NodeDb, RoutingDb, AutoRecalc, NumberOfPeers,
                   RefreshPeersTimeout),
             loop(S#state{peer_ips = UpdatedPeerIps});
         config_updated ->
@@ -215,12 +214,12 @@ loop(#state{parent = Parent,
         refresh_peers ->
             ?daemon_log("Peer refresh started...", []),
             UpdatedPeerIps = 
-                refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, NumberOfPeers,
-                              RefreshPeersTimeout),
+                refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, AutoRecalc,
+                              NumberOfPeers, RefreshPeersTimeout),
             loop(S#state{peer_ips = UpdatedPeerIps});
-        measure_link_quality ->
+                                   measure_link_quality ->
+            PeerIp = hd(PeerIps),
             RotatedPeerIps = rotate_peer_ips(PeerIps),
-            PeerIp = hd(RotatedPeerIps),
             Self = self(),
             spawn(
               fun() ->
@@ -239,15 +238,16 @@ loop(#state{parent = Parent,
 	    loop(S);
 	#routing_entry{oa = Oa} ->
 	    loop(S);
-	#routing_entry{oa = DestOa, ip = ViaIp, link_quality = Lq,
+        #routing_entry{oa = DestOa, ip = ViaIp, link_quality = Lq,
                        hops = Hops} = Re ->
-            case node_route:member_node(NodeDb, ViaIp) of
+            case node_route:is_member_node(NodeDb, ViaIp) of
                 true ->
-                    ok;
+                    UpdatedPeerIps = PeerIps;
                 false ->
                     ?daemon_log("~w added incoming peer ~w.", [Oa, ViaIp]),
                     Node = #node{ip = ViaIp, link_quality = Lq,
                                  flags = ?F_NODE_UPDATED},
+                    UpdatedPeerIps = [ViaIp|PeerIps],
                     ok = node_route:add_node(NodeDb, Node)
             end,
             case lists:member(Ip, Hops) of
@@ -255,36 +255,45 @@ loop(#state{parent = Parent,
                     ?daemon_log(
                        "~w rejected looping routing entry: ~w -> ~w (~w)",
                        [Oa, DestOa, ViaIp, Lq]),
-                    loop(S);
+                    loop(S#state{peer_ips = UpdatedPeerIps});
                 false ->
                     case node_route:update_routing_entry(RoutingDb, Re) of
-                        {replaced,
-                         #routing_entry{
-                           oa = DestOa, ip = OldViaIp, link_quality = OldLq,
-                           hops = OldHops}} ->
+                        {updated, #routing_entry{link_quality = CurrentLq}} ->
                             ?daemon_log(
-                               "~w replaced route to ~w: (~w, ~w, ~w) "
-                               "with (~w, ~w, ~w)",
-                               [Oa, DestOa,
-                                OldViaIp, OldLq, OldHops,
-                                ViaIp, Lq, Hops]),
-                            loop(S);
-                        new ->
+                               "~w updated existing route: ~w -> ~w (~w, ~w) "
+                               "with new link quality ~w",
+                               [Oa, DestOa, ViaIp, CurrentLq, Hops, Lq]),
+                            loop(S#state{peer_ips = UpdatedPeerIps});
+                        {kept, _CurrentRe} ->
                             ?daemon_log(
-                               "~w got new route to ~w: (~w, ~w, ~w)",
+                               "~w kept existing route: ~w -> ~w (~w, ~w)",
                                [Oa, DestOa, ViaIp, Lq, Hops]),
-                            loop(S);
-                        {kept,
-                         #routing_entry{
-                           oa = DestOa, ip = OldViaIp, link_quality = OldLq,
-                           hops = OldHops}} ->
+                            loop(S#state{peer_ips = UpdatedPeerIps});
+                        got_new ->
                             ?daemon_log(
-                               "~w kept route to ~w: (~w, ~w, ~w) "
-                               "rejecting (~w, ~w, ~w)",
-                               [Oa, DestOa,
-                                OldViaIp, OldLq, OldHops,
-                                ViaIp, Lq, Hops]),
-                            loop(S)
+                               "~w got new route: ~w -> ~w (~w, ~w)",
+                               [Oa, DestOa, ViaIp, Lq, Hops]),
+                            loop(S#state{peer_ips = UpdatedPeerIps});
+                        {got_better,
+                         #routing_entry{
+                           ip = CurrentViaIp, link_quality = CurrentLq,
+                           hops = CurrentHops}} ->
+                            ?daemon_log(
+                               "~w got better route: ~w -> ~w (~w, ~w) "
+                               "replacing ~w -> ~w (~w, ~w)",
+                               [Oa, DestOa, ViaIp, Lq, Hops,
+                                DestOa, CurrentViaIp, CurrentLq, CurrentHops]),
+                            loop(S#state{peer_ips = UpdatedPeerIps});
+                        {got_worse,
+                         #routing_entry{
+                           ip = CurrentViaIp, link_quality = CurrentLq,
+                           hops = CurrentHops}} ->
+                            ?daemon_log(
+                               "~w got worse route: ~w -> ~w (~w, ~w) "
+                               "not replacing ~w -> ~w (~w, ~w)",
+                               [Oa, DestOa, ViaIp, Lq, Hops,
+                                DestOa, CurrentViaIp, CurrentLq, CurrentHops]),
+                            loop(S#state{peer_ips = UpdatedPeerIps})
                     end
             end;
 	{From, get_nodes} ->
@@ -344,8 +353,6 @@ measure_link_qualities(Ip, [#peer{ip = PeerIp}|Rest]) ->
     Ip ! {link_quality, PeerIp, Lq},
     measure_link_qualities(Ip, Rest).
 
-rotate_peer_ips([]) ->
-    [];
 rotate_peer_ips([PeerIp|Rest]) ->
     lists:reverse([PeerIp|lists:reverse(Rest)]).
 
@@ -353,17 +360,17 @@ measure_link_quality(Ip, PeerIp) ->
     {ok, Lq} = overseer_serv:get_link_quality(Ip, PeerIp),
     Ip ! {link_quality, PeerIp, Lq}.
 
-%%
-%% refresh_peers
-%%
+%%%
+%%% refresh_peers
+%%%
 
-refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, NumberOfPeers,
+refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, AutoRecalc, NumberOfPeers,
               RefreshPeersTimeout) ->
     ?daemon_log("Known peers: ~w", [PeerIps]),
     {ok, PublishedPeerIps} = ds_serv:published_peers(PeerIps),
     ?daemon_log("Still published peers: ~w", [PublishedPeerIps]),
-    UnreachablePeerIps =
-        ets:match(NodeDb, #node{ip = '$1', link_quality = -1, _ = '_'}),
+    UnreachableNodes = node_route:unreachable_nodes(NodeDb),
+    UnreachablePeerIps = [Node#node.ip || Node <- UnreachableNodes],
     ?daemon_log("Unreachable peers: ~w", [UnreachablePeerIps]),
     RemainingPeerIps = PublishedPeerIps--UnreachablePeerIps,
     ?daemon_log("Remaining published and reachable peers: ~w",
@@ -394,6 +401,12 @@ refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, NumberOfPeers,
                         flags = ?F_NODE_UPDATED bor ?F_NODE_IS_INCOMING_PEER},
                       ok = node_route:add_node(NodeDb, Node)
               end, NewPeers),
+            if
+                AutoRecalc ->
+                    ok = node_route:recalc(Ip, NodeDb, RoutingDb);
+                true ->
+                    ok
+            end,
             timelib:start_timer(RefreshPeersTimeout, refresh_peers),
             RemainingPeerIps++NewPeerIps
     end.
@@ -403,8 +416,8 @@ purge_peers(_NodeDb, _RoutingDb, _RemainingPeerIps, []) ->
 purge_peers(NodeDb, RoutingDb, RemainingPeerIps, [PeerIp|Rest]) ->
     case lists:member(PeerIp, RemainingPeerIps) of
         false ->
-            ok = node_route:delete_node(NodeDb, PeerIp),
-            ok = node_route:delete_routing_entry(RoutingDb, {ip, PeerIp}),
+            ok = node_route:delete_node(NodeDb, PeerIp),            
+            ok = node_route:update_link_qualities(RoutingDb, PeerIp, -1),
             purge_peers(NodeDb, RoutingDb, RemainingPeerIps, Rest);
         true ->
             purge_peers(NodeDb, RoutingDb,

@@ -2,16 +2,18 @@
 
 %%% external exports
 -export([create_node_db/0, delete_node_db/1, add_node/2, delete_node/2,
-         member_node/2, get_nodes/1]).
+         get_nodes/1, foreach_node/2, is_member_node/2, unreachable_nodes/1]).
 -export([create_routing_db/0, delete_routing_db/1, get_routing_entries/1,
-         update_routing_entry/2, delete_routing_entry/2]).
+         foreach_routing_entry/2, update_routing_entry/2]).
 -export([recalc/3]).
--export([update_link_quality/3]).
+-export([update_link_quality/3, update_link_qualities/3]).
 
 %%% internal exports
 
 %%% include files
 -include_lib("util/include/bits.hrl").
+-include_lib("util/include/shorthand.hrl").
+-include_lib("util/include/log.hrl").
 -include_lib("node/include/node_route.hrl").
 
 %%% constants
@@ -19,6 +21,8 @@
 %%% records
 
 %%% types
+-type foreach_node_fun() :: fun((#node{}) -> any()).
+-type foreach_routing_entry_fun() :: fun((#routing_entry{}) -> any()).
 
 %%%
 %%% exported: create_node_db
@@ -60,12 +64,12 @@ delete_node(NodeDb, Ip) ->
     ok.
 
 %%%
-%%% exported: member_node
+%%% exported: is_member_node
 %%%
 
--spec member_node(node_db(), ip()) -> boolean().
+-spec is_member_node(node_db(), ip()) -> boolean().
 
-member_node(NodeDb, Ip) ->
+is_member_node(NodeDb, Ip) ->
     ets:member(NodeDb, Ip).
 
 %%%
@@ -77,6 +81,25 @@ member_node(NodeDb, Ip) ->
 get_nodes(NodeDb) ->
     Nodes = ets:foldl(fun(Node, Acc) -> [Node|Acc] end, [], NodeDb),
     {ok, Nodes}.
+
+%%%
+%%% exported: foreach_node
+%%%
+
+-spec foreach_node(foreach_node_fun(), node_db()) -> any().
+
+foreach_node(Fun, NodeDb) ->
+    ets:foldl(fun(Node, []) ->
+                      Fun(Node),
+                      []
+              end, [], NodeDb).
+
+%%%
+%%% exported: unreachable_nodes
+%%%
+
+unreachable_nodes(NodeDb) ->
+    ets:match_object(NodeDb, #node{link_quality = -1, _ = '_'}).
 
 %%%
 %%% exported: create_routing_db
@@ -108,43 +131,60 @@ get_routing_entries(RoutingDb) ->
     {ok, Res}.
 
 %%%
+%%% exported: foreach_routing_entry
+%%%
+
+-spec foreach_routing_entry(foreach_routing_entry_fun(), routing_db()) ->
+                                   any().
+
+foreach_routing_entry(Fun, RoutingDb) ->
+    ets:foldl(fun(Re, []) ->
+                      Fun(Re),
+                      []
+              end, [], RoutingDb).
+
+%%%
 %%% exported: update_routing_entry
 %%%
 
 -spec update_routing_entry(routing_db(), #routing_entry{}) ->
-                                  {'replaced', #routing_entry{}} |
-                                  'new' |
-                                  {'kept', #routing_entry{}}.
+                                  {'updated', #routing_entry{}} |
+                                  {'kept', #routing_entry{}} |
+                                  'got_new' |
+                                  {'got_better', #routing_entry{}} |
+                                  {'got_worse', #routing_entry{}}.
 
-update_routing_entry(RoutingDb, Re) ->
-    case ets:lookup(RoutingDb, Re#routing_entry.oa) of
-        [#routing_entry{link_quality = LinkQuality} = CurrentRe]
-          when Re#routing_entry.link_quality < LinkQuality ->
-	    UpdatedFlags = ?bit_set(Re#routing_entry.flags, ?F_RE_UPDATED),
+update_routing_entry(RoutingDb,
+                     #routing_entry{oa = ReOa, ip = ReIp, link_quality = ReLq,
+                                    flags = ReFlags} = Re) ->
+    case ets:lookup(RoutingDb, ReOa) of
+        %% existing routing entry got new link quality
+        [#routing_entry{ip = ReIp, link_quality = CurrentLq} = CurrentRe]
+          when ReLq /= CurrentLq ->
+	    UpdatedFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
 	    true =
                 ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
-            {replaced, CurrentRe};
+            {updated, CurrentRe};
+        %% existing routing entry not changed (same link quality as before)
+        [#routing_entry{ip = ReIp} = CurrentRe] ->
+            {kept, CurrentRe};
+        %% new routing entry
         [] ->
-            UpdatedFlags = ?bit_set(Re#routing_entry.flags, ?F_RE_UPDATED),
+            UpdatedFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
+            true =
+                ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
+            got_new;
+        %% better routing entry
+        [#routing_entry{link_quality = Lq} = CurrentRe]
+          when ReLq /= -1 andalso ReLq < Lq ->
+	    UpdatedFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
 	    true =
                 ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
-            new;
-        [CurrentRe] ->            
-            {kept, CurrentRe}
+            {got_better, CurrentRe};
+        %% worse routing entry
+        [CurrentRe] ->
+            {got_worse, CurrentRe}
     end.
-
-%%%
-%%% exported: delete_routing_entry
-%%%
-
--spec delete_routing_entry(routing_db(), {'ip', ip()} | oa()) -> 'ok'.
-
-delete_routing_entry(RoutingDb, {ip, Ip}) ->
-    true = ets:match_delete(RoutingDb, #routing_entry{ip = Ip, _ = '_'}),
-    ok;
-delete_routing_entry(RoutingDb, Oa) ->
-    true = ets:delete(RoutingDb, Oa),
-    ok.
 
 %%%
 %%% exported: recalc
@@ -153,38 +193,66 @@ delete_routing_entry(RoutingDb, Oa) ->
 -spec recalc(ip(), node_db(), routing_db()) -> 'ok'.
 
 recalc(Ip, NodeDb, RoutingDb) ->
-    traverse_peers(Ip, NodeDb, ets:first(NodeDb), RoutingDb),
+    touch_routing_entries(NodeDb, RoutingDb),
+    propagate_routing_entries(Ip, NodeDb, RoutingDb),
     clear_node_flags(NodeDb),
-    clear_routing_entry_flags(RoutingDb).
+    clear_routing_entry_flags(RoutingDb),
+    true = ets:match_delete(RoutingDb,
+                            #routing_entry{link_quality = -1, _ = '_'}),
+    ok.
 
-traverse_peers(_Ip, _NodeDb, '$end_of_table', _RoutingDb) ->
-    ok;
-traverse_peers(Ip, NodeDb, PeerIp, RoutingDb) ->
-    [Node] = ets:lookup(NodeDb, PeerIp),
-    update_routing_entries(Ip, NodeDb, RoutingDb, ets:first(RoutingDb), Node),
-    traverse_peers(Ip, NodeDb, ets:next(NodeDb, PeerIp), RoutingDb).
+touch_routing_entries(NodeDb, RoutingDb) ->
+    foreach_node(
+      fun(#node{ip = Ip, flags = Flags})
+            when ?bit_is_set(Flags, ?F_NODE_UPDATED) ->
+              foreach_routing_entry(
+                fun(#routing_entry{ip = ReIp, flags = ReFlags} = Re)
+                      when ReIp == Ip ->
+                        UpdatedReFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
+                        true = ets:insert(RoutingDb,
+                                          Re#routing_entry{
+                                            flags = UpdatedReFlags});
+                   (_) ->
+                        ok
+                end, RoutingDb);
+         (_) ->
+              ok
+      end, NodeDb).
+
+propagate_routing_entries(Ip, NodeDb, RoutingDb) ->
+    foreach_node(
+      fun(Node) ->
+              update_routing_entries(
+                Ip, NodeDb, RoutingDb, ets:first(RoutingDb), Node)
+      end, NodeDb).
 
 update_routing_entries(_Ip, _NodeDb, _RoutingDb, '$end_of_table', _Node) ->
     ok;
 update_routing_entries(Ip, NodeDb, RoutingDb, Oa,
                        #node{ip = PeerIp,
-                             link_quality = PeerLinkQuality,
+                             link_quality = PeerLq,
                              flags = PeerFlags} = Node) ->
     [#routing_entry{ip = ReIp,
-                    link_quality = ReLinkQuality,
+                    link_quality = ReLq,
                     flags = ReFlags,
                     hops = Hops} = Re] =
         ets:lookup(RoutingDb, Oa),
     if
         PeerIp /= ReIp andalso
+        PeerLq /= undefined andalso
+        PeerLq /= -1 andalso
         (?bit_is_set(PeerFlags, ?F_NODE_UPDATED) orelse
-         ?bit_is_set(ReFlags, ?F_RE_UPDATED)) andalso
-        PeerLinkQuality /= undefined andalso
-        PeerLinkQuality /= -1 ->
+         ?bit_is_set(ReFlags, ?F_RE_UPDATED)) ->
+            if
+                PeerLq == -1 ->
+                    UpdatedLq = -1;
+                true ->
+                    UpdatedLq = ReLq+PeerLq
+            end,
             UpdatedRe =
                 Re#routing_entry{
                   ip = Ip,
-                  link_quality = ReLinkQuality+PeerLinkQuality,
+                  link_quality = UpdatedLq,
                   hops = [Ip|Hops]},
             ok = node_serv:update_routing_entry(PeerIp, UpdatedRe),
             update_routing_entries(Ip, NodeDb, RoutingDb,
@@ -195,37 +263,27 @@ update_routing_entries(Ip, NodeDb, RoutingDb, Oa,
     end.
 
 clear_node_flags(NodeDb) ->
-    clear_node_flags(NodeDb, ets:first(NodeDb)).
-
-clear_node_flags(_NodeDb, '$end_of_table') ->
-    ok;
-clear_node_flags(NodeDb, Ip) ->
-    case ets:lookup(NodeDb, Ip) of
-        [#node{flags = Flags} = Node]
-          when ?bit_is_set(Flags, ?F_NODE_UPDATED) ->
-            UpdatedFlags = ?bit_clr(Flags, ?F_NODE_UPDATED),
-            true = ets:insert(NodeDb, Node#node{flags = UpdatedFlags}),
-            clear_node_flags(NodeDb, ets:next(NodeDb, Ip));
-        _ ->
-            clear_node_flags(NodeDb, ets:next(NodeDb, Ip))
-    end.
+    foreach_node(
+      fun(#node{link_quality = undefined}) ->
+              ok;
+         (#node{flags = Flags} = Node)
+            when ?bit_is_set(Flags, ?F_NODE_UPDATED) ->
+              UpdatedFlags = ?bit_clr(Flags, ?F_NODE_UPDATED),
+              true = ets:insert(NodeDb, Node#node{flags = UpdatedFlags});
+         (_) ->
+              ok
+      end, NodeDb).
 
 clear_routing_entry_flags(RoutingDb) ->
-    clear_routing_entry_flags(RoutingDb, ets:first(RoutingDb)).
-
-clear_routing_entry_flags(_RoutingDb, '$end_of_table') ->
-    ok;
-clear_routing_entry_flags(RoutingDb, Oa) ->
-    case ets:lookup(RoutingDb, Oa) of
-        [#routing_entry{flags = Flags} = Re]
-          when ?bit_is_set(Flags, ?F_RE_UPDATED) ->
-            UpdatedFlags = ?bit_clr(Flags, ?F_RE_UPDATED),
-            true = ets:insert(RoutingDb,
-                              Re#routing_entry{flags = UpdatedFlags}),
-            clear_routing_entry_flags(RoutingDb, ets:next(RoutingDb, Oa));
-        _ ->
-            clear_routing_entry_flags(RoutingDb, ets:next(RoutingDb, Oa))
-    end.
+    foreach_routing_entry(
+      fun(#routing_entry{flags = Flags} = Re)
+            when ?bit_is_set(Flags, ?F_RE_UPDATED) ->
+              UpdatedFlags = ?bit_clr(Flags, ?F_RE_UPDATED),
+              true = ets:insert(RoutingDb,
+                                Re#routing_entry{flags = UpdatedFlags});
+         (_) ->
+              ok
+      end, RoutingDb).
 
 %%%
 %%% exported: update_link_quality
@@ -233,15 +291,40 @@ clear_routing_entry_flags(RoutingDb, Oa) ->
 
 -spec update_link_quality(node_db(), ip(), link_quality()) -> ok.
 
-update_link_quality(NodeDb, PeerIp, UpdatedLinkQuality) ->
+update_link_quality(NodeDb, PeerIp, UpdatedLq) ->
     case ets:lookup(NodeDb, PeerIp) of
-        [#node{link_quality = LinkQuality} = Node]
-          when LinkQuality /= UpdatedLinkQuality ->
-	    UpdatedFlags = ?bit_set(Node#node.flags, ?F_NODE_UPDATED),
+        [#node{link_quality = Lq} = Node]
+          when Lq /= UpdatedLq ->
+            UpdatedFlags = ?bit_set(Node#node.flags, ?F_NODE_UPDATED),
 	    true = ets:insert(NodeDb,
-                              Node#node{link_quality = UpdatedLinkQuality,
+                              Node#node{link_quality = UpdatedLq,
                                         flags = UpdatedFlags}),
             ok;
         _ ->
             ok
+    end.
+
+%%%
+%%% exported: update_link_qualities
+%%%
+
+-spec update_link_qualities(routing_db(), ip(), link_quality()) -> ok.
+
+update_link_qualities(RoutingDb, PeerIp, UpdatedLq) ->
+    update_link_qualities(RoutingDb, ets:first(RoutingDb), PeerIp, UpdatedLq).
+
+update_link_qualities(_RoutingDb, '$end_of_table', _PeerIp, _UpdatedLq) ->
+    ok;
+update_link_qualities(RoutingDb, Oa, PeerIp, UpdatedLq) ->
+    case ets:lookup(RoutingDb, Oa) of
+        [#routing_entry{ip = PeerIp} = Re] ->
+            UpdatedFlags = ?bit_set(Re#routing_entry.flags, ?F_RE_UPDATED),
+	    true = ets:insert(RoutingDb,
+                              Re#routing_entry{link_quality = UpdatedLq,
+                                               flags = UpdatedFlags}),
+            update_link_qualities(RoutingDb, ets:next(RoutingDb, Oa),
+                                  PeerIp, UpdatedLq);
+        _ ->
+            update_link_qualities(RoutingDb, ets:next(RoutingDb, Oa),
+                                  PeerIp, UpdatedLq)
     end.

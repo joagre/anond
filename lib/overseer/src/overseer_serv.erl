@@ -22,6 +22,7 @@
 %%% constants
 -define(NUMBER_OF_SIMULATION_NODES, 10).
 -define(MAX_LINK_QUALITY, 100).
+-define(PERCENT_NUDGE, 5).
 
 %%% records
 -record(state, {
@@ -286,14 +287,15 @@ loop(#state{parent = Parent,
             Oa = lookup_oa(Nodes, Ip),
             PeerOa = lookup_oa(Nodes, PeerIp),
             {value, {_, Lq}} = lists:keysearch({Oa, PeerOa}, 1, Lqs),
-            From ! {self(), {ok, Lq}},
+            From ! {self(), {ok, nudge_link_quality(Lq, ?PERCENT_NUDGE)}},
             loop(S);
         {From, {get_link_quality, Ip, PeerIp}} ->
             Oa = lookup_oa(Nodes, Ip),
             PeerOa = lookup_oa(Nodes, PeerIp),
             case lists:keysearch({Oa, PeerOa}, 1, Lqs) of
                 {value, {_, Lq}} ->
-                    From ! {self(), {ok, Lq}},
+                    From ! {self(),
+                            {ok, nudge_link_quality(Lq, ?PERCENT_NUDGE)}},
                     loop(S);
                 false ->
                     RandomLq = random:uniform(?MAX_LINK_QUALITY),
@@ -330,12 +332,12 @@ read_config(S) ->
 start_nodes(0) ->
     [];
 start_nodes(Oa) ->
-    {ok, Ip} = node_serv:start_link(Oa, undefined, false),
+    {ok, Ip} = node_serv:start_link(Oa, undefined, true),
     [{Oa, Ip}|start_nodes(Oa-1)].
 
-%%
-%% get_global_routing_table
-%%
+%%%
+%%% get_global_routing_table
+%%%
 
 get_global_routing_table(Nodes) ->
     AllRoutingEntries = get_all_routing_entries(Nodes),
@@ -381,9 +383,9 @@ walk_to_destination(ToOa, Ip, AllRoutingEntries, Acc) ->
             end
     end.
 
-%%
-%% update_link_quality
-%%
+%%%
+%%% update_link_quality
+%%%
 
 update_link_qualities(_Oa, _PeerOa, _Lq, []) ->
     unknown_link_quality;
@@ -393,14 +395,19 @@ update_link_qualities(Oa, PeerOa, NewLq,
 update_link_qualities(Oa, PeerOa, NewLq,
                       [{{PeerOa, Oa}, _OldLq}, {{Oa, PeerOa}, _OldLq}|Rest]) ->
     [{{PeerOa, Oa}, NewLq}, {{Oa, PeerOa}, NewLq}|Rest];
-update_link_qualities(Oa, PeerOa, NewLq, [_, _|Rest]) ->
-    update_link_qualities(Oa, PeerOa, NewLq, Rest).
-    
+update_link_qualities(Oa, PeerOa, NewLq, [Lq, Ql|Rest]) ->
+    [Lq, Ql|update_link_qualities(Oa, PeerOa, NewLq, Rest)].
 
+%%%
+%%% get_link_quality 
+%%%
 
-%%
-%% node lookup functions
-%%
+nudge_link_quality(Lq, Percent) ->
+    random:uniform(Percent)/100*Lq+Lq.
+
+%%%
+%%% node lookup functions
+%%%
 
 lookup_oa(_Nodes, []) ->
     [];
