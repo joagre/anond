@@ -2,8 +2,9 @@
 
 %%% external exports
 -export([start_link/0, stop/0, stop/1]).
+-export([enforce_peer_ttl/0]).
 -export([get_number_of_peers/0, get_all_peers/0, get_random_peers/2]).
--export([publish_peer/1, published_peers/1]).
+-export([publish_peer/1, unpublish_peer/1, published_peers/1]).
 -export([reserve_oa/2]).
 
 %%% internal exports
@@ -63,6 +64,16 @@ stop(Timeout) ->
     serv:call(?MODULE, stop, Timeout).
 
 %%%
+%%% exported: enforce_peer_ttl
+%%%
+
+-spec enforce_peer_ttl() -> 'ok'.
+
+enforce_peer_ttl() ->
+    ?MODULE ! {enforce_peer_ttl, false},
+    ok.
+
+%%%
 %%% exported: get_number_of_peers
 %%%
 
@@ -101,7 +112,16 @@ publish_peer(Peer) ->
     serv:call(?MODULE, {publish_peer, Peer}).
 
 %%%
-%%% exported: member_peers
+%%% exported: unpublish_peer
+%%%
+
+-spec unpublish_peer(ip()) -> 'ok'.
+
+unpublish_peer(Ip) ->
+    serv:call(?MODULE, {unpublish_peer, Ip}).
+
+%%%
+%%% exported: published_peers
 %%%
 
 -spec published_peers([ip()]) -> {'ok', [ip()]}.
@@ -132,7 +152,7 @@ init(Parent) ->
             ok = config_serv:subscribe(),
 	    PeerTid = ets:new(peer_db, [{keypos, 2}]),
 	    OaTid = ets:new(oa_db, [bag]),
-            timelib:start_timer(S#state.peer_ttl, enforce_peer_ttl),
+            timelib:start_timer(S#state.peer_ttl, {enforce_peer_ttl, true}),
 	    Parent ! {self(), started},
 	    loop(S#state{parent = Parent,
                          peer_tid = PeerTid,
@@ -151,7 +171,7 @@ loop(#state{parent = Parent,
         config_updated ->
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
-        enforce_peer_ttl ->
+        {enforce_peer_ttl, Repeat} ->
             ?daemon_log("Looking for stale peers...", []),
             StalePeerIps =
                 ets:foldl(
@@ -169,12 +189,20 @@ loop(#state{parent = Parent,
                                   true = ets:match_delete(OaTid, {'_', Ip}),
                                   ?daemon_log("Removed stale peer ~w.", [Ip])
                           end, StalePeerIps),
-            timelib:start_timer(PeerTTL, enforce_peer_ttl),
-            loop(S);
+            if
+                Repeat ->
+                    timelib:start_timer(PeerTTL, {enforce_peer_ttl, true}),
+                    loop(S);
+                true -> 
+                    loop(S)
+            end;
 	{From, stop} ->
 	    ets:delete(PeerTid),
 	    ets:delete(OaTid),
 	    From ! {self(), ok};
+        {From, get_number_of_peers} ->
+            From ! {self(), {ok, ets:info(PeerTid, size)}},
+            loop(S);
         {From, get_all_peers} ->
             AllPeers = ets:foldl(fun(Peer, Acc) -> [Peer|Acc] end, [], PeerTid),
             ?daemon_log("All ~w peers returned.", [length(AllPeers)]),
@@ -222,6 +250,17 @@ loop(#state{parent = Parent,
             ?daemon_log("Peer ~w published.", [Ip]),
             From ! {self(), {ok, PeerTTL}},
             loop(S);
+        {From, {unpublish_peer, Ip}} ->
+            true = ets:delete(PeerTid, Ip),
+            ?daemon_log("Peer ~w unpublished.", [Ip]),
+            From ! {self(), ok},
+            loop(S);
+        {From, {published_peers, PeerIps}} ->
+            PublishedPeerIps =
+                [PeerIp || PeerIp <- PeerIps,
+                           ets:member(PeerTid, PeerIp) == true],
+            From ! {self(), {ok, PublishedPeerIps}},
+            loop(S);
         {From, {reserve_oa, Oa, Ip}} ->
             case ets:lookup(PeerTid, Ip) of
                 [] ->
@@ -247,12 +286,6 @@ loop(#state{parent = Parent,
                             loop(S)
                     end
             end;
-        {From, {published_peers, PeerIps}} ->
-            PublishedPeerIps =
-                [PeerIp || PeerIp <- PeerIps,
-                           ets:member(PeerTid, PeerIp) == true],
-            From ! {self(), {ok, PublishedPeerIps}},
-            loop(S);
         {'EXIT', Parent, Reason} ->
 	    true = ets:delete(PeerTid),
             exit(Reason);

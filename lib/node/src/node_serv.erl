@@ -375,7 +375,12 @@ refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, AutoRecalc, NumberOfPeers,
     RemainingPeerIps = PublishedPeerIps--UnreachablePeerIps,
     ?daemon_log("Remaining published and reachable peers: ~w",
                 [RemainingPeerIps]),
-    NumberOfMissingPeers = NumberOfPeers-length(RemainingPeerIps),
+    case NumberOfPeers-length(RemainingPeerIps) of
+        NumberOfMissingPeers when NumberOfMissingPeers > 0 ->
+            ok;
+        _ ->
+            NumberOfMissingPeers = 0
+    end,
     ?daemon_log("Need ~w additional peers...", [NumberOfMissingPeers]),
     case ds_serv:get_random_peers(Ip, NumberOfMissingPeers) of
         {error, too_few_peers} ->
