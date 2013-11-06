@@ -214,10 +214,6 @@ loop(#state{parent = Parent,
                 get_simulated_peers(PeerTid, OaTid, Ip),
             ?daemon_log("~w simulated peers returned: ~w",
                         [length(SimulatedPeerOas), SimulatedPeerOas]),
-            RandomPeers = get_random_peers(PeerTid, Ip, 2),
-            RandomPeerIps = [RandomPeer#peer.ip || RandomPeer <- RandomPeers],
-            ?daemon_log("~w random peers generated but not returned: ~w",
-                        [length(RandomPeerIps), RandomPeerIps]),
             From ! {self(), {ok, SimulatedPeers}},
 	    loop(S);
         {From, {get_random_peers, Ip, {percent, N}}} ->
