@@ -1,14 +1,14 @@
 -module(node_serv).
 
 %%% external exports
--export([start_link/3, stop/1, stop/2]).
+-export([start_link/4, stop/1, stop/2]).
 -export([get_routing_entries/1, update_routing_entry/2]).
 -export([get_nodes/1]).
 -export([enable_recalc/1, disable_recalc/1, recalc/1]).
 -export([update_path_cost/3]).
 
 %%% internal exports
--export([init/4]).
+-export([init/5]).
 
 %%% include files
 -include_lib("util/include/log.hrl").
@@ -30,6 +30,7 @@
           ttl                       :: integer(),
           peer_ips                  :: [ip()],
 	  public_key                :: public_key:rsa_public_key(),
+	  private_key               :: public_key:rsa_private_key(),
           node_db                   :: node_db(),
           routing_db                :: routing_db(),
           auto_recalc               :: boolean(),
@@ -45,11 +46,12 @@
 %%% exported: start_link
 %%%
 
--spec start_link(oa(), public_key:rsa_public_key(), boolean()) ->
+-spec start_link(oa(), public_key:rsa_public_key(),
+                 public_key:rsa_private_key(), boolean()) ->
 			{'ok', ip()}.
 
-start_link(Oa, PublicKey, AutoRecalc) ->
-    Args = [self(), Oa, PublicKey, AutoRecalc],
+start_link(Oa, PublicKey, PrivateKey, AutoRecalc) ->
+    Args = [self(), Oa, PublicKey, PrivateKey, AutoRecalc],
     Ip = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Ip, started} ->
@@ -144,7 +146,7 @@ update_path_cost(Ip, PeerIp, Pc) ->
 %%% server loop
 %%%
 
-init(Parent, Oa, PublicKey, AutoRecalc) ->
+init(Parent, Oa, PublicKey, PrivateKey, AutoRecalc) ->
     process_flag(trap_exit, true),
     {A1, A2, A3} = erlang:now(),
     random:seed({A1, A2, A3}),
@@ -158,7 +160,8 @@ init(Parent, Oa, PublicKey, AutoRecalc) ->
     timelib:start_timer(TTL, republish_self),
     ok = ds_serv:reserve_oa(Oa, Ip),
     ?daemon_log("Reserved my oa (~w) on directory server.", [Oa]),
-    SelfRe = #routing_entry{oa = Oa, ip = Ip, path_cost = 0},
+    %% patrik: init psp?
+    SelfRe = #routing_entry{oa = Oa, ip = Ip, path_cost = 0, psp = <<"foo">>},
     got_new = node_route:update_routing_entry(RoutingDb, SelfRe),
     timelib:start_timer(S#state.measure_path_cost_timeout, measure_path_cost),
     ?daemon_log("Peer refresh started...", []),
@@ -177,6 +180,7 @@ init(Parent, Oa, PublicKey, AutoRecalc) ->
                  peer_ips = [],
                  ttl = TTL,
                  public_key = PublicKey,
+                 private_key = PrivateKey,
                  node_db = NodeDb,
                  routing_db = RoutingDb,
                  auto_recalc = AutoRecalc}).
@@ -187,6 +191,7 @@ loop(#state{parent = Parent,
             peer_ips = PeerIps,
             ttl = _TTL,
 	    public_key = PublicKey,
+	    private_key = _PrivateKey,
             node_db = NodeDb,
 	    routing_db = RoutingDb,
             auto_recalc = AutoRecalc,
@@ -249,6 +254,8 @@ loop(#state{parent = Parent,
                     UpdatedPeerIps = [ViaIp|PeerIps],
                     ok = node_route:add_node(NodeDb, Node)
             end,
+            %% patrik: lists:member/2 should return the same result as you
+            %% when you look into #routing_entry.psp, see node_route.hrl
             case lists:member(Ip, Hops) of
                 true ->
                     ?daemon_log(

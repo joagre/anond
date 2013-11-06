@@ -10,7 +10,8 @@
 	  ip        :: ip() | '_',
 	  path_cost :: path_cost() | '_',
 	  flags = 0 :: integer() | '_',
-          hops = [] :: [ip()] | '_'
+          hops = [] :: [ip()] | '_',
+          psp       :: binary() | '_' % patrik: should be binary?
 	 }).
 
 -define(F_RE_UPDATED, (1 bsl 0)).

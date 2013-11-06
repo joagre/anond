@@ -252,7 +252,10 @@ update_routing_entries(Ip, NodeDb, RoutingDb, Oa,
                 Re#routing_entry{
                   ip = Ip,
                   path_cost = UpdatedPc,
-                  hops = [Ip|Hops]},
+                  hops = [Ip|Hops]
+                  %% patrik: increment psp?
+                  %%psp = ...
+                 },
             ok = node_serv:update_routing_entry(PeerIp, UpdatedRe),
             update_routing_entries(Ip, NodeDb, RoutingDb,
                                    ets:next(RoutingDb, Oa), Node);
