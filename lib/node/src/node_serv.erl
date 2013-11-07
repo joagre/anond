@@ -2,7 +2,7 @@
 
 %%% external exports
 -export([start_link/4, stop/1, stop/2]).
--export([get_routing_entries/1, update_routing_entry/2]).
+-export([get_routing_entries/1, send_routing_entry/2]).
 -export([get_nodes/1]).
 -export([enable_recalc/1, disable_recalc/1, recalc/1]).
 -export([update_path_cost/3]).
@@ -84,12 +84,12 @@ get_routing_entries(Ip) ->
     serv:call(Ip, get_routing_entries).
 
 %%%
-%%% exported: update_routing_entry
+%%% exported: send_routing_entry
 %%%
 
--spec update_routing_entry(ip(), #routing_entry{}) -> 'ok'.
+-spec send_routing_entry(ip(), #routing_entry{}) -> 'ok'.
 
-update_routing_entry(Ip, Re) ->
+send_routing_entry(Ip, Re) ->
     Ip ! Re,
     ok.
 
@@ -258,6 +258,7 @@ loop(#state{parent = Parent,
             %% when you look into #routing_entry.psp, see node_route.hrl
             case lists:member(Ip, Hops) of
                 true ->
+                    ?dbg_log({loop_rejected, Ip, Hops}),
                     ?daemon_log(
                        "~w rejected looping routing entry: ~w -> ~w (~w)",
                        [Oa, DestOa, ViaIp, Pc]),

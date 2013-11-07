@@ -221,48 +221,41 @@ touch_routing_entries(NodeDb, RoutingDb) ->
 propagate_routing_entries(Ip, NodeDb, RoutingDb) ->
     foreach_node(
       fun(Node) ->
-              update_routing_entries(
-                Ip, NodeDb, RoutingDb, ets:first(RoutingDb), Node)
+              send_routing_entries(Ip, RoutingDb, Node)
       end, NodeDb).
 
-update_routing_entries(_Ip, _NodeDb, _RoutingDb, '$end_of_table', _Node) ->
-    ok;
-update_routing_entries(Ip, NodeDb, RoutingDb, Oa,
-                       #node{ip = PeerIp,
-                             path_cost = PeerPc,
-                             flags = PeerFlags} = Node) ->
-    [#routing_entry{ip = ReIp,
-                    path_cost = RePc,
-                    flags = ReFlags,
-                    hops = Hops} = Re] =
-        ets:lookup(RoutingDb, Oa),
-    if
-        PeerIp /= ReIp andalso
-        PeerPc /= undefined andalso
-        PeerPc /= -1 andalso
-        (?bit_is_set(PeerFlags, ?F_NODE_UPDATED) orelse
-         ?bit_is_set(ReFlags, ?F_RE_UPDATED)) ->
-            if
-                PeerPc == -1 ->
-                    UpdatedPc = -1;
-                true ->
-                    UpdatedPc = RePc+PeerPc
-            end,
-            UpdatedRe =
-                Re#routing_entry{
-                  ip = Ip,
-                  path_cost = UpdatedPc,
-                  hops = [Ip|Hops]
-                  %% patrik: increment psp?
-                  %%psp = ...
-                 },
-            ok = node_serv:update_routing_entry(PeerIp, UpdatedRe),
-            update_routing_entries(Ip, NodeDb, RoutingDb,
-                                   ets:next(RoutingDb, Oa), Node);
-        true ->
-            update_routing_entries(Ip, NodeDb, RoutingDb,
-                                   ets:next(RoutingDb, Oa), Node)
-    end.
+send_routing_entries(Ip, RoutingDb, #node{ip = PeerIp,
+                                          path_cost = PeerPc,
+                                          flags = PeerFlags}) ->
+    foreach_routing_entry(
+      fun(#routing_entry{ip = ReIp,
+                         path_cost = RePc,
+                         flags = ReFlags,
+                         hops = Hops} = Re) ->
+              if
+                  PeerIp /= ReIp andalso
+                  PeerPc /= undefined andalso
+                  (?bit_is_set(PeerFlags, ?F_NODE_UPDATED) orelse
+                   ?bit_is_set(ReFlags, ?F_RE_UPDATED)) ->
+                      if
+                          PeerPc == -1 orelse RePc == -1 ->
+                              UpdatedPc = -1;
+                          true ->
+                              UpdatedPc = RePc+PeerPc
+                      end,
+                      UpdatedRe =
+                          Re#routing_entry{
+                            ip = Ip,
+                            path_cost = UpdatedPc,
+                            hops = [Ip|Hops]
+                            %% patrik: increment psp?
+                            %%psp = ...
+                           },
+                      ok = node_serv:send_routing_entry(PeerIp, UpdatedRe);
+                  true ->
+                      ok
+              end
+      end, RoutingDb).
 
 clear_node_flags(NodeDb) ->
     foreach_node(
@@ -313,20 +306,12 @@ update_path_cost(NodeDb, PeerIp, UpdatedPc) ->
 -spec update_path_costs(routing_db(), ip(), path_cost()) -> ok.
 
 update_path_costs(RoutingDb, PeerIp, UpdatedPc) ->
-    update_path_costs(RoutingDb, ets:first(RoutingDb), PeerIp, UpdatedPc).
-
-update_path_costs(_RoutingDb, '$end_of_table', _PeerIp, _UpdatedPc) ->
-    ok;
-update_path_costs(RoutingDb, Oa, PeerIp, UpdatedPc) ->
-    case ets:lookup(RoutingDb, Oa) of
-        [#routing_entry{ip = PeerIp} = Re] ->
-            UpdatedFlags = ?bit_set(Re#routing_entry.flags, ?F_RE_UPDATED),
-	    true = ets:insert(RoutingDb,
-                              Re#routing_entry{path_cost = UpdatedPc,
-                                               flags = UpdatedFlags}),
-            update_path_costs(
-              RoutingDb, ets:next(RoutingDb, Oa), PeerIp, UpdatedPc);
-        _ ->
-            update_path_costs(
-              RoutingDb, ets:next(RoutingDb, Oa), PeerIp, UpdatedPc)
-    end.
+    foreach_routing_entry(
+      fun(#routing_entry{ip = ReIp} = Re) when ReIp == PeerIp ->
+              UpdatedFlags = ?bit_set(Re#routing_entry.flags, ?F_RE_UPDATED),
+              true = ets:insert(RoutingDb,
+                                Re#routing_entry{path_cost = UpdatedPc,
+                                                 flags = UpdatedFlags});
+         (_) ->
+              ok
+      end, RoutingDb).
