@@ -407,6 +407,8 @@ update_path_costs(Oa, PeerOa, NewPc, [Pc, Cp|Rest]) ->
 %%% get_path_cost 
 %%%
 
+nudge_path_cost(-1, _Percent) ->
+    -1;
 nudge_path_cost(Pc, Percent) ->
     random:uniform(Percent)/100*Pc+Pc.
 
