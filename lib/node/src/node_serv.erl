@@ -384,43 +384,44 @@ refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, AutoRecalc, NumberOfPeers,
                 [RemainingPeerIps]),
     case NumberOfPeers-length(RemainingPeerIps) of
         NumberOfMissingPeers when NumberOfMissingPeers > 0 ->
-            ok;
+            ?daemon_log("Need ~w additional peers...", [NumberOfMissingPeers]),
+            case ds_serv:get_random_peers(Ip, NumberOfMissingPeers) of
+                {error, too_few_peers} ->
+                    ?daemon_log("Can not find ~w additional peers. "
+                                "Retrying in five seconds...",
+                                [NumberOfMissingPeers]),
+                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, refresh_peers);
+                {ok, NewPeers} ->
+                    NewPeerIps = [NewPeer#peer.ip || NewPeer <- NewPeers],
+                    ?daemon_log("Found ~w new peers: ~w", [NumberOfMissingPeers,
+                                                           NewPeerIps]),
+                    purge_peers(NodeDb, RoutingDb, RemainingPeerIps, PeerIps),
+                    ?daemon_log("Measures initial path costs to new nodes...",
+                                []),
+                    spawn(
+                      fun() ->
+                              measure_path_costs(Ip, NewPeers)
+                      end),
+                    lists:foreach(
+                      fun(#peer{ip = PeerIp, public_key = PeerPublicKey}) ->
+                              Node = #node{
+                                ip = PeerIp,
+                                public_key = PeerPublicKey,
+                                flags = ?F_NODE_UPDATED bor
+                                    ?F_NODE_IS_INCOMING_PEER},
+                              ok = node_route:add_node(NodeDb, Node)
+                      end, NewPeers),
+                    if
+                        AutoRecalc ->
+                            ok = node_route:recalc(Ip, NodeDb, RoutingDb);
+                        true ->
+                            ok
+                    end,
+                    timelib:start_timer(RefreshPeersTimeout, refresh_peers),
+                    RemainingPeerIps++NewPeerIps
+            end;
         _ ->
-            NumberOfMissingPeers = 0
-    end,
-    ?daemon_log("Need ~w additional peers...", [NumberOfMissingPeers]),
-    case ds_serv:get_random_peers(Ip, NumberOfMissingPeers) of
-        {error, too_few_peers} ->
-            ?daemon_log("Can not find ~w additional peers. "
-                        "Retrying in five seconds...",
-                        [NumberOfMissingPeers]),
-            timelib:start_timer(?FIVE_SECONDS_TIMEOUT, refresh_peers);
-        {ok, NewPeers} ->
-            NewPeerIps = [NewPeer#peer.ip || NewPeer <- NewPeers],
-            ?daemon_log("Found ~w new peers: ~w", [NumberOfMissingPeers,
-                                                   NewPeerIps]),
-            purge_peers(NodeDb, RoutingDb, RemainingPeerIps, PeerIps),
-            ?daemon_log("Measures initial path costs to new nodes...", []),
-            spawn(
-              fun() ->
-                      measure_path_costs(Ip, NewPeers)
-              end),
-            lists:foreach(
-              fun(#peer{ip = PeerIp, public_key = PeerPublicKey}) ->
-                      Node = #node{
-                        ip = PeerIp,
-                        public_key = PeerPublicKey,
-                        flags = ?F_NODE_UPDATED bor ?F_NODE_IS_INCOMING_PEER},
-                      ok = node_route:add_node(NodeDb, Node)
-              end, NewPeers),
-            if
-                AutoRecalc ->
-                    ok = node_route:recalc(Ip, NodeDb, RoutingDb);
-                true ->
-                    ok
-            end,
-            timelib:start_timer(RefreshPeersTimeout, refresh_peers),
-            RemainingPeerIps++NewPeerIps
+            ok
     end.
 
 purge_peers(_NodeDb, _RoutingDb, _RemainingPeerIps, []) ->
