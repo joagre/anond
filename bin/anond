@@ -25,7 +25,7 @@ pa=""
 if [ ! -f ${erl} ]; then
     erl="erl"
     interactive=true
-    pa=" -pa /home/jocke/src/tunctl/trunc/ebin -pa ${bindir}/../lib/common/ebin -pa ${bindir}/../lib/ds/ebin -pa ${bindir}/../lib/node/ebin -pa ${bindir}/../lib/overseer/ebin -pa ${bindir}/../lib/procket/ebin -pa ${bindir}/../lib/socks/ebin -pa ${bindir}/../lib/tunctl/ebin -pa ${bindir}/../lib/util/ebin"
+    pa=" -pa ${bindir}/../lib/common/ebin -pa ${bindir}/../lib/ds/ebin -pa ${bindir}/../lib/node/ebin -pa ${bindir}/../lib/overseer/ebin -pa ${bindir}/../lib/procket/ebin -pa ${bindir}/../lib/socks/ebin -pa ${bindir}/../lib/tunctl/ebin -pa ${bindir}/../lib/util/ebin"
 fi
 # @DEVEL_ONLY_STOP
 

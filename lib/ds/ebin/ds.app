@@ -1,6 +1,6 @@
 %% -*- erlang -*-
 {application, ds,
- [{description,"The anond ds server"},
+ [{description,"The anond ds application"},
   {vsn, "1.0"},
   {modules, [ds_app, ds_serv, ds_sup]},
   {registered, [ds_serv, ds_sup]},
