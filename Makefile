@@ -1,6 +1,6 @@
 include support/erl.mk
 
-LIBS=common ds node overseer socks util
+LIBS=common ds node overseer procket socks tunctl util
 
 all:
 	(cd bin; $(MAKE) all)
@@ -33,4 +33,4 @@ release:
 ###
 
 debug:
-	$(ERL) -pa lib/common/ebin -pa lib/ds/ebin -pa lib/node/ebin -pa lib/overseer/ebin lib/socks/ebin -pa lib/util/ebin
+	$(ERL) -pa lib/common/ebin -pa lib/ds/ebin -pa lib/node/ebin -pa lib/overseer/ebin -pa lib/procket/ebin lib/socks/ebin -pa lib/tunctl/ebin -pa lib/util/ebin

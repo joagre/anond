@@ -221,6 +221,8 @@ loop(#state{parent = Parent,
                 refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, AutoRecalc,
                               NumberOfPeers, RefreshPeersTimeout),
             loop(S#state{peer_ips = UpdatedPeerIps});
+        measure_path_cost when PeerIps == [] ->
+            loop(S);
         measure_path_cost ->
             PeerIp = hd(PeerIps),
             RotatedPeerIps = rotate_peer_ips(PeerIps),
