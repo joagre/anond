@@ -2,7 +2,8 @@ include erl.mk
 
 .PHONY: dialyzer
 
-LIBS=common ds node overseer procket socks tunctl util
+# procket and tunctl excluded
+LIBS=common ds node overseer socks util
 
 dialyzer: dialyzer.plt
 	$(DIALYZER) -q --no_check_plt --plt $< -r $(LIBS:%=../lib/%/ebin)

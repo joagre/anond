@@ -337,7 +337,7 @@ start_nodes(Oa) ->
     %%{PublicKey, ProvateKey} = public_key:generate_key(),
     PublicKey = <<"foo">>,
     PrivateKey = <<"baz">>,
-    {ok, Ip} = node_serv:start_link(Oa, PublicKey, PrivateKey, false),
+    {ok, Ip} = node_serv:start_link(Oa, PublicKey, PrivateKey, true),
     [{Oa, Ip}|start_nodes(Oa-1)].
 
 %%%

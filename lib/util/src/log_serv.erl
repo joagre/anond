@@ -175,9 +175,9 @@ tty_available() ->
 %%% (re)open and close logs
 
 open_log(#daemon_log_info{enabled = true, file = {true, Path}}) ->
-    disk_log:open([{name, daemon_log}, {file, ?b2l(Path)}, {format, external}]);
+    disk_log:open([{name, daemon_log}, {file, Path}, {format, external}]);
 open_log(#dbg_log_info{enabled = true, file = {true, Path}}) ->
-    disk_log:open([{name, dbg_log}, {file, ?b2l(Path)}, {format, external}]);
+    disk_log:open([{name, dbg_log}, {file, Path}, {format, external}]);
 open_log(_LogInfo) ->
     {ok, undefined}.
 
