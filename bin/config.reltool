@@ -10,7 +10,7 @@
       {excl_sys_filters,
        {add, ["^bin/epmd\$",
               "^erts.*/bin/(beam|epmd|heart)\$"]}},
-      {excl_app_filters, ["^priv/obj/.*", "^priv/obj$"]},
+      {excl_app_filters, ["^priv/obj/.*", "^priv/obj$", ".gitignore"]},
       {app, common, [{incl_cond, include}]},
       {app, kernel, [{incl_cond, include}]},
       {app, ds, [{incl_cond, include}]},
