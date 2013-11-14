@@ -12,7 +12,6 @@ all: rebuild clean
 	strip ${TARGET_DIR}/erts-*/bin/erl
 	strip ${TARGET_DIR}/erts-*/bin/erlexec
 	strip ${TARGET_DIR}/erts-*/bin/inet_gethost
-	strip ${TARGET_DIR}/lib/procket-*/priv/procket
 	sed '/# @DEVEL_ONLY_START/,/# @DEVEL_ONLY_STOP/d' ../bin/anond > ${TARGET_DIR}/bin/anond
 	chmod +x ${TARGET_DIR}/bin/anond
 	tar --exclude=.svn -z -c -v -f ${ARCHIVE_FILE} ${TARGET_DIR}
