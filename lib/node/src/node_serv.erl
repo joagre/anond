@@ -392,7 +392,8 @@ refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, AutoRecalc, NumberOfPeers,
                     ?daemon_log("Can not find ~w additional peers. "
                                 "Retrying in five seconds...",
                                 [NumberOfMissingPeers]),
-                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, refresh_peers);
+                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, refresh_peers),
+                    PeerIps;
                 {ok, NewPeers} ->
                     NewPeerIps = [NewPeer#peer.ip || NewPeer <- NewPeers],
                     ?daemon_log("Found ~w new peers: ~w", [NumberOfMissingPeers,
@@ -423,7 +424,7 @@ refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, AutoRecalc, NumberOfPeers,
                     RemainingPeerIps++NewPeerIps
             end;
         _ ->
-            ok
+            RemainingPeerIps
     end.
 
 purge_peers(_NodeDb, _RoutingDb, _RemainingPeerIps, []) ->

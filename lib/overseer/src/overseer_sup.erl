@@ -32,7 +32,7 @@ start_link(Args) ->
 %%%
 
 init([]) ->
-    OverseerServChild =
+    OverseerServChildSpec =
         {overseer_serv, {overseer_serv, start_link, []},
          permanent, 10000, worker, [overseer_serv]},
-    {ok, {{one_for_one, 3, 10}, [OverseerServChild]}}.
+    {ok, {{one_for_one, 3, 10}, [OverseerServChildSpec]}}.

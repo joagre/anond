@@ -1,4 +1,4 @@
--module(node_tun_serv).
+-module(tuning).
 -export([test/0]).
 
 test() ->

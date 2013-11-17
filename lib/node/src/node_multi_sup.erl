@@ -1,4 +1,4 @@
--module(socks_sup).
+-module(node_multi_sup).
 -behaviour(supervisor).
 
 %%% external exports
@@ -32,7 +32,4 @@ start_link(Args) ->
 %%%
 
 init([]) ->
-    SocksServChildSpec =
-        {socks_serv, {socks_serv, start_link, []},
-         permanent, 10000, worker, [socks_serv]},
-    {ok, {{one_for_one, 3, 10}, [SocksServChildSpec]}}.
+    {ok, {{one_for_one, 3, 10}, []}}.

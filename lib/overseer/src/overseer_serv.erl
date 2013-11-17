@@ -334,10 +334,10 @@ start_nodes(0) ->
 start_nodes(Oa) ->
     %% patrik: public_key:generate_key/1 is hard to understand in the
     %% manual page public_key(3). Does it even generate RSA keys?
-    %%{PublicKey, ProvateKey} = public_key:generate_key(),
+    %%{PublicKey, PrivateKey} = public_key:generate_key(),
     PublicKey = <<"foo">>,
     PrivateKey = <<"baz">>,
-    {ok, Ip} = node_serv:start_link(Oa, PublicKey, PrivateKey, true),
+    {ok, Ip} = node_sup:start_as_child(Oa, PublicKey, PrivateKey, true),
     [{Oa, Ip}|start_nodes(Oa-1)].
 
 %%%

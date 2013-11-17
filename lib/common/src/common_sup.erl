@@ -32,11 +32,11 @@ start_link(Args) ->
 %%%
 
 init([]) ->
-    ConfigServChild =
+    ConfigServChildSpec =
         {common_config_serv, {common_config_serv, start_link, []},
          permanent, 10000, worker, [config_serv]},
-    LogServChild =
+    LogServChildSpec =
         {common_log_serv, {common_log_serv, start_link, []},
          permanent, 10000, worker, [log_serv]},
     {ok, {{one_for_one, 3, 10},
-          [ConfigServChild, LogServChild]}}.
+          [ConfigServChildSpec, LogServChildSpec]}}.

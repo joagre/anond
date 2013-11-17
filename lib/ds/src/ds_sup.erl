@@ -32,7 +32,7 @@ start_link(Args) ->
 %%%
 
 init([]) ->
-    DsServChild =
+    DsServChildSpec =
         {ds_serv, {ds_serv, start_link, []},
          permanent, 10000, worker, [ds_serv]},
-    {ok, {{one_for_one, 3, 10}, [DsServChild]}}.
+    {ok, {{one_for_one, 3, 10}, [DsServChildSpec]}}.

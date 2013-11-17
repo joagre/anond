@@ -38,9 +38,9 @@ start_link() ->
 %%%
 
 init([]) ->
-    AChild = {'AName', {'AModule', start_link, []},
-              permanent, 2000, worker, ['AModule']},
-    {ok, {{one_for_all, 0, 1}, [AChild]}}.
+    AChildSpec = {'AName', {'AModule', start_link, []},
+                  permanent, 2000, worker, ['AModule']},
+    {ok, {{one_for_all, 0, 1}, [AChildSpec]}}.
 
 %%%
 %%% major partition (may consist of minor partitions)
