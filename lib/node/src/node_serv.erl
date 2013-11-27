@@ -2,7 +2,8 @@
 
 %%% external exports
 -export([start_link/4, stop/1, stop/2]).
--export([get_routing_entries/1, send_routing_entry/2]).
+-export([handshake/2]).
+-export([get_routing_entries/1, routing_entry/2]).
 -export([get_nodes/1]).
 -export([enable_recalc/1, disable_recalc/1, recalc/1]).
 -export([update_path_cost/3]).
@@ -75,6 +76,21 @@ stop(Ip, Timeout) ->
     serv:call(Ip, stop, Timeout).
 
 %%%
+%%% exported: handshake
+%%%
+
+-spec handshake(pid(),
+                {'node_tunnel_send_serv', na(), pid()} |
+                'node_tunnel_recv_serv') ->
+                       'ok' | {'ok', node_db(), routing_db()}.
+
+handshake(NodeServ, {node_tunnel_send_serv, Na, NodeTunnelSendServ}) ->
+    NodeServ ! {handshake, {node_tunnel_send_serv, Na, NodeTunnelSendServ}},
+    ok;
+handshake(NodeServ, node_tunnel_recv_serv) ->
+    serv:call(NodeServ, {handshake, node_tunnel_recv_serv}).
+
+%%%
 %%% exported: get_routing_entries
 %%%
 
@@ -84,12 +100,12 @@ get_routing_entries(Ip) ->
     serv:call(Ip, get_routing_entries).
 
 %%%
-%%% exported: send_routing_entry
+%%% exported: routing_entry
 %%%
 
--spec send_routing_entry(ip(), #routing_entry{}) -> 'ok'.
+-spec routing_entry(ip(), #routing_entry{}) -> 'ok'.
 
-send_routing_entry(Ip, Re) ->
+routing_entry(Ip, Re) ->
     Ip ! Re,
     ok.
 
@@ -133,7 +149,7 @@ recalc(Ip) ->
     ok.
 
 %%%
-%% exported: update_path_cost
+%%% exported: update_path_cost
 %%%
 
 -spec update_path_cost(ip(), ip(), path_cost()) -> 'ok'.
@@ -238,6 +254,12 @@ loop(#state{parent = Parent,
 	    ok = node_route:delete_node_db(NodeDb),
 	    ok = node_route:delete_routing_db(RoutingDb),
 	    From ! {self(), ok};
+        {handshake, {node_tunnel_send_serv, PeerNa, NodeTunnelSendServ}} ->
+            ok = node_route:add_send_serv(NodeDb, PeerNa, NodeTunnelSendServ),
+            loop(S);
+        {From, {handshake, node_tunnel_recv_serv}} ->
+	    From ! {self(), {ok, NodeDb, RoutingDb}},
+            loop(S);
 	{From, get_routing_entries} ->
 	    {ok, Res} = node_route:get_routing_entries(RoutingDb),
 	    From ! {self(), {ok, Res}},

@@ -2,7 +2,8 @@
 
 %%% external exports
 -export([create_node_db/0, delete_node_db/1, add_node/2, delete_node/2,
-         get_nodes/1, foreach_node/2, is_member_node/2, unreachable_nodes/1]).
+         get_nodes/1, foreach_node/2, is_member_node/2, unreachable_nodes/1,
+         add_send_serv/3, lookup_send_serv/3]).
 -export([create_routing_db/0, delete_routing_db/1, get_routing_entries/1,
          foreach_routing_entry/2, update_routing_entry/2]).
 -export([recalc/3]).
@@ -12,8 +13,8 @@
 
 %%% include files
 -include_lib("util/include/bits.hrl").
--include_lib("util/include/shorthand.hrl").
 -include_lib("util/include/log.hrl").
+-include_lib("util/include/shorthand.hrl").
 -include_lib("node/include/node_route.hrl").
 
 %%% constants
@@ -31,12 +32,12 @@
 -spec create_node_db() -> {'ok', node_db()}.
 
 create_node_db() ->
-    {ok, ets:new(node_db, [{keypos, 2}])}.
+    {ok, ets:new(node_db, [{keypos, 2}, {read_concurrency, true}])}.
 
 %%%
 %%% exported: delete_node_db
 %%%
-	
+
 -spec delete_node_db(node_db()) -> 'ok'.
 
 delete_node_db(NodeDb) ->
@@ -98,8 +99,47 @@ foreach_node(Fun, NodeDb) ->
 %%% exported: unreachable_nodes
 %%%
 
+-spec unreachable_nodes(node_db()) -> [#node{}].
+
 unreachable_nodes(NodeDb) ->
     ets:match_object(NodeDb, #node{path_cost = -1, _ = '_'}).
+
+%%%
+%%% exported: add_send_serv
+%%%
+
+-spec add_send_serv(node_db(), na(), pid()) -> 'ok'.
+
+add_send_serv(NodeDb, PeerNa, NodeTunnelSendServ) ->
+    %% This wiill not work.Ip is the key for now.!!!!!!!!!!!!!!!!!!!!
+    case ets:lookup(NodeDb, PeerNa) of
+        [Node] ->
+	    true = ets:insert(
+                     NodeDb, Node#node{send_serv = NodeTunnelSendServ}),
+            ok;
+        _ ->
+            ok
+    end.
+
+%%%
+%%% exported: lookup_send_serv
+%%%
+
+-spec lookup_send_serv(node_db(), routing_db(), noa()) ->
+                              {'ok', pid()} | {'error', 'not_found'}.
+
+lookup_send_serv(NodeDb, RoutingDb, Oa) ->
+    case ets:lookup(RoutingDb, Oa) of
+        [#routing_entry{na = Na}] ->
+            case ets:lookup(NodeDb, Na) of
+                [#node{send_serv = NodeTunnelSendServ}] ->
+                    {ok, NodeTunnelSendServ};
+                [] ->
+                    {error, not_found}
+            end;
+        [] ->
+            {error, not_found}
+    end.
 
 %%%
 %%% exported: create_routing_db
@@ -108,7 +148,7 @@ unreachable_nodes(NodeDb) ->
 -spec create_routing_db() -> {'ok', routing_db()}.
 
 create_routing_db() ->
-    {ok, ets:new(routing_db, [{keypos, 2}])}.
+    {ok, ets:new(routing_db, [{keypos, 2}, {read_concurrency, true}])}.
 
 %%%
 %%% exported: delete_routing_db
@@ -251,7 +291,7 @@ send_routing_entries(Ip, RoutingDb, #node{ip = PeerIp,
                             %% patrik: increment psp?
                             %%psp = ...
                            },
-                      ok = node_serv:send_routing_entry(PeerIp, UpdatedRe);
+                      ok = node_serv:routing_entry(PeerIp, UpdatedRe);
                   true ->
                       ok
               end

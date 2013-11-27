@@ -7,10 +7,13 @@
 
 -record(routing_entry, {
 	  oa        :: oa() | '_',
-	  ip        :: ip() | '_',
+          noa       :: noa() | '_', %% should replace oa
+	  ip        :: ip() | '_',  % replace with na
+          na        :: na() | '_',
 	  path_cost :: path_cost() | '_',
 	  flags = 0 :: integer() | '_',
           hops = [] :: [ip()] | '_',
+          nhops = [] :: [na()] | '_', % replace hops
           psp       :: binary() | '_' % patrik: should be binary?
 	 }).
 
@@ -20,9 +23,11 @@
 
 -record(node, {
 	  ip         :: ip() | '_' | '$1',
+          na         :: na() | '_', %% replace ip with this
 	  public_key :: public_key:rsa_public_key() | '_',
 	  path_cost  :: path_cost() | '_',
-	  flags = 0  :: integer() | '_'
+	  flags = 0  :: integer() | '_',
+          send_serv  :: pid() | '_'
 	 }).
 
 -define(F_NODE_UPDATED, (1 bsl 0)).

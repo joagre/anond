@@ -2,8 +2,8 @@
 -behaviour(supervisor).
 
 %%% external exports
--export([start_link/4]).
--export([start_as_child/4]).
+-export([start_link/5]).
+-export([lookup_child/2]).
 
 %%% internal exports
 
@@ -23,38 +23,54 @@
 %%% exported: start_link
 %%%
 
-%% The Erlang type system does only handle monomorphic list types
-%-spec start_link([oa(), public_key:rsa_public_key(),
-%%                  public_key:rsa_private_key(), boolean()]) ->
-%                        supervisor:startlink_ret().
+-spec start_link(noa(), na(), public_key:rsa_public_key(),
+                 public_key:rsa_private_key(), boolean()) ->
+                        supervisor:startlink_ret().
 
-start_link(Oa, PublicKey, PrivateKey, AutoRecalc) ->
-    supervisor:start_link(?MODULE, [Oa, PublicKey, PrivateKey, AutoRecalc]).
+start_link(Oa, Na, PublicKey, PrivateKey, AutoRecalc) ->
+    supervisor:start_link(?MODULE,
+                          [Oa, Na, PublicKey, PrivateKey, AutoRecalc]).
 
 %%%
-%%% exported: start_as_child
+%%% exported: lookup_child
 %%%
 
--spec start_as_child(oa(), public_key:rsa_public_key(),
-                     public_key:rsa_private_key(), boolean()) ->
-                            {'ok', ip()}.
+-spec lookup_child(supervisor:sup_ref(), supervisor:child_id()) ->
+                          {'ok', supervisor:child()} |
+                          {'error', 'not_found'}.
 
-start_as_child(Oa, PublicKey, PrivateKey, AutoRecalc) ->
-    NodeSupChildSpec =
-        {{?MODULE, erlang:now()},
-         {?MODULE, start_link, [Oa, PublicKey, PrivateKey, AutoRecalc]},
-         permanent, infinity, supervisor, [node_sup]},
-    {ok, NodeSupPid} = supervisor:start_child(node_multi_sup, NodeSupChildSpec),
-    [{_Id, Ip, _Type, _Modules}] = supervisor:which_children(NodeSupPid),
-    {ok, Ip}.
+lookup_child(NodeSup, Id) ->
+    Children = supervisor:which_children(NodeSup),
+    case lists:keysearch(Id, 1, Children) of
+        {value, {Id, Child, _Type, _Modules}} ->
+            {ok, Child};
+        false ->
+            not_found
+    end.
 
 %%%
 %%% exported: init
 %%%
 
-init([Oa, PublicKey, PrivateKey, AutoRecalc]) ->
+init([Oa, _Na, PublicKey, PrivateKey, AutoRecalc]) ->
+    {1,1,1,1,1,1,1,N} = Oa, %% FIXME!!!
     NodeServChildSpec =
-        {node_serv, {node_serv, start_link,
-                     [Oa, PublicKey, PrivateKey, AutoRecalc]},
-         permanent, 10000, worker, [node_serv]},
-    {ok, {{rest_for_one, 3, 10}, [NodeServChildSpec]}}.
+        {node_serv,
+         {node_serv, start_link,
+          [N, PublicKey, PrivateKey, AutoRecalc]},
+         permanent, 10000, supervisor, [node_serv]},
+%    NodePathCostChildSpec =
+%        {node_path_cost_serv,
+%         {node_path_cost_serv, start_link,
+%          []},
+%         permanent, 10000, supervisor, [node_path_cost_serv]},
+%    NodeTunServChildSpec =
+%        {node_tun_serv,
+%         {node_tun_serv, start_link,
+%          []},
+%         permanent, 10000, worker, [node_tun_serv]},
+    NodeTunnelsSupChildSpec =
+        {node_tunnels_sup, {node_tunnels_sup, start_link, []},
+         permanent, infinity, supervisor, [node_tunnels_sup]},
+    {ok, {{rest_for_one, 3, 10},
+          [NodeServChildSpec, NodeTunnelsSupChildSpec]}}.

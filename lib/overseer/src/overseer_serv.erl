@@ -331,14 +331,20 @@ read_config(S) ->
 
 start_nodes(0) ->
     [];
-start_nodes(Oa) ->
+start_nodes(N) ->
     %% patrik: public_key:generate_key/1 is hard to understand in the
     %% manual page public_key(3). Does it even generate RSA keys?
     %%{PublicKey, PrivateKey} = public_key:generate_key(),
     PublicKey = <<"foo">>,
     PrivateKey = <<"baz">>,
-    {ok, Ip} = node_sup:start_as_child(Oa, PublicKey, PrivateKey, true),
-    [{Oa, Ip}|start_nodes(Oa-1)].
+    Oa = {1,1,1,1,1,1,1,N},
+    Na = {{1,1,1,1}, 1},
+    {ok, NodeSup} =
+        node_root_sup:start_node(Oa, Na, PublicKey, PrivateKey, true),
+    Children = supervisor:which_children(NodeSup),
+    {value, {_Id, Ip, _Type, _Modules}} =
+        lists:keysearch(node_serv, 1, Children),
+    [{N, Ip}|start_nodes(N-1)].
 
 %%%
 %%% get_global_routing_table

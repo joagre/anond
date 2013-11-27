@@ -11,12 +11,12 @@
 -export([init/1]).
 
 %%% include files
--include_lib("util/include/log.hrl").
 -include_lib("util/include/config.hrl").
+-include_lib("util/include/log.hrl").
 -include_lib("util/include/shorthand.hrl").
 -include_lib("node/include/node.hrl").
--include_lib("ds/include/ds.hrl").
 -include_lib("overseer/include/simulation.hrl").
+-include_lib("ds/include/ds.hrl").
 
 %%% constants
 
