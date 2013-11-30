@@ -15,11 +15,6 @@ node_route_jsonrpc_serv.erl
   - node_serv:disable_recalc/1
   - node_serv:recalc/1
 
-node_tunnel_{recv,send}_serv.erl
--------------------------
-* Make all UDP traffic encryted.
-* Send everything in 512 byte cells.
-
 node_tun_serv.erl
 -----------------
 * Implement it.
@@ -27,6 +22,11 @@ node_tun_serv.erl
 node_path_cost_serv.erl
 -----------------------
 * Implement it.
+
+node_tunnel_{recv,send}_serv.erl
+-------------------------
+* Make all UDP traffic encrypted.
+* Send everything in 512 byte cells.
 
 ds_serv.erl
 -----------
