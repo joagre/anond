@@ -42,7 +42,7 @@ ds_serv.erl
   proof. Signatures? 
 * Maybe use the streaming features of jsx.
 
-ds_jsonrpc_serv.erl
+jsonrpc_serv.erl
 -------------------
 * Switch over to SSL
 
