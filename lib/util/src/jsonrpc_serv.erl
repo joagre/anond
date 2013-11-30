@@ -94,8 +94,6 @@ recv(Socket, ContentLength) ->
     case gen_tcp:recv(Socket, ContentLength) of
         {ok, EncodedJson} ->
             case catch jsx:decode(EncodedJson) of
-                {incomplete, _} ->
-                    invalid_json;
                 [{<<"jsonrpc">>, <<"2.0">>},
                  {<<"method">>, Method},
                  {<<"params">>, Params},
