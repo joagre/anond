@@ -1,7 +1,37 @@
+node_serv.erl
+-------------
+* Integrate with Patrik's loop detection and path cost library.
+* Rename #node_routing{} to #node_route{}.
+* Rename node_serv.erl to node_route_serv.erl
+
+node_route_jsonrpc_serv.erl
+---------------------------
+* Implement a jsonrpc server to be used by overseer_serv.erl. Use the
+  lib/util/src/jsonrpc_serv.erl pattern. The following functions need
+  to be made available:
+  - node_serv:get_routing_entries/1,
+  - node_serv:get_nodes/1
+  - node_serv:enable_recalc/1
+  - node_serv:disable_recalc/1
+  - node_serv:recalc/1
+
+node_tunnel_{recv,send}_serv.erl
+-------------------------
+* Make all UDP traffic encryted.
+* Send everything in 512 byte cells.
+
+node_tun_serv.erl
+-----------------
+* Implement it.
+
+node_path_cost_serv.erl
+-----------------------
+* Implement it.
+
 ds_serv.erl
 -----------
-* Add ip-address and port to anond.conf.
 * Switch over from ip() to na() types.
+* Add ip-address and port to anond.conf.
 * Use dets instead of ets.
 * Add anond.conf parameter to set directory for dets file.
 * Add anond.conf parameter to clear the dets file on each restart.
@@ -15,3 +45,31 @@ ds_serv.erl
 ds_jsonrpc_serv.erl
 -------------------
 * Switch over to SSL
+
+common_config_serv.erl
+----------------------
+* Update anond.conf to make it possible to specify several nodes.
+
+overseer_serv.erl
+-----------------
+* This module should *not* start nodes. This should be done by the
+  common_config_serv.erl.
+
+generic stuff
+-------------
+* Write documentation
+  - Design document
+  - End-user
+* Ask Per to contribute the delayed start patch to the Erlang distro.
+* Make it build and adhere to the package management system for:
+  - Ubuntu
+  - Mac
+  - De
+  - Suse
+  - FreeBSD
+  - Windows (yes!)
+* Setup a nice anond site.
+* Implement anond control panels for:
+  - GTK
+  - Mac
+  - Windows
