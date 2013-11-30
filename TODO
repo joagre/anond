@@ -24,7 +24,7 @@ node_path_cost_serv.erl
 * Implement it.
 
 node_tunnel_{recv,send}_serv.erl
--------------------------
+--------------------------------
 * Make all UDP traffic encrypted.
 * Send everything in 512 byte cells.
 
@@ -43,7 +43,7 @@ ds_serv.erl
 * Maybe use the streaming features of jsx.
 
 jsonrpc_serv.erl
--------------------
+----------------
 * Switch over to SSL
 
 common_config_serv.erl
