@@ -64,10 +64,7 @@ generic stuff
 * Make it build and adhere to the package management system for:
   - Ubuntu
   - Mac
-  - De
-  - Suse
-  - FreeBSD
-  - Windows (yes!)
+  - Windows
 * Setup a nice anond site.
 * Implement anond control panels for:
   - GTK
