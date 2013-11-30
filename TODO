@@ -57,7 +57,7 @@ overseer_serv.erl
 
 generic stuff
 -------------
-* Write documentation
+* Write documentation (Use LyX)
   - Design document
   - End-user
 * Ask Per to contribute the delayed start patch to the Erlang distro.
