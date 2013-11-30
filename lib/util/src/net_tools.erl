@@ -21,9 +21,9 @@
 -spec string_address(inet:ip_address()) -> string().
 
 string_address({A0, A1, A2, A3}) ->
-    lists:flatten([?i2l(A1), ".", ?i2l(A1), ".", ?i2l(A2), ".", ?i2l(A3)]);
+    lists:flatten([?i2l(A0), ".", ?i2l(A1), ".", ?i2l(A2), ".", ?i2l(A3)]);
 string_address({A0, A1, A2, A3, A4, A5, A6, A7}) ->
-    lists:flatten([?i2l(A1), ".", ?i2l(A1), ".", ?i2l(A2), ".", ?i2l(A3),
+    lists:flatten([?i2l(A0), ".", ?i2l(A1), ".", ?i2l(A2), ".", ?i2l(A3),
                    ?i2l(A4), ".", ?i2l(A5), ".", ?i2l(A6), ".", ?i2l(A7)]).
 
 %%%

@@ -4,7 +4,8 @@
 -include_lib("node/include/node.hrl").
 
 -record(peer, {
-	  ip           :: ip(),
+          ip           :: ip(),
+	  na           :: na(), % replace ip
           public_key   :: public_key:rsa_public_key(),
           last_updated :: timelib:gsecs(),
           flags = 0    :: integer()

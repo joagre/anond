@@ -2,7 +2,7 @@
 
 %%% external exports
 -export([start_link/0]).
--export([session_handler/1]).
+-export([socks_handler/1]).
 
 %%% internal exports
 -export([init/1]).
@@ -99,8 +99,8 @@ start_server(Address, Port) ->
     SocketOptions = [{active, false}, binary, {packet, 0}, {ip, Address},
                      {recbuf, ?LISTEN_RECBUF}, {reuseaddr, true},
                      {backlog, ?LISTEN_BACKLOG}],
-    SessionHandler = {?MODULE, session_handler, []},
-    tcp_serv:start_link(Port, ?MAX_SESSIONS, [], SocketOptions, SessionHandler).
+    SocksHandler = {?MODULE, socks_handler, []},
+    tcp_serv:start_link(Port, ?MAX_SESSIONS, [], SocketOptions, SocksHandler).
 
 loop(#state{parent = Parent,
             enabled = Enabled,
@@ -168,13 +168,7 @@ loop(#state{parent = Parent,
 	    loop(S)
     end.
 
-%%%
-%%% SOCKS session handler
-%%%
-
--spec session_handler(inet:socket()) -> tcp_server:session_handler_result().
-
-session_handler(ClientSocket) ->
+socks_handler(ClientSocket) ->
     try
         ?dbg_log(handshake),
         handshake(ClientSocket),

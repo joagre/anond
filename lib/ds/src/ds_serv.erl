@@ -23,8 +23,8 @@
 %%% records
 -record(state, {
 	  parent           :: pid(),
-	  peer_tid         :: ets:tid(),
-          oa_tid           :: ets:tid(),
+	  peer_db          :: ets:tid(),
+          oa_db            :: ets:tid(),
           simulation       :: boolean(),
           peer_ttl         :: integer(),
           max_oas_per_peer :: integer()
@@ -36,8 +36,7 @@
 %%% exported: start_link
 %%%
 
--spec start_link() -> {'ok', pid()} |
-                      {'error', 'already_started'}.
+-spec start_link() -> {'ok', pid()} | {'error', 'already_started'}.
 
 start_link() ->
     Args = [self()],
@@ -95,12 +94,10 @@ get_all_peers() ->
 %%% exported: get_random_peers
 %%%
 
--spec get_random_peers(ip(), N :: integer() | {percent, N :: integer()}) ->
-                              {'ok', [#peer{}]} |
-                              {'error', 'too_few_peers'}.
-
-get_random_peers(Ip, N) ->
-    serv:call(?MODULE, {get_random_peers, Ip, N}).
+-spec get_random_peers(ip(), integer()) ->
+                              {'ok', [#peer{}]} | 'too_few_peers'.
+get_random_peers(MyNa, N) ->
+    serv:call(?MODULE, {get_random_peers, MyNa, N}).
 
 %%%
 %%% exported: publish_peer
@@ -117,8 +114,8 @@ publish_peer(Peer) ->
 
 -spec unpublish_peer(ip()) -> 'ok'.
 
-unpublish_peer(Ip) ->
-    serv:call(?MODULE, {unpublish_peer, Ip}).
+unpublish_peer(Na) ->
+    serv:call(?MODULE, {unpublish_peer, Na}).
 
 %%%
 %%% exported: published_peers
@@ -126,8 +123,8 @@ unpublish_peer(Ip) ->
 
 -spec published_peers([ip()]) -> {'ok', [ip()]}.
 
-published_peers(PeerIps) ->
-    serv:call(?MODULE, {published_peers, PeerIps}).
+published_peers(Nas) ->
+    serv:call(?MODULE, {published_peers, Nas}).
 
 %%%
 %%% exported: reserve_oa
@@ -135,8 +132,8 @@ published_peers(PeerIps) ->
 
 -spec reserve_oa(oa(), ip()) -> 'ok' | 'no_such_peer' | 'too_many_oas'.
 
-reserve_oa(Oa, Ip) ->
-    serv:call(?MODULE, {reserve_oa, Oa, Ip}).
+reserve_oa(Oa, Na) ->
+    serv:call(?MODULE, {reserve_oa, Oa, Na}).
 
 %%%
 %%% server loop
@@ -150,20 +147,18 @@ init(Parent) ->
             random:seed({A1, A2, A3}),
             S = read_config(#state{}),
             ok = config_serv:subscribe(),
-	    PeerTid = ets:new(peer_db, [{keypos, 2}]),
-	    OaTid = ets:new(oa_db, [bag]),
+	    PeerDb = ets:new(peer_db, [{keypos, 2}]),
+	    OaDb = ets:new(oa_db, [bag]),
             timelib:start_timer(S#state.peer_ttl, {enforce_peer_ttl, true}),
 	    Parent ! {self(), started},
-	    loop(S#state{parent = Parent,
-                         peer_tid = PeerTid,
-                         oa_tid = OaTid});
+	    loop(S#state{parent = Parent, peer_db = PeerDb, oa_db = OaDb});
         _ ->
             Parent ! {self(), already_started}
     end.
 
 loop(#state{parent = Parent,
-            peer_tid = PeerTid,
-            oa_tid = OaTid,
+            peer_db = PeerDb,
+            oa_db = OaDb,
             simulation = Simulation,
             peer_ttl = PeerTTL,
             max_oas_per_peer = MaxOasPerPeer} = S) ->
@@ -173,22 +168,22 @@ loop(#state{parent = Parent,
             loop(read_config(S));
         {enforce_peer_ttl, Repeat} ->
             ?daemon_log("Looking for stale peers...", []),
-            StalePeerIps =
+            StaleNas =
                 ets:foldl(
-                  fun(#peer{ip = Ip, last_updated = LastUpdated}, Acc) ->
-                          Delta = timelib:ugnow_delta(LastUpdated),
+                  fun(#peer{na = Na, last_updated = LastUpdated}, Acc) ->
+                          Delta = timelib:ugnow_delta({minus, LastUpdated}),
                           if
                               Delta > PeerTTL ->
-                                  [Ip|Acc];
+                                  [Na|Acc];
                               true ->
                                   []
                           end
-                  end, [], PeerTid),
-            lists:foreach(fun(Ip) ->
-                                  true = ets:delete(PeerTid, Ip),
-                                  true = ets:match_delete(OaTid, {'_', Ip}),
-                                  ?daemon_log("Removed stale peer ~w.", [Ip])
-                          end, StalePeerIps),
+                  end, [], PeerDb),
+            lists:foreach(fun(Na) ->
+                                  true = ets:delete(PeerDb, Na),
+                                  true = ets:match_delete(OaDb, {'_', Na}),
+                                  ?daemon_log("Removed stale peer ~w.", [Na])
+                          end, StaleNas),
             if
                 Repeat ->
                     timelib:start_timer(PeerTTL, {enforce_peer_ttl, true}),
@@ -197,97 +192,87 @@ loop(#state{parent = Parent,
                     loop(S)
             end;
 	{From, stop} ->
-	    ets:delete(PeerTid),
-	    ets:delete(OaTid),
+	    ets:delete(PeerDb),
+	    ets:delete(OaDb),
 	    From ! {self(), ok};
         {From, get_number_of_peers} ->
-            From ! {self(), {ok, ets:info(PeerTid, size)}},
+            From ! {self(), {ok, ets:info(PeerDb, size)}},
             loop(S);
         {From, get_all_peers} ->
-            AllPeers = ets:foldl(fun(Peer, Acc) -> [Peer|Acc] end, [], PeerTid),
+            AllPeers = ets:foldl(fun(Peer, Acc) -> [Peer|Acc] end, [], PeerDb),
             ?daemon_log("All ~w peers returned.", [length(AllPeers)]),
             From ! {self(), {ok, AllPeers}},
             loop(S);
         %% return two non random peers as defined in simulation.hrl
-        {From, {get_random_peers, Ip, 2}} when Simulation == true ->
-            {SimulatedPeerOas, SimulatedPeers} =
-                get_simulated_peers(PeerTid, OaTid, Ip),
+        {From, {get_random_peers, MyNa, 2}} when Simulation == true ->
+            {SimulatedOas, SimulatedPeers} =
+                get_simulated_peers(PeerDb, OaDb, MyNa),
             ?daemon_log("~w simulated peers returned: ~w",
-                        [length(SimulatedPeerOas), SimulatedPeerOas]),
+                        [length(SimulatedOas), SimulatedOas]),
             From ! {self(), {ok, SimulatedPeers}},
 	    loop(S);
-        {From, {get_random_peers, Ip, {percent, N}}} ->
-            Size = ets:info(PeerTid, size),
-            RandomPeers = get_random_peers(PeerTid, Ip, trunc(N/100*Size)),
-            RandomPeerIps = [RandomPeer#peer.ip || RandomPeer <- RandomPeers],
-            ?daemon_log("~w random peers returned: ~w",
-                        [length(RandomPeerIps), RandomPeerIps]),
-            From ! {self(), {ok, RandomPeers}},
-            loop(S);
-        {From, {get_random_peers, Ip, N}} when is_integer(N) ->
-            case ets:info(PeerTid, size) of
+        {From, {get_random_peers, MyNa, N}} when is_integer(N) ->
+            case ets:info(PeerDb, size) of
                 Size when N >= Size ->
                     ?daemon_log("~w random peers could not be returned.",
                                 [Size]),
-                    From ! {self(), {error, too_few_peers}},
+                    From ! {self(), too_few_peers},
                     loop(S);
                 _Size ->
-                    RandomPeers = get_random_peers(PeerTid, Ip, N),
-                    RandomPeerIps =
-                        [RandomPeer#peer.ip || RandomPeer <- RandomPeers],
+                    RandomPeers = get_random_peers(PeerDb, MyNa, N),
+                    RandomNas =
+                        [RandomPeer#peer.na || RandomPeer <- RandomPeers],
                     ?daemon_log("~w random peers returned: ~w",
-                                [length(RandomPeerIps), RandomPeerIps]),
+                                [length(RandomNas), RandomNas]),
                     From ! {self(), {ok, RandomPeers}},
                     loop(S)
             end;
-        {From, {publish_peer, #peer{ip = Ip} = Peer}} ->
+        {From, {publish_peer, #peer{na = Na} = Peer}} ->
             UpdatedPeer = Peer#peer{last_updated = timelib:ugnow()},
-            true = ets:insert(PeerTid, UpdatedPeer),
-            ?daemon_log("Peer ~w published.", [Ip]),
+            true = ets:insert(PeerDb, UpdatedPeer),
+            ?daemon_log("Peer ~w published.", [Na]),
             From ! {self(), {ok, PeerTTL}},
             loop(S);
-        {From, {unpublish_peer, Ip}} ->
-            true = ets:delete(PeerTid, Ip),
-            ?daemon_log("Peer ~w unpublished.", [Ip]),
+        {From, {unpublish_peer, Na}} ->
+            true = ets:delete(PeerDb, Na),
+            ?daemon_log("Peer ~w unpublished.", [Na]),
             From ! {self(), ok},
             loop(S);
-        {From, {published_peers, PeerIps}} ->
-            PublishedPeerIps =
-                [PeerIp || PeerIp <- PeerIps,
-                           ets:member(PeerTid, PeerIp) == true],
-            From ! {self(), {ok, PublishedPeerIps}},
+        {From, {published_peers, Nas}} ->
+            PublishedNas = [Na || Na <- Nas, ets:member(PeerDb, Na) == true],
+            From ! {self(), {ok, PublishedNas}},
             loop(S);
-        {From, {reserve_oa, Oa, Ip}} ->
-            case ets:lookup(PeerTid, Ip) of
+        {From, {reserve_oa, Oa, Na}} ->
+            case ets:lookup(PeerDb, Na) of
                 [] ->
                     ?daemon_log("Rejected reservation of overlay address ~w to "
-                                "unknown peer ~w.", [Oa, Ip]),
+                                "unknown peer ~w.", [Oa, Na]),
                     From ! {self(), no_such_peer},
                     loop(S);
                 _ ->
-                    NumberOfOas = length(ets:lookup(OaTid, Oa)),
+                    NumberOfOas = length(ets:lookup(OaDb, Oa)),
                     if
                         NumberOfOas =< MaxOasPerPeer ->
-                            true = ets:insert(OaTid, {Oa, Ip}),
+                            true = ets:insert(OaDb, {Oa, Na}),
                             ?daemon_log(
                                "Reserved overlay address ~w to peer ~w.",
-                               [Oa, Ip]),
+                               [Oa, Na]),
                             From ! {self(), ok},
                             loop(S);
                         true ->
                             ?daemon_log("Peer ~w tried to reserve more than ~w "
                                         "overlay addresses.",
-                                        [Ip, MaxOasPerPeer]),
+                                        [Na, MaxOasPerPeer]),
                             From ! {self(), too_many_oas},
                             loop(S)
                     end
             end;
         {'EXIT', Parent, Reason} ->
-	    true = ets:delete(PeerTid),
+	    true = ets:delete(PeerDb),
             exit(Reason);
-	UnknownMessage ->
-	    ?error_log({unknown_message, UnknownMessage}),
-	    loop(S)
+                UnknownMessage ->
+                    ?error_log({unknown_message, UnknownMessage}),
+                    loop(S)
     end.
 
 %%%
@@ -298,61 +283,59 @@ read_config(S) ->
     [Simulation] = ?cfg([simulation]),
     [PeerTTL] = ?cfg(['directory-server', 'peer-ttl']),
     [MaxOasPerPeer] = ?cfg(['directory-server', 'max-oas-per-peer']),
-    S#state{simulation = Simulation,
-            peer_ttl = PeerTTL,
+    S#state{simulation = Simulation, peer_ttl = PeerTTL,
             max_oas_per_peer = MaxOasPerPeer}.
 
 %%%
 %%% get_random_peers
 %%%
 
-get_simulated_peers(PeerTid, OaTid, Ip) ->
-    [[Oa]] = ets:match(OaTid, {'$1', Ip}),
+get_simulated_peers(PeerDb, OaDb, MyNa) ->
+    [[Oa]] = ets:match(OaDb, {'$1', MyNa}),
     {value, {Oa, PeerOas}} = lists:keysearch(Oa, 1, ?NON_RANDOM_PEERS),
-    PeerIps = oas_to_ips(OaTid, PeerOas),
+    PeerNas = oas_to_nas(OaDb, PeerOas),
     Peers =
-        lists:map(fun(PeerIp) ->
-                          [Peer] = ets:lookup(PeerTid, PeerIp),
+        lists:map(fun(PeerNa) ->
+                          [Peer] = ets:lookup(PeerDb, PeerNa),
                           Peer
-                  end, PeerIps),
+                  end, PeerNas),
     {PeerOas, Peers}.
 
-oas_to_ips(_OaTid, []) ->
+oas_to_nas(_OaDb, []) ->
     [];
-oas_to_ips(OaTid, [Oa|Rest]) ->
-    [[Ip]] = ets:match(OaTid, {Oa, '$1'}),
-    [Ip|oas_to_ips(OaTid, Rest)].
+oas_to_nas(OaDb, [Oa|Rest]) ->
+    [[Na]] = ets:match(OaDb, {Oa, '$1'}),
+    [Na|oas_to_nas(OaDb, Rest)].
 
 %% http://en.wikipedia.org/wiki/Reservoir_sampling
-get_random_peers(PeerTid, SelfIp, N) ->
-    SampleTid = ets:new(peer_sample_db, []),
-    NextKey = init_sample(PeerTid, SelfIp, ets:first(PeerTid), N, SampleTid),
-    Sample = extract_peer_sample(PeerTid, SelfIp, NextKey, N, SampleTid, N+1),
-    ets:delete(SampleTid),
+get_random_peers(PeerDb, MyNa, N) ->
+    Tid = ets:new(sample_db, []),
+    NextKey = init_sample(PeerDb, MyNa, ets:first(PeerDb), N, Tid),
+    Sample = extract_peer_sample(PeerDb, MyNa, NextKey, N, Tid, N+1),
+    ets:delete(Tid),
     Sample.
 
-init_sample(_PeerTid, _SelfIp, Ip, 0, _SampleTid) ->
-    Ip;
-init_sample(PeerTid, SelfIp, SelfIp, N, SampleTid) ->
-    init_sample(PeerTid, SelfIp, ets:next(PeerTid, SelfIp), N, SampleTid);
-init_sample(PeerTid, SelfIp, Ip, N, SampleTid) ->
-    [Peer] = ets:lookup(PeerTid, Ip),
-    true = ets:insert(SampleTid, {N, Peer}),
-    init_sample(PeerTid, SelfIp, ets:next(PeerTid, Ip), N-1, SampleTid).
+init_sample(_PeerDb, _MyNa, Na, 0, _Tid) ->
+    Na;
+init_sample(PeerDb, MyNa, MyNa, N, Tid) ->
+    init_sample(PeerDb, MyNa, ets:next(PeerDb, MyNa), N, Tid);
+init_sample(PeerDb, MyNa, Na, N, Tid) ->
+    [Peer] = ets:lookup(PeerDb, Na),
+    true = ets:insert(Tid, {N, Peer}),
+    init_sample(PeerDb, MyNa, ets:next(PeerDb, Na), N-1, Tid).
 
-extract_peer_sample(_PeerTid, _SelfIp, '$end_of_table', _N, SampleTid, _M) ->
-    ets:foldl(fun({_, Peer}, Acc) -> [Peer|Acc] end, [], SampleTid);
-extract_peer_sample(PeerTid, SelfIp, SelfIp, N, SampleTid, M) ->
-    extract_peer_sample(PeerTid, SelfIp, ets:next(PeerTid, SelfIp), N,
-                        SampleTid, M);
-extract_peer_sample(PeerTid, SelfIp, Ip, N, SampleTid, M) ->
+extract_peer_sample(_PeerDb, _MyNa, '$end_of_table', _N, Tid, _M) ->
+    ets:foldl(fun({_, Peer}, Acc) -> [Peer|Acc] end, [], Tid);
+extract_peer_sample(PeerDb, MyNa, MyNa, N, Tid, M) ->
+    extract_peer_sample(PeerDb, MyNa, ets:next(PeerDb, MyNa), N, Tid, M);
+extract_peer_sample(PeerDb, MyNa, Na, N, Tid, M) ->
     case random:uniform(M) of
         RandomN when RandomN =< N ->
-            [Peer] = ets:lookup(PeerTid, Ip),
-            true = ets:insert(SampleTid, {RandomN, Peer}),
-            extract_peer_sample(PeerTid, SelfIp, ets:next(PeerTid, Ip), N,
-                                SampleTid, M+1);
+            [Peer] = ets:lookup(PeerDb, Na),
+            true = ets:insert(Tid, {RandomN, Peer}),
+            extract_peer_sample(PeerDb, MyNa, ets:next(PeerDb, Na), N, Tid,
+                                M+1);
         _ ->
-            extract_peer_sample(PeerTid, SelfIp, ets:next(PeerTid, Ip), N,
-                                SampleTid, M+1)
+            extract_peer_sample(PeerDb, MyNa, ets:next(PeerDb, Na), N, Tid,
+                                M+1)
     end.

@@ -6,7 +6,7 @@
 
 %%% internal exports
 -export([convert_callback/2]).
--export([session_handler/1]).
+-export([config_handler/1]).
 
 %%% include files
 -include_lib("util/include/log.hrl").
@@ -35,13 +35,13 @@ start_link() ->
     SchemaFilename =
         filename:join([Cwd, code:priv_dir(common), "anond.xsd"]),
     ConfigFilename = config_filename(),
-    SessionHandler = {?MODULE, session_handler, []},
+    ConfigHandler = {?MODULE, config_handler, []},
     case config_serv:start_link(SchemaFilename, ConfigFilename,
                                 fun convert_callback/2,
                                 [config],
                                 ['anond-control', listen, address],
                                 ['anond-control', listen, port],
-                                SessionHandler) of
+                                ConfigHandler) of
         {ok, Pid} ->
             {ok, Pid};
         {error, {not_started, Reason}} ->
@@ -60,7 +60,7 @@ config_filename() ->
             ?DEFAULT_CONFIG_FILENAME
     end.
 
-session_handler(Socket) ->
+config_handler(Socket) ->
     receive
         {tcp, Socket, <<"stop">>} ->
             application:stop(proxy),

@@ -30,7 +30,8 @@
 %%% exported: get_headers
 %%%
 
--spec get_headers(inet:socket(), header_values()) -> {'ok', header_values()}.
+-spec get_headers(inet:socket(), header_values()) ->
+                         {'ok', header_values()}.
 
 get_headers(Socket) ->
     get_headers(Socket, ['_'], []).

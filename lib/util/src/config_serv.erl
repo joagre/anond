@@ -45,16 +45,16 @@
 		 PrependPath :: tree_store:path(),
                  ControlAddressPath :: tree_store:path(),
                  ControlPortPath:: tree_store:path(),
-                 tcp_serv:session_handler()) ->
+                 tcp_serv:handler()) ->
                         {'ok', pid()} |
-                            {'error',
-                             {'not_started', error_reason()} |
-                             'already_started'}.
+                        {'error',
+                         {'not_started', error_reason()} |
+                         'already_started'}.
 
 start_link(SchemaFilename, ConfigFilename, ConvertCallback, PrependPath,
-           ControlAddressPath, ControlPortPath, SessionHandler) ->    
+           ControlAddressPath, ControlPortPath, Handler) ->    
     Args = [self(), SchemaFilename, ConfigFilename, ConvertCallback,
-            PrependPath, ControlAddressPath, ControlPortPath, SessionHandler],
+            PrependPath, ControlAddressPath, ControlPortPath, Handler],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
@@ -91,7 +91,7 @@ subscribe() ->
 %%% exported: tcp_send
 %%%
 
--spec tcp_send(inet:ip_address(), inet:ip_port(), Message :: binary()) ->
+-spec tcp_send(inet:ip_address(), inet:port_number(), Message :: binary()) ->
                       'ok' | {'error', {'posix', inet:posix()}}.
 
 tcp_send(Address, Port, Message) ->
@@ -125,13 +125,13 @@ format_error(UnknownReason) ->
 %%%
 
 init(Parent, SchemaFilename, ConfigFilename, ConvertCallback, PrependPath,
-     ControlAddressPath, ControlPortPath, SessionHandler) ->    
+     ControlAddressPath, ControlPortPath, Handler) ->    
     process_flag(trap_exit, true),
     case catch register(?MODULE, self()) of
         true ->
             case setup(Parent, SchemaFilename, ConfigFilename, ConvertCallback,
                        PrependPath, ControlAddressPath, ControlPortPath,
-                       SessionHandler) of
+                       Handler) of
                 {ok, S} ->
                     Parent ! {self(), started},
                     loop(S);
@@ -143,7 +143,7 @@ init(Parent, SchemaFilename, ConfigFilename, ConvertCallback, PrependPath,
     end.
 
 setup(Parent, SchemaFilename, ConfigFilename, ConvertCallback, PrependPath,
-      ControlAddressPath, ControlPortPath, SessionHandler) ->
+      ControlAddressPath, ControlPortPath, Handler) ->
     case tree_store:load_xml(SchemaFilename, ConfigFilename, ConvertCallback) of
 	{ok, ConfigTree} ->
             [ControlAddress] =
@@ -152,7 +152,7 @@ setup(Parent, SchemaFilename, ConfigFilename, ConvertCallback, PrependPath,
                 tree_store:lookup(ConfigTree, PrependPath++ControlPortPath),
             SocketOptions = [{packet, 2}, {ip, ControlAddress}, binary],
             case tcp_serv:start_link(ControlPort, ?MAX_SESSIONS, [],
-                                     SocketOptions, SessionHandler) of
+                                     SocketOptions, Handler) of
                 {ok, Pid} ->
                     {ok, #state{parent = Parent,
                                 schema_filename = SchemaFilename,

@@ -410,7 +410,7 @@ refresh_peers(Ip, PeerIps, NodeDb, RoutingDb, AutoRecalc, NumberOfPeers,
         NumberOfMissingPeers when NumberOfMissingPeers > 0 ->
             ?daemon_log("Need ~w additional peers...", [NumberOfMissingPeers]),
             case ds_serv:get_random_peers(Ip, NumberOfMissingPeers) of
-                {error, too_few_peers} ->
+                too_few_peers ->
                     ?daemon_log("Can not find ~w additional peers. "
                                 "Retrying in five seconds...",
                                 [NumberOfMissingPeers]),

@@ -1,0 +1,17 @@
+ds_serv.erl
+-----------
+* Add ip-address and port to anond.conf.
+* Switch over from ip() to na() types.
+* Use dets instead of ets.
+* Add anond.conf parameter to set directory for dets file.
+* Add anond.conf parameter to clear the dets file on each restart.
+* Make publish_peer/1, unpublish_peer/1 and published_peers/1 spoof
+  proof. Signatures?
+* Make sure that it works with many overlay addresses per node address.
+* Add DNS functionality for overlay addresses. Make it spoof
+  proof. Signatures? 
+* Maybe use the streaming features of jsx.
+
+ds_jsonrpc_serv.erl
+-------------------
+* Switch over to SSL
