@@ -1,4 +1,4 @@
--module(node_root_sup).
+-module(node_sup).
 -behaviour(supervisor).
 
 %%% external exports

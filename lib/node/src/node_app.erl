@@ -21,7 +21,7 @@
 %%%
 
 start(_Type, StartArgs) ->
-    case node_root_sup:start_link(StartArgs) of
+    case node_sup:start_link(StartArgs) of
         {ok, Pid} ->
             {ok, Pid};
         Error ->
