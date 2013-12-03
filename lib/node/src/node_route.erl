@@ -288,7 +288,7 @@ send_route_entries(Ip, RouteDb, #node{ip = PeerIp,
                             %% patrik: increment psp?
                             %%psp = ...
                            },
-                      ok = node_serv:route_entry(PeerIp, UpdatedRe);
+                      ok = node_route_serv:route_entry(PeerIp, UpdatedRe);
                   true ->
                       ok
               end

@@ -34,30 +34,30 @@ start_link({IpAddress, Port}, NodeSup) ->
                             {?MODULE, node_handler, [NodeSup]}).
 
 node_handler(<<"get-route-entries">>, undefined, NodeSup) ->
-    {ok, Res} = node_serv:get_route_entries(node_serv(NodeSup)),
+    {ok, Res} = node_route_serv:get_route_entries(node_route_serv(NodeSup)),
     {ok, [json_route_entry(Re) || Re <- Res]};
 node_handler(<<"get-nodes">>, undefined, NodeSup) ->
-    {ok, Nodes} = node_serv:get_nodes(node_serv(NodeSup)),
+    {ok, Nodes} = node_route_serv:get_nodes(node_route_serv(NodeSup)),
     {ok, [json_node(Node) || Node <- Nodes]};
 node_handler(<<"enable-recalc">>, undefined, NodeSup) ->
-    ok = node_serv:enable_recalc(node_serv(NodeSup)),
+    ok = node_route_serv:enable_recalc(node_route_serv(NodeSup)),
     {ok, true};
 node_handler(<<"disable-recalc">>, undefined, NodeSup) ->
-    ok = node_serv:disable_recalc(node_serv(NodeSup)),
+    ok = node_route_serv:disable_recalc(node_route_serv(NodeSup)),
     {ok, true};
 node_handler(<<"recalc">>, undefined, NodeSup) ->
-    ok = node_serv:recalc(node_serv(NodeSup)),
+    ok = node_route_serv:recalc(node_route_serv(NodeSup)),
     {ok, true};
 node_handler(Method, Params, _NodeSup) ->
     ?error_log({invalid_request, Method, Params}),
     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
     {error, JsonError}.
 
-node_serv(NodeSup) ->
-    case get(node_serv) of
+node_route_serv(NodeSup) ->
+    case get(node_route_serv) of
         undefined ->
-            {ok, NodeServ} = node_sup:lookup_child(NodeSup, node_serv),
-            put(node_serv, NodeServ),
+            {ok, NodeServ} = node_sup:lookup_child(NodeSup, node_route_serv),
+            put(node_route_serv, NodeServ),
             NodeServ;
         NodeServ ->
             NodeServ

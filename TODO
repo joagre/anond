@@ -1,20 +1,11 @@
 node_serv.erl
 -------------
 * Integrate with Patrik's loop detection and path cost library.
-* Rename node_serv.erl to node_route_serv.erl
 * Rename node_root_sup.erl to node_sup.erl
 * Rename node_sup.erl to node_sup.erl
 
 node_route_jsonrpc_serv.erl
 ---------------------------
-* Implement a jsonrpc server to be used by overseer_serv.erl. Use the
-  lib/util/src/jsonrpc_serv.erl pattern. The following functions need
-  to be made available:
-  - node_serv:get_routing_entries/1,
-  - node_serv:get_nodes/1
-  - node_serv:enable_recalc/1
-  - node_serv:disable_recalc/1
-  - node_serv:recalc/1
 
 node_tun_serv.erl
 -----------------

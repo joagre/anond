@@ -23,9 +23,9 @@
           oa                    :: noa(),
           na                    :: na(),
           peer_na               :: na(),
-          node_serv             :: pid(),
+          node_route_serv       :: pid(),
           node_db               :: node_db(),
-          route_db            :: route_db(),
+          route_db              :: route_db(),
           node_path_cost_serv   :: pid(),
           tun_device            :: pid(),
           socket                :: gen_udp:socket(),
@@ -42,7 +42,7 @@
 -spec start_link(noa(), na(), na(), supervisor:sup_ref()) -> {'ok', pid()}.
 
 start_link(Oa, Na, PeerNa, NodeSup) ->
-    {ok, NodeServ} = node_sup:lookup_child(NodeSup, node_serv),
+    {ok, NodeServ} = node_sup:lookup_child(NodeSup, node_route_serv),
     {ok, NodePathCostServ} =
         node_sup:lookup_child(NodeSup, node_path_cost_serv),
     {ok, NodeTunServ} = node_sup:lookup_child(NodeSup, node_tun_serv),
@@ -87,12 +87,12 @@ handshake(NodeTunnelRecvServ,
 %%%
 
 init(Parent, Oa, Na, PeerNa, NodeServ, NodePathCostServ, _NodeTunServ) ->
-    {ok, NodeDb, RouteDb} = node_serv:handshake(NodeServ, ?MODULE),
+    {ok, NodeDb, RouteDb} = node_route_serv:handshake(NodeServ, ?MODULE),
 %    {ok, TunDevice} = node_tun_serv:handshake(NodeTunServ, ?MODULE),
     TunDevice = self(),
     Parent ! {self(), started},
     loop(#state{parent = Parent, oa = Oa, na = Na, peer_na = PeerNa,
-                node_serv = NodeServ, node_db = NodeDb, route_db = RouteDb,
+                node_route_serv = NodeServ, node_db = NodeDb, route_db = RouteDb,
                 node_path_cost_serv = NodePathCostServ,
                 tun_device = TunDevice}).
 
@@ -118,7 +118,7 @@ receiver(#state{node_db = NodeDb,
                 route_db = RouteDb,
                 oa = {Oa0, Oa1, Oa2, Oa3, Oa4, Oa5, Oa6, Oa7},
                 peer_na = {PeerIpAddress, PeerPort},
-                node_serv = NodeServ,
+                node_route_serv = NodeServ,
                 node_path_cost_serv = NodePathCostServ,
                 tun_device = TunDevice,
                 socket = Socket,
@@ -147,7 +147,7 @@ receiver(#state{node_db = NodeDb,
                     ?error_log({lookup_send_serv, Oa, Reason}),
                     receiver(S)
             end;
-        %% send route entry to node_serv
+        %% send route entry to node_route_serv
         {ok, {PeerIpAddress, PeerPort,
               <<?ROUTE_ENTRY:4,
                 A0:16, A1:16, A2:16, A3:16, A4:16, A5:16, A6:16, A7:16,
@@ -162,7 +162,7 @@ receiver(#state{node_db = NodeDb,
               na = {PeerIpAddress, PeerPort},
               path_cost = Pc,
               hops = Hops},
-            ok = node_serv:route_entry(NodeServ, Re),
+            ok = node_route_serv:route_entry(NodeServ, Re),
             receiver(S);
         %% reply to echo request
         {ok, {PeerIpAddress, PeerPort,

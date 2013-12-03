@@ -55,9 +55,9 @@ lookup_child(NodeSup, Id) ->
 init([Oa, Na, PublicKey, PrivateKey, AutoRecalc]) ->
     {1,1,1,1,1,1,1,N} = Oa, %% FIXME!!!
     NodeServChildSpec =
-        {node_serv,
-         {node_serv, start_link, [N, PublicKey, PrivateKey, AutoRecalc]},
-         permanent, 10000, worker, [node_serv]},
+        {node_route_serv,
+         {node_route_serv, start_link, [N, PublicKey, PrivateKey, AutoRecalc]},
+         permanent, 10000, worker, [node_route_serv]},
     NodeJsonrpcServChildSpec =
         {node_jsonrpc_serv,
          {node_jsonrpc_serv, start_link, [Na, self()]},

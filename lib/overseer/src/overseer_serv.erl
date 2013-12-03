@@ -204,7 +204,7 @@ loop(#state{parent = Parent,
                     From ! {self(), unknown_oa},
                     loop(S);
                 Ip ->
-                    {ok, Res} = node_serv:get_route_entries(Ip),
+                    {ok, Res} = node_route_serv:get_route_entries(Ip),
                     RouteTable =
                         [{ReOa, Pc, lookup_oa(Nodes, Hops)} ||
                             #route_entry{oa = ReOa,
@@ -217,7 +217,7 @@ loop(#state{parent = Parent,
             AllNeighbours =
                 lists:map(
                   fun({Oa, Ip}) ->
-                          {ok, ActualNodes} = node_serv:get_nodes(Ip),
+                          {ok, ActualNodes} = node_route_serv:get_nodes(Ip),
                           {Oa, [{lookup_oa(Nodes, ActualNode#node.ip),
                                  ActualNode#node.path_cost} ||
                                    ActualNode <- ActualNodes]}
@@ -230,7 +230,7 @@ loop(#state{parent = Parent,
                     From ! {self(), unknown_oa},
                     loop(S);
                 Ip ->
-                    {ok, ActualNodes} = node_serv:get_nodes(Ip),
+                    {ok, ActualNodes} = node_route_serv:get_nodes(Ip),
                     Neighbours =
                         [{lookup_oa(Nodes, ActualNode#node.ip),
                           ActualNode#node.path_cost} ||
@@ -240,7 +240,7 @@ loop(#state{parent = Parent,
             end;
 	{From, enable_recalc} ->
             lists:foreach(fun({_Oa, Ip}) ->
-                                  ok = node_serv:enable_recalc(Ip)
+                                  ok = node_route_serv:enable_recalc(Ip)
                           end, Nodes),
             From ! {self(), ok},
             loop(S);
@@ -250,12 +250,12 @@ loop(#state{parent = Parent,
                     From ! {self(), unknown_oa},
                     loop(S);
                 Ip ->
-                    From ! {self(), node_serv:enable_recalc(Ip)},
+                    From ! {self(), node_route_serv:enable_recalc(Ip)},
                     loop(S)
             end;
 	{From, disable_recalc} ->
             lists:foreach(fun({_Oa, Ip}) ->
-                                  ok = node_serv:disable_recalc(Ip)
+                                  ok = node_route_serv:disable_recalc(Ip)
                           end, Nodes),
             From ! {self(), ok},
             loop(S);
@@ -265,12 +265,12 @@ loop(#state{parent = Parent,
                     From ! {self(), unknown_oa},
                     loop(S);
                 Ip ->
-                    From ! {self(), node_serv:disable_recalc(Ip)},
+                    From ! {self(), node_route_serv:disable_recalc(Ip)},
                     loop(S)
             end;
 	{From, recalc} ->
             lists:foreach(fun({_Oa, Ip}) ->
-                                  ok = node_serv:recalc(Ip)
+                                  ok = node_route_serv:recalc(Ip)
                           end, Nodes),
             From ! {self(), ok},
             loop(S);
@@ -280,7 +280,7 @@ loop(#state{parent = Parent,
                     From ! {self(), unknown_oa},
                     loop(S);
                 Ip ->
-                    From ! {self(), node_serv:recalc(Ip)},
+                    From ! {self(), node_route_serv:recalc(Ip)},
                     loop(S)
             end;
         {From, {get_path_cost, Ip, PeerIp}} when Simulation == true ->
@@ -343,7 +343,7 @@ start_nodes(N) ->
         node_root_sup:start_node(Oa, Na, PublicKey, PrivateKey, true),
     Children = supervisor:which_children(NodeSup),
     {value, {_Id, Ip, _Type, _Modules}} =
-        lists:keysearch(node_serv, 1, Children),
+        lists:keysearch(node_route_serv, 1, Children),
     [{N, Ip}|start_nodes(N-1)].
 
 %%%
@@ -357,7 +357,7 @@ get_global_route_table(Nodes) ->
 get_all_route_entries([]) ->
     [];
 get_all_route_entries([{Oa, Ip}|Rest]) ->
-    {ok, RouteEntries} = node_serv:get_route_entries(Ip),
+    {ok, RouteEntries} = node_route_serv:get_route_entries(Ip),
     [{Oa, Ip, RouteEntries}|get_all_route_entries(Rest)].
 
 merge_route_entries([], _AllRouteEntries) ->

@@ -36,7 +36,7 @@
                         {'error', inet:posix()}.
 
 start_link(Na, PeerNa, NodeSup, NodeTunnelSup) ->
-    {ok, NodeServ} = node_sup:lookup_child(NodeSup, node_serv),
+    {ok, NodeServ} = node_sup:lookup_child(NodeSup, node_route_serv),
     {ok, NodeTunnelRecvServ} =
         node_tunnel_sup:lookup_child(NodeTunnelSup, node_tunnel_recv_serv),
     Args = [self(), Na, PeerNa, NodeServ, NodeTunnelRecvServ],
@@ -86,7 +86,7 @@ init(Parent, {IpAddress, Port} = Na, PeerNa, NodeServ, NodeTunnelRecvServ) ->
     Options = [binary, {ip, IpAddress}, {active, false}],
     case gen_udp:open(Port, Options) of
         {ok, Socket} ->
-            ok = node_serv:handshake(NodeServ, {?MODULE, Na, self()}),
+            ok = node_route_serv:handshake(NodeServ, {?MODULE, Na, self()}),
             ok = node_tunnel_recv_serv:handshake(
                    NodeTunnelRecvServ, {?MODULE, Socket, self()}),
             Parent ! {self(), started},
