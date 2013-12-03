@@ -55,7 +55,7 @@ start_link(Na, PeerNa, NodeSup, NodeTunnelSup) ->
 -spec send(pid(),
            binary() |
            {'ip_packet', noa(), binary()} |
-           #routing_entry{} |
+           #route_entry{} |
            #echo_request{}) ->
                   'ok'.
 
@@ -117,14 +117,14 @@ loop(#state{parent = Parent,
             udp_send(PeerNa, Socket, Cell),
             loop(S);
         % FIXME
-        #routing_entry{noa = {Oa0, Oa1, Oa2, Oa3, Oa4, Oa5, Oa6, Oa7},
+        #route_entry{noa = {Oa0, Oa1, Oa2, Oa3, Oa4, Oa5, Oa6, Oa7},
                        path_cost = Pc, nhops = Hops} ->
             NumberOfHops = length(Hops),
             BinaryHops =
                 ?l2b([<<Na0:8, Na1:8, Na2:8, Na3:8, Port:16>> ||
                          {{Na0, Na1, Na2, Na3}, Port} <- Hops]),
             Cell =
-                <<?ROUTING_ENTRY:4,
+                <<?ROUTE_ENTRY:4,
                   Oa0:16, Oa1:16, Oa2:16, Oa3:16, Oa4:16, Oa5:16, Oa6:16,
                   Oa7:16,
                   Pc:16,

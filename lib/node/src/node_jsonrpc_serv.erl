@@ -33,9 +33,9 @@ start_link({IpAddress, Port}, NodeSup) ->
     jsonrpc_serv:start_link(IpAddress, Port, [],
                             {?MODULE, node_handler, [NodeSup]}).
 
-node_handler(<<"get-routing-entries">>, undefined, NodeSup) ->
-    {ok, Res} = node_serv:get_routing_entries(node_serv(NodeSup)),
-    {ok, [json_routing_entry(Re) || Re <- Res]};
+node_handler(<<"get-route-entries">>, undefined, NodeSup) ->
+    {ok, Res} = node_serv:get_route_entries(node_serv(NodeSup)),
+    {ok, [json_route_entry(Re) || Re <- Res]};
 node_handler(<<"get-nodes">>, undefined, NodeSup) ->
     {ok, Nodes} = node_serv:get_nodes(node_serv(NodeSup)),
     {ok, [json_node(Node) || Node <- Nodes]};
@@ -63,11 +63,11 @@ node_serv(NodeSup) ->
             NodeServ
     end.
 
-json_routing_entry(Re) ->
-    [{<<"oa">>, Re#routing_entry.oa},
-     %%{<<"na">>, encode_na(Re#routing_entry.na)},
-     {<<"path-cost">>, Re#routing_entry.path_cost},
-     {<<"flags">>, Re#routing_entry.flags}].
+json_route_entry(Re) ->
+    [{<<"oa">>, Re#route_entry.oa},
+     %%{<<"na">>, encode_na(Re#route_entry.na)},
+     {<<"path-cost">>, Re#route_entry.path_cost},
+     {<<"flags">>, Re#route_entry.flags}].
 
 %%encode_na({IpAddress, Port}) ->
 %%    ?l2b([net_tools:string_address(IpAddress), ":", ?i2l(Port)]).

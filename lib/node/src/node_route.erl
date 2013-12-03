@@ -4,8 +4,8 @@
 -export([create_node_db/0, delete_node_db/1, add_node/2, delete_node/2,
          get_nodes/1, foreach_node/2, is_member_node/2, unreachable_nodes/1,
          add_send_serv/3, lookup_send_serv/3]).
--export([create_routing_db/0, delete_routing_db/1, get_routing_entries/1,
-         foreach_routing_entry/2, update_routing_entry/2]).
+-export([create_route_db/0, delete_route_db/1, get_route_entries/1,
+         foreach_route_entry/2, update_route_entry/2]).
 -export([recalc/3]).
 -export([update_path_cost/3, update_path_costs/3]).
 
@@ -23,7 +23,7 @@
 
 %%% types
 -type foreach_node_fun() :: fun((#node{}) -> any()).
--type foreach_routing_entry_fun() :: fun((#routing_entry{}) -> any()).
+-type foreach_route_entry_fun() :: fun((#route_entry{}) -> any()).
 
 %%%
 %%% exported: create_node_db
@@ -125,12 +125,12 @@ add_send_serv(NodeDb, PeerNa, NodeTunnelSendServ) ->
 %%% exported: lookup_send_serv
 %%%
 
--spec lookup_send_serv(node_db(), routing_db(), noa()) ->
+-spec lookup_send_serv(node_db(), route_db(), noa()) ->
                               {'ok', pid()} | {'error', 'not_found'}.
 
-lookup_send_serv(NodeDb, RoutingDb, Oa) ->
-    case ets:lookup(RoutingDb, Oa) of
-        [#routing_entry{na = Na}] ->
+lookup_send_serv(NodeDb, RouteDb, Oa) ->
+    case ets:lookup(RouteDb, Oa) of
+        [#route_entry{na = Na}] ->
             case ets:lookup(NodeDb, Na) of
                 [#node{send_serv = NodeTunnelSendServ}] ->
                     {ok, NodeTunnelSendServ};
@@ -142,86 +142,83 @@ lookup_send_serv(NodeDb, RoutingDb, Oa) ->
     end.
 
 %%%
-%%% exported: create_routing_db
+%%% exported: create_route_db
 %%%
 
--spec create_routing_db() -> {'ok', routing_db()}.
+-spec create_route_db() -> {'ok', route_db()}.
 
-create_routing_db() ->
-    {ok, ets:new(routing_db, [{keypos, 2}, {read_concurrency, true}])}.
+create_route_db() ->
+    {ok, ets:new(route_db, [{keypos, 2}, {read_concurrency, true}])}.
 
 %%%
-%%% exported: delete_routing_db
+%%% exported: delete_route_db
 %%%
 	
--spec delete_routing_db(routing_db()) -> 'ok'.
+-spec delete_route_db(route_db()) -> 'ok'.
 
-delete_routing_db(RoutingDb) ->
-    true = ets:delete(RoutingDb),
+delete_route_db(RouteDb) ->
+    true = ets:delete(RouteDb),
     ok.
 
 %%%
-%%% exported: get_routing_entries
+%%% exported: get_route_entries
 %%%
 
--spec get_routing_entries(routing_db()) -> {'ok', [#routing_entry{}]}.
+-spec get_route_entries(route_db()) -> {'ok', [#route_entry{}]}.
 
-get_routing_entries(RoutingDb) ->
-    Res = ets:foldl(fun(Re, Acc) -> [Re|Acc] end, [], RoutingDb),
+get_route_entries(RouteDb) ->
+    Res = ets:foldl(fun(Re, Acc) -> [Re|Acc] end, [], RouteDb),
     {ok, Res}.
 
 %%%
-%%% exported: foreach_routing_entry
+%%% exported: foreach_route_entry
 %%%
 
--spec foreach_routing_entry(foreach_routing_entry_fun(), routing_db()) ->
-                                   any().
+-spec foreach_route_entry(foreach_route_entry_fun(), route_db()) -> any().
 
-foreach_routing_entry(Fun, RoutingDb) ->
+foreach_route_entry(Fun, RouteDb) ->
     ets:foldl(fun(Re, []) ->
                       Fun(Re),
                       []
-              end, [], RoutingDb).
+              end, [], RouteDb).
 
 %%%
-%%% exported: update_routing_entry
+%%% exported: update_route_entry
 %%%
 
--spec update_routing_entry(routing_db(), #routing_entry{}) ->
-                                  {'updated', #routing_entry{}} |
-                                  {'kept', #routing_entry{}} |
+-spec update_route_entry(route_db(), #route_entry{}) ->
+                                  {'updated', #route_entry{}} |
+                                  {'kept', #route_entry{}} |
                                   'got_new' |
-                                  {'got_better', #routing_entry{}} |
-                                  {'got_worse', #routing_entry{}}.
+                                  {'got_better', #route_entry{}} |
+                                  {'got_worse', #route_entry{}}.
 
-update_routing_entry(RoutingDb,
-                     #routing_entry{oa = ReOa, ip = ReIp, path_cost = RePc,
-                                    flags = ReFlags} = Re) ->
-    case ets:lookup(RoutingDb, ReOa) of
-        %% existing routing entry got new path cost
-        [#routing_entry{ip = ReIp, path_cost = CurrentPc} = CurrentRe]
+update_route_entry(RouteDb,
+                   #route_entry{oa = ReOa, ip = ReIp, path_cost = RePc,
+                                flags = ReFlags} = Re) ->
+    case ets:lookup(RouteDb, ReOa) of
+        %% existing route entry got new path cost
+        [#route_entry{ip = ReIp, path_cost = CurrentPc} = CurrentRe]
           when RePc /= CurrentPc ->
 	    UpdatedFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
 	    true =
-                ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
+                ets:insert(RouteDb, Re#route_entry{flags = UpdatedFlags}),
             {updated, CurrentRe};
-        %% existing routing entry not changed (same path cost as before)
-        [#routing_entry{ip = ReIp} = CurrentRe] ->
+        %% existing route entry not changed (same path cost as before)
+        [#route_entry{ip = ReIp} = CurrentRe] ->
             {kept, CurrentRe};
-        %% new routing entry
+        %% new route entry
         [] ->
             UpdatedFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
-            true =
-                ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
+            true = ets:insert(RouteDb, Re#route_entry{flags = UpdatedFlags}),
             got_new;
-        %% better routing entry
-        [#routing_entry{path_cost = Pc} = CurrentRe]
+        %% better route entry
+        [#route_entry{path_cost = Pc} = CurrentRe]
           when RePc /= -1 andalso RePc < Pc ->
 	    UpdatedFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
-	    true =
-                ets:insert(RoutingDb, Re#routing_entry{flags = UpdatedFlags}),
+	    true = ets:insert(RouteDb, Re#route_entry{flags = UpdatedFlags}),
             {got_better, CurrentRe};
-        %% worse routing entry
+        %% worse route entry
         [CurrentRe] ->
             {got_worse, CurrentRe}
     end.
@@ -230,48 +227,48 @@ update_routing_entry(RoutingDb,
 %%% exported: recalc
 %%%
 
--spec recalc(ip(), node_db(), routing_db()) -> 'ok'.
+-spec recalc(ip(), node_db(), route_db()) -> 'ok'.
 
-recalc(Ip, NodeDb, RoutingDb) ->
-    touch_routing_entries(NodeDb, RoutingDb),
-    propagate_routing_entries(Ip, NodeDb, RoutingDb),
+recalc(Ip, NodeDb, RouteDb) ->
+    touch_route_entries(NodeDb, RouteDb),
+    propagate_route_entries(Ip, NodeDb, RouteDb),
     clear_node_flags(NodeDb),
-    clear_routing_entry_flags(RoutingDb),
-    true = ets:match_delete(RoutingDb, #routing_entry{path_cost = -1, _ = '_'}),
+    clear_route_entry_flags(RouteDb),
+    true = ets:match_delete(RouteDb, #route_entry{path_cost = -1, _ = '_'}),
     ok.
 
-touch_routing_entries(NodeDb, RoutingDb) ->
+touch_route_entries(NodeDb, RouteDb) ->
     foreach_node(
       fun(#node{ip = Ip, flags = Flags})
             when ?bit_is_set(Flags, ?F_NODE_UPDATED) ->
-              foreach_routing_entry(
-                fun(#routing_entry{ip = ReIp, flags = ReFlags} = Re)
+              foreach_route_entry(
+                fun(#route_entry{ip = ReIp, flags = ReFlags} = Re)
                       when ReIp == Ip ->
                         UpdatedReFlags = ?bit_set(ReFlags, ?F_RE_UPDATED),
-                        true = ets:insert(RoutingDb,
-                                          Re#routing_entry{
+                        true = ets:insert(RouteDb,
+                                          Re#route_entry{
                                             flags = UpdatedReFlags});
                    (_) ->
                         ok
-                end, RoutingDb);
+                end, RouteDb);
          (_) ->
               ok
       end, NodeDb).
 
-propagate_routing_entries(Ip, NodeDb, RoutingDb) ->
+propagate_route_entries(Ip, NodeDb, RouteDb) ->
     foreach_node(
       fun(Node) ->
-              send_routing_entries(Ip, RoutingDb, Node)
+              send_route_entries(Ip, RouteDb, Node)
       end, NodeDb).
 
-send_routing_entries(Ip, RoutingDb, #node{ip = PeerIp,
-                                          path_cost = PeerPc,
-                                          flags = PeerFlags}) ->
-    foreach_routing_entry(
-      fun(#routing_entry{ip = ReIp,
-                         path_cost = RePc,
-                         flags = ReFlags,
-                         hops = Hops} = Re) ->
+send_route_entries(Ip, RouteDb, #node{ip = PeerIp,
+                                      path_cost = PeerPc,
+                                      flags = PeerFlags}) ->
+    foreach_route_entry(
+      fun(#route_entry{ip = ReIp,
+                       path_cost = RePc,
+                       flags = ReFlags,
+                       hops = Hops} = Re) ->
               if
                   PeerIp /= ReIp andalso
                   PeerPc /= undefined andalso
@@ -284,18 +281,18 @@ send_routing_entries(Ip, RoutingDb, #node{ip = PeerIp,
                               UpdatedPc = RePc+PeerPc
                       end,
                       UpdatedRe =
-                          Re#routing_entry{
+                          Re#route_entry{
                             ip = Ip,
                             path_cost = UpdatedPc,
                             hops = [Ip|Hops]
                             %% patrik: increment psp?
                             %%psp = ...
                            },
-                      ok = node_serv:routing_entry(PeerIp, UpdatedRe);
+                      ok = node_serv:route_entry(PeerIp, UpdatedRe);
                   true ->
                       ok
               end
-      end, RoutingDb).
+      end, RouteDb).
 
 clear_node_flags(NodeDb) ->
     foreach_node(
@@ -309,16 +306,15 @@ clear_node_flags(NodeDb) ->
               ok
       end, NodeDb).
 
-clear_routing_entry_flags(RoutingDb) ->
-    foreach_routing_entry(
-      fun(#routing_entry{flags = Flags} = Re)
+clear_route_entry_flags(RouteDb) ->
+    foreach_route_entry(
+      fun(#route_entry{flags = Flags} = Re)
             when ?bit_is_set(Flags, ?F_RE_UPDATED) ->
               UpdatedFlags = ?bit_clr(Flags, ?F_RE_UPDATED),
-              true = ets:insert(RoutingDb,
-                                Re#routing_entry{flags = UpdatedFlags});
+              true = ets:insert(RouteDb, Re#route_entry{flags = UpdatedFlags});
          (_) ->
               ok
-      end, RoutingDb).
+      end, RouteDb).
 
 %%%
 %%% exported: update_path_cost
@@ -343,15 +339,15 @@ update_path_cost(NodeDb, PeerIp, UpdatedPc) ->
 %%% exported: update_path_costs
 %%%
 
--spec update_path_costs(routing_db(), ip(), path_cost()) -> ok.
+-spec update_path_costs(route_db(), ip(), path_cost()) -> ok.
 
-update_path_costs(RoutingDb, PeerIp, UpdatedPc) ->
-    foreach_routing_entry(
-      fun(#routing_entry{ip = ReIp} = Re) when ReIp == PeerIp ->
-              UpdatedFlags = ?bit_set(Re#routing_entry.flags, ?F_RE_UPDATED),
-              true = ets:insert(RoutingDb,
-                                Re#routing_entry{path_cost = UpdatedPc,
-                                                 flags = UpdatedFlags});
+update_path_costs(RouteDb, PeerIp, UpdatedPc) ->
+    foreach_route_entry(
+      fun(#route_entry{ip = ReIp} = Re) when ReIp == PeerIp ->
+              UpdatedFlags = ?bit_set(Re#route_entry.flags, ?F_RE_UPDATED),
+              true = ets:insert(RouteDb,
+                                Re#route_entry{path_cost = UpdatedPc,
+                                               flags = UpdatedFlags});
          (_) ->
               ok
-      end, RoutingDb).
+      end, RouteDb).

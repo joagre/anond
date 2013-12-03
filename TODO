@@ -1,8 +1,9 @@
 node_serv.erl
 -------------
 * Integrate with Patrik's loop detection and path cost library.
-* Rename #node_routing{} to #node_route{}.
 * Rename node_serv.erl to node_route_serv.erl
+* Rename node_root_sup.erl to node_sup.erl
+* Rename node_sup.erl to node_sup.erl
 
 node_route_jsonrpc_serv.erl
 ---------------------------

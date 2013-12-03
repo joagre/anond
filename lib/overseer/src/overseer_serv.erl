@@ -2,7 +2,7 @@
 
 %%% external exports
 -export([start_link/0, stop/0, stop/1]).
--export([get_global_routing_table/0, get_routing_table/1]).
+-export([get_global_route_table/0, get_route_table/1]).
 -export([get_neighbours/0, get_neighbours/1]).
 -export([enable_recalc/0, enable_recalc/1, disable_recalc/0, disable_recalc/1]).
 -export([recalc/0, recalc/1]).
@@ -34,8 +34,8 @@
 	 }).
 
 %%% types
--type global_routing_table() :: [{oa(), {oa(), path_cost(), [oa()]}}].
--type routing_table() :: [{oa(), path_cost(), [oa()]}].
+-type global_route_table() :: [{oa(), {oa(), path_cost(), [oa()]}}].
+-type route_table() :: [{oa(), path_cost(), [oa()]}].
 -type neighbours() :: [{oa(), path_cost()}].
 
 %%%
@@ -70,22 +70,22 @@ stop(Timeout) ->
     serv:call(?MODULE, stop, Timeout).
 
 %%%
-%%% exported: get_global_routing_table
+%%% exported: get_global_route_table
 %%%
 
--spec get_global_routing_table() -> global_routing_table().
+-spec get_global_route_table() -> global_route_table().
 
-get_global_routing_table() ->
-    serv:call(?MODULE, get_global_routing_table).
+get_global_route_table() ->
+    serv:call(?MODULE, get_global_route_table).
 
 %%%
-%%% exported: get_routing_table
+%%% exported: get_route_table
 %%%
 
--spec get_routing_table(oa()) -> {'ok', routing_table()} | 'unknown_oa'.
+-spec get_route_table(oa()) -> {'ok', route_table()} | 'unknown_oa'.
 
-get_routing_table(Oa) ->
-    serv:call(?MODULE, {get_routing_table, Oa}).
+get_route_table(Oa) ->
+    serv:call(?MODULE, {get_route_table, Oa}).
 
 %%%
 %%% exported: get_neighbours
@@ -195,22 +195,22 @@ loop(#state{parent = Parent,
             loop(read_config(S));
 	{From, stop} ->
 	    From ! {self(), ok};
-	{From, get_global_routing_table} ->
-	    From ! {self(), get_global_routing_table(Nodes)},
+	{From, get_global_route_table} ->
+	    From ! {self(), get_global_route_table(Nodes)},
 	    loop(S);
-	{From, {get_routing_table, Oa}} ->
+	{From, {get_route_table, Oa}} ->
             case lookup_ip(Nodes, Oa) of
                 unknown_oa ->
                     From ! {self(), unknown_oa},
                     loop(S);
                 Ip ->
-                    {ok, Res} = node_serv:get_routing_entries(Ip),
-                    RoutingTable =
+                    {ok, Res} = node_serv:get_route_entries(Ip),
+                    RouteTable =
                         [{ReOa, Pc, lookup_oa(Nodes, Hops)} ||
-                            #routing_entry{oa = ReOa,
+                            #route_entry{oa = ReOa,
                                            path_cost = Pc,
                                            hops = Hops} <- Res],
-                    From ! {self(), {ok, RoutingTable}},
+                    From ! {self(), {ok, RouteTable}},
                     loop(S)
             end;
 	{From, get_neighbours} ->
@@ -347,47 +347,47 @@ start_nodes(N) ->
     [{N, Ip}|start_nodes(N-1)].
 
 %%%
-%%% get_global_routing_table
+%%% get_global_route_table
 %%%
 
-get_global_routing_table(Nodes) ->
-    AllRoutingEntries = get_all_routing_entries(Nodes),
-    merge_routing_entries(AllRoutingEntries, AllRoutingEntries).
+get_global_route_table(Nodes) ->
+    AllRouteEntries = get_all_route_entries(Nodes),
+    merge_route_entries(AllRouteEntries, AllRouteEntries).
 
-get_all_routing_entries([]) ->
+get_all_route_entries([]) ->
     [];
-get_all_routing_entries([{Oa, Ip}|Rest]) ->
-    {ok, RoutingEntries} = node_serv:get_routing_entries(Ip),
-    [{Oa, Ip, RoutingEntries}|get_all_routing_entries(Rest)].
+get_all_route_entries([{Oa, Ip}|Rest]) ->
+    {ok, RouteEntries} = node_serv:get_route_entries(Ip),
+    [{Oa, Ip, RouteEntries}|get_all_route_entries(Rest)].
 
-merge_routing_entries([], _AllRoutingEntries) ->
+merge_route_entries([], _AllRouteEntries) ->
     [];
-merge_routing_entries([{Oa, _Ip, RoutingEntries}|Rest], AllRoutingEntries) ->
-    [traverse_each_destination(Oa, RoutingEntries, AllRoutingEntries)|
-     merge_routing_entries(Rest, AllRoutingEntries)].
+merge_route_entries([{Oa, _Ip, RouteEntries}|Rest], AllRouteEntries) ->
+    [traverse_each_destination(Oa, RouteEntries, AllRouteEntries)|
+     merge_route_entries(Rest, AllRouteEntries)].
 
-traverse_each_destination(_FromOa, [], _AllRoutingEntries) ->
+traverse_each_destination(_FromOa, [], _AllRouteEntries) ->
     [];
-traverse_each_destination(Oa, [#routing_entry{oa = Oa}|Rest],
-                          AllRoutingEntries) ->
-    traverse_each_destination(Oa, Rest, AllRoutingEntries);
-traverse_each_destination(FromOa, [#routing_entry{oa = ToOa, ip = Ip,
+traverse_each_destination(Oa, [#route_entry{oa = Oa}|Rest],
+                          AllRouteEntries) ->
+    traverse_each_destination(Oa, Rest, AllRouteEntries);
+traverse_each_destination(FromOa, [#route_entry{oa = ToOa, ip = Ip,
                                                   path_cost = Pc}|Rest],
-                          AllRoutingEntries) ->
-    OaTrail = walk_to_destination(ToOa, Ip, AllRoutingEntries, []),
+                          AllRouteEntries) ->
+    OaTrail = walk_to_destination(ToOa, Ip, AllRouteEntries, []),
     [{FromOa, ToOa, Pc, OaTrail}|
-     traverse_each_destination(FromOa, Rest, AllRoutingEntries)].
+     traverse_each_destination(FromOa, Rest, AllRouteEntries)].
 
-walk_to_destination(ToOa, Ip, AllRoutingEntries, Acc) ->
-    case lists:keysearch(Ip, 2, AllRoutingEntries) of
+walk_to_destination(ToOa, Ip, AllRouteEntries, Acc) ->
+    case lists:keysearch(Ip, 2, AllRouteEntries) of
         false ->
             [];
-        {value, {NextOa, Ip, RoutingEntries}} ->
-            case lists:keysearch(ToOa, 2, RoutingEntries) of
-                {value, #routing_entry{oa = ToOa, path_cost = 0}} ->
+        {value, {NextOa, Ip, RouteEntries}} ->
+            case lists:keysearch(ToOa, 2, RouteEntries) of
+                {value, #route_entry{oa = ToOa, path_cost = 0}} ->
                     lists:reverse([NextOa|Acc]);
-                {value, #routing_entry{oa = ToOa, ip = NextIp}} ->
-                    walk_to_destination(ToOa, NextIp, AllRoutingEntries,
+                {value, #route_entry{oa = ToOa, ip = NextIp}} ->
+                    walk_to_destination(ToOa, NextIp, AllRouteEntries,
                                         [NextOa|Acc]);
                 false ->
                     []

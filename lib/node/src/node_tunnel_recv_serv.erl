@@ -25,7 +25,7 @@
           peer_na               :: na(),
           node_serv             :: pid(),
           node_db               :: node_db(),
-          routing_db            :: routing_db(),
+          route_db            :: route_db(),
           node_path_cost_serv   :: pid(),
           tun_device            :: pid(),
           socket                :: gen_udp:socket(),
@@ -87,12 +87,12 @@ handshake(NodeTunnelRecvServ,
 %%%
 
 init(Parent, Oa, Na, PeerNa, NodeServ, NodePathCostServ, _NodeTunServ) ->
-    {ok, NodeDb, RoutingDb} = node_serv:handshake(NodeServ, ?MODULE),
+    {ok, NodeDb, RouteDb} = node_serv:handshake(NodeServ, ?MODULE),
 %    {ok, TunDevice} = node_tun_serv:handshake(NodeTunServ, ?MODULE),
     TunDevice = self(),
     Parent ! {self(), started},
     loop(#state{parent = Parent, oa = Oa, na = Na, peer_na = PeerNa,
-                node_serv = NodeServ, node_db = NodeDb, routing_db = RoutingDb,
+                node_serv = NodeServ, node_db = NodeDb, route_db = RouteDb,
                 node_path_cost_serv = NodePathCostServ,
                 tun_device = TunDevice}).
 
@@ -115,7 +115,7 @@ loop(#state{parent = Parent,
     end.
 
 receiver(#state{node_db = NodeDb,
-                routing_db = RoutingDb,
+                route_db = RouteDb,
                 oa = {Oa0, Oa1, Oa2, Oa3, Oa4, Oa5, Oa6, Oa7},
                 peer_na = {PeerIpAddress, PeerPort},
                 node_serv = NodeServ,
@@ -139,7 +139,7 @@ receiver(#state{node_db = NodeDb,
                 _IpPacket/binary>> = Cell}} ->
             Oa = {A0, A1, A2, A3, A4, A5, A6, A7},
             %% is this too expensive? angst!!!
-            case node_route:lookup_send_serv(NodeDb, RoutingDb, Oa) of
+            case node_route:lookup_send_serv(NodeDb, RouteDb, Oa) of
                 {ok, NodeTunnelSendServ} ->
                     ok = node_tunnel_send_serv:send(NodeTunnelSendServ, Cell),
                     receiver(S);
@@ -147,22 +147,22 @@ receiver(#state{node_db = NodeDb,
                     ?error_log({lookup_send_serv, Oa, Reason}),
                     receiver(S)
             end;
-        %% send routing entry to node_serv
+        %% send route entry to node_serv
         {ok, {PeerIpAddress, PeerPort,
-              <<?ROUTING_ENTRY:4,
+              <<?ROUTE_ENTRY:4,
                 A0:16, A1:16, A2:16, A3:16, A4:16, A5:16, A6:16, A7:16,
                 Pc:16,
                 _NumberOfHops:4,
                 BinaryHops/binary>>}} ->
             Oa = {A0, A1, A2, A3, A4, A5, A6, A7},
             Hops = mk_hops(BinaryHops),
-            Re = #routing_entry{
+            Re = #route_entry{
 % FIXME
 %              oa = Oa,
               na = {PeerIpAddress, PeerPort},
               path_cost = Pc,
               hops = Hops},
-            ok = node_serv:routing_entry(NodeServ, Re),
+            ok = node_serv:route_entry(NodeServ, Re),
             receiver(S);
         %% reply to echo request
         {ok, {PeerIpAddress, PeerPort,

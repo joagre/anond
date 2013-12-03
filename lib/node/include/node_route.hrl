@@ -3,9 +3,9 @@
 
 -include_lib("node/include/node.hrl").
 
--type routing_db() :: ets:tid().
+-type route_db() :: ets:tid().
 
--record(routing_entry, {
+-record(route_entry, {
 	  oa        :: oa() | '_',
           noa       :: noa() | '_', %% should replace oa
 	  ip        :: ip() | '_',  % replace with na
