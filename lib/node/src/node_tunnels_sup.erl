@@ -35,10 +35,10 @@ start_link() ->
 -spec start_tunnel(oa(), na(), na(), supervisor:sup_ref()) ->
                           supervisor:startchild_ret().
 
-start_tunnel(Oa, Na, PeerNa, NodeSup) ->
+start_tunnel(Oa, Na, PeerNa, NodeInstanceSup) ->
     Id = {node_tunnel_sup, erlang:now()},
     NodeTunnelSupChildSpec =
-        {Id, {node_tunnel_sup, start_link, [Oa, Na, PeerNa, NodeSup]},
+        {Id, {node_tunnel_sup, start_link, [Oa, Na, PeerNa, NodeInstanceSup]},
          permanent, infinity, supervisor, [node_tunnel_sup]},
     supervisor:start_child(?MODULE, NodeTunnelSupChildSpec).
 

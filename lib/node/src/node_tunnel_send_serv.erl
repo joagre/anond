@@ -35,8 +35,8 @@
                         {'ok', pid()} |
                         {'error', inet:posix()}.
 
-start_link(Na, PeerNa, NodeSup, NodeTunnelSup) ->
-    {ok, NodeRouteServ} = node_sup:lookup_child(NodeSup, node_route_serv),
+start_link(Na, PeerNa, NodeInstanceSup, NodeTunnelSup) ->
+    {ok, NodeRouteServ} = node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
     {ok, NodeTunnelRecvServ} =
         node_tunnel_sup:lookup_child(NodeTunnelSup, node_tunnel_recv_serv),
     Args = [self(), Na, PeerNa, NodeRouteServ, NodeTunnelRecvServ],

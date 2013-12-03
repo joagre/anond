@@ -41,11 +41,11 @@
 
 -spec start_link(noa(), na(), na(), supervisor:sup_ref()) -> {'ok', pid()}.
 
-start_link(Oa, Na, PeerNa, NodeSup) ->
-    {ok, NodeRouteServ} = node_sup:lookup_child(NodeSup, node_route_serv),
+start_link(Oa, Na, PeerNa, NodeInstanceSup) ->
+    {ok, NodeRouteServ} = node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
     {ok, NodePathCostServ} =
-        node_sup:lookup_child(NodeSup, node_path_cost_serv),
-    {ok, NodeTunServ} = node_sup:lookup_child(NodeSup, node_tun_serv),
+        node_instance_sup:lookup_child(NodeInstanceSup, node_path_cost_serv),
+    {ok, NodeTunServ} = node_instance_sup:lookup_child(NodeInstanceSup, node_tun_serv),
     Args = [self(), Oa, Na, PeerNa, NodeRouteServ, NodePathCostServ, NodeTunServ],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive

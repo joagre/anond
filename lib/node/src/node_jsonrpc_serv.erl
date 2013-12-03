@@ -25,38 +25,38 @@
 
 -spec start_link(na(), supervisor:sup_ref()) -> {ok, pid()}.
 
-start_link({IpAddress, Port}, NodeSup) ->
-    %% I would prefer to use NodeRouteServ instead of NodeSup as handler
+start_link({IpAddress, Port}, NodeInstanceSup) ->
+    %% I would prefer to use NodeRouteServ instead of NodeInstanceSup as handler
     %% argument but asking for it here would mean a deadlock. I could
     %% add support for some sort of delayed prcoessing in tcp_serv.erl 
     %% but I will not.
     jsonrpc_serv:start_link(IpAddress, Port, [],
-                            {?MODULE, node_handler, [NodeSup]}).
+                            {?MODULE, node_handler, [NodeInstanceSup]}).
 
-node_handler(<<"get-route-entries">>, undefined, NodeSup) ->
-    {ok, Res} = node_route_serv:get_route_entries(node_route_serv(NodeSup)),
+node_handler(<<"get-route-entries">>, undefined, NodeInstanceSup) ->
+    {ok, Res} = node_route_serv:get_route_entries(node_route_serv(NodeInstanceSup)),
     {ok, [json_route_entry(Re) || Re <- Res]};
-node_handler(<<"get-nodes">>, undefined, NodeSup) ->
-    {ok, Nodes} = node_route_serv:get_nodes(node_route_serv(NodeSup)),
+node_handler(<<"get-nodes">>, undefined, NodeInstanceSup) ->
+    {ok, Nodes} = node_route_serv:get_nodes(node_route_serv(NodeInstanceSup)),
     {ok, [json_node(Node) || Node <- Nodes]};
-node_handler(<<"enable-recalc">>, undefined, NodeSup) ->
-    ok = node_route_serv:enable_recalc(node_route_serv(NodeSup)),
+node_handler(<<"enable-recalc">>, undefined, NodeInstanceSup) ->
+    ok = node_route_serv:enable_recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
-node_handler(<<"disable-recalc">>, undefined, NodeSup) ->
-    ok = node_route_serv:disable_recalc(node_route_serv(NodeSup)),
+node_handler(<<"disable-recalc">>, undefined, NodeInstanceSup) ->
+    ok = node_route_serv:disable_recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
-node_handler(<<"recalc">>, undefined, NodeSup) ->
-    ok = node_route_serv:recalc(node_route_serv(NodeSup)),
+node_handler(<<"recalc">>, undefined, NodeInstanceSup) ->
+    ok = node_route_serv:recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
-node_handler(Method, Params, _NodeSup) ->
+node_handler(Method, Params, _NodeInstanceSup) ->
     ?error_log({invalid_request, Method, Params}),
     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
     {error, JsonError}.
 
-node_route_serv(NodeSup) ->
+node_route_serv(NodeInstanceSup) ->
     case get(node_route_serv) of
         undefined ->
-            {ok, NodeRouteServ} = node_sup:lookup_child(NodeSup, node_route_serv),
+            {ok, NodeRouteServ} = node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
             put(node_route_serv, NodeRouteServ),
             NodeRouteServ;
         NodeRouteServ ->

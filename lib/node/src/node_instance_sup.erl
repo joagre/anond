@@ -1,4 +1,4 @@
--module(node_sup).
+-module(node_instance_sup).
 -behaviour(supervisor).
 
 %%% external exports
@@ -39,8 +39,8 @@ start_link(Oa, Na, PublicKey, PrivateKey, AutoRecalc) ->
                           {'ok', supervisor:child()} |
                           {'error', 'not_found'}.
 
-lookup_child(NodeSup, Id) ->
-    Children = supervisor:which_children(NodeSup),
+lookup_child(NodeInstanceSup, Id) ->
+    Children = supervisor:which_children(NodeInstanceSup),
     case lists:keysearch(Id, 1, Children) of
         {value, {Id, Child, _Type, _Modules}} ->
             {ok, Child};

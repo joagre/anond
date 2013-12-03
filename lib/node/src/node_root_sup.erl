@@ -37,12 +37,12 @@ start_link([]) ->
                         supervisor:startchild_ret().
 
 start_node(Oa, Na, PublicKey, PrivateKey, AutoRecalc) ->
-    Id = {node_sup, erlang:now()},
-    NodeSupChildSpec =
-        {Id, {node_sup, start_link,
+    Id = {node_instance_sup, erlang:now()},
+    NodeInstanceSupChildSpec =
+        {Id, {node_instance_sup, start_link,
               [Oa, Na, PublicKey, PrivateKey, AutoRecalc]},
-         permanent, infinity, supervisor, [node_sup]},
-    supervisor:start_child(?MODULE, NodeSupChildSpec).
+         permanent, infinity, supervisor, [node_instance_sup]},
+    supervisor:start_child(?MODULE, NodeInstanceSupChildSpec).
 
 %%%
 %%% exported: init

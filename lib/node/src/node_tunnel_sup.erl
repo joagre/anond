@@ -26,8 +26,8 @@
 -spec start_link(noa(), na(), na(), supervisor:sup_ref()) ->
                         supervisor:startlink_ret().
 
-start_link(Oa, Na, PeerNa, NodeSup) ->
-    supervisor:start_link(?MODULE, [Oa, Na, PeerNa, NodeSup]).
+start_link(Oa, Na, PeerNa, NodeInstanceSup) ->
+    supervisor:start_link(?MODULE, [Oa, Na, PeerNa, NodeInstanceSup]).
 
 %%%
 %%% exported: lookup_child
@@ -50,16 +50,16 @@ lookup_child(Sup, Id) ->
 %%% exported: init
 %%%
 
-init([Oa, Na, PeerNa, NodeSup]) ->
+init([Oa, Na, PeerNa, NodeInstanceSup]) ->
     NodeTunnelRecvServChildSpec =
         {node_tunnel_recv_serv,
          {node_tunnel_recv_serv, start_link,
-          [Oa, Na, PeerNa, NodeSup]},
+          [Oa, Na, PeerNa, NodeInstanceSup]},
          permanent, 10000, worker, [node_tunnel_recv_serv]},
     NodeTunnelSendServChildSpec =
         {node_tunnel_send_serv,
          {node_tunnel_send_serv, start_link,
-          [Na, PeerNa, NodeSup, self()]},
+          [Na, PeerNa, NodeInstanceSup, self()]},
          permanent, 10000, worker, [node_tunnel_send_serv]},
     {ok, {{rest_for_one, 3, 10},
           [NodeTunnelRecvServChildSpec, NodeTunnelSendServChildSpec]}}.

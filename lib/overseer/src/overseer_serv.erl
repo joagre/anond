@@ -339,9 +339,9 @@ start_nodes(N) ->
     PrivateKey = <<"baz">>,
     Oa = {1,1,1,1,1,1,1,N},
     Na = {{0,0,0,0}, 50000+N},
-    {ok, NodeSup} =
+    {ok, NodeInstanceSup} =
         node_root_sup:start_node(Oa, Na, PublicKey, PrivateKey, true),
-    Children = supervisor:which_children(NodeSup),
+    Children = supervisor:which_children(NodeInstanceSup),
     {value, {_Id, Ip, _Type, _Modules}} =
         lists:keysearch(node_route_serv, 1, Children),
     [{N, Ip}|start_nodes(N-1)].
