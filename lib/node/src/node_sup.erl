@@ -52,13 +52,16 @@ lookup_child(NodeSup, Id) ->
 %%% exported: init
 %%%
 
-init([Oa, _Na, PublicKey, PrivateKey, AutoRecalc]) ->
+init([Oa, Na, PublicKey, PrivateKey, AutoRecalc]) ->
     {1,1,1,1,1,1,1,N} = Oa, %% FIXME!!!
     NodeServChildSpec =
         {node_serv,
-         {node_serv, start_link,
-          [N, PublicKey, PrivateKey, AutoRecalc]},
-         permanent, 10000, supervisor, [node_serv]},
+         {node_serv, start_link, [N, PublicKey, PrivateKey, AutoRecalc]},
+         permanent, 10000, worker, [node_serv]},
+    NodeJsonrpcServChildSpec =
+        {node_jsonrpc_serv,
+         {node_jsonrpc_serv, start_link, [Na, self()]},
+         permanent, 10000, worker, [node_jsonrpc_serv]},
 %    NodePathCostChildSpec =
 %        {node_path_cost_serv,
 %         {node_path_cost_serv, start_link,
@@ -73,4 +76,5 @@ init([Oa, _Na, PublicKey, PrivateKey, AutoRecalc]) ->
         {node_tunnels_sup, {node_tunnels_sup, start_link, []},
          permanent, infinity, supervisor, [node_tunnels_sup]},
     {ok, {{rest_for_one, 3, 10},
-          [NodeServChildSpec, NodeTunnelsSupChildSpec]}}.
+          [NodeServChildSpec, NodeTunnelsSupChildSpec,
+           NodeJsonrpcServChildSpec]}}.

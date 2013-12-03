@@ -170,7 +170,7 @@ loop(#state{parent = Parent,
             ?daemon_log("Looking for stale peers...", []),
             StaleNas =
                 ets:foldl(
-                  fun(#peer{na = Na, last_updated = LastUpdated}, Acc) ->
+                  fun(#peer{ip = Na, last_updated = LastUpdated}, Acc) ->
                           Delta = timelib:ugnow_delta({minus, LastUpdated}),
                           if
                               Delta > PeerTTL ->
@@ -210,7 +210,7 @@ loop(#state{parent = Parent,
             ?daemon_log("~w simulated peers returned: ~w",
                         [length(SimulatedOas), SimulatedOas]),
             From ! {self(), {ok, SimulatedPeers}},
-	    loop(S);
+            loop(S);
         {From, {get_random_peers, MyNa, N}} when is_integer(N) ->
             case ets:info(PeerDb, size) of
                 Size when N >= Size ->
@@ -227,7 +227,7 @@ loop(#state{parent = Parent,
                     From ! {self(), {ok, RandomPeers}},
                     loop(S)
             end;
-        {From, {publish_peer, #peer{na = Na} = Peer}} ->
+        {From, {publish_peer, #peer{ip = Na} = Peer}} ->
             UpdatedPeer = Peer#peer{last_updated = timelib:ugnow()},
             true = ets:insert(PeerDb, UpdatedPeer),
             ?daemon_log("Peer ~w published.", [Na]),

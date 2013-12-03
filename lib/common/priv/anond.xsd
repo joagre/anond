@@ -9,7 +9,7 @@
         
         <!-- node -->
         
-	<xs:element name="node">
+	<xs:element minOccurs="0" maxOccurs="unbounded" name="node">
 	  <xs:complexType>
 	    <xs:all>
               <xs:element name="number-of-peers" type="xs:positiveInteger"/> 
@@ -22,7 +22,7 @@
         
         <!-- directory-server -->
         
-	<xs:element name="directory-server">
+	<xs:element minOccurs="0" name="directory-server">
 	  <xs:complexType>
 	    <xs:all>
               <xs:element name="peer-ttl" type="hours"/> 

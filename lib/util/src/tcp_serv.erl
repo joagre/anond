@@ -115,8 +115,8 @@ loop(#state{session_list = SessionList, listen_socket = ListenSocket,
 	    self() ! start_session,
 	    loop(S);
 	start_session ->
-	    Args = [self(), S#state.handler, ListenSocket],
-	    Pid = spawn_link(?MODULE, start_session, Args),
+	    A = [self(), S#state.handler, ListenSocket],
+	    Pid = spawn_link(?MODULE, start_session, A),
 	    loop(S#state{session_list = [Pid|SessionList]});
         {'EXIT', Parent, shutdown} ->
             gen_tcp:close(S#state.listen_socket),

@@ -1,7 +1,7 @@
 -module(jsonrpc_serv).
 
 %%% external exports
--export([start_link/3]).
+-export([start_link/4]).
 
 %%% internal exports
 -export([jsonrpc_handler/2]).
@@ -23,14 +23,15 @@
 %%% exported: start_link
 %%%
 
--spec start_link(inet:ip_address(), inet:port_number(), tcp_serv:handler()) ->
+-spec start_link(inet:ip_address(), inet:port_number(), tcp_serv:options(),
+                 tcp_serv:handler()) ->
                         {ok, pid()}.
 
-start_link(IpAddress, Port, Handler) ->
+start_link(IpAddress, Port, Options, Handler) ->
     SocketOptions =
         [{packet, http_bin}, {active, false}, {ip, IpAddress},
          {reuseaddr, true}],
-    tcp_serv:start_link(Port, ?MAX_SESSIONS, [], SocketOptions,
+    tcp_serv:start_link(Port, ?MAX_SESSIONS, Options, SocketOptions,
                         {?MODULE, jsonrpc_handler, [Handler]}).
 
 jsonrpc_handler(Socket, Handler) ->

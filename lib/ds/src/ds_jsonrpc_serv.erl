@@ -30,7 +30,7 @@
 start_link() ->
     IpAddress = {0,0,0,0},
     Port = 6700,
-    jsonrpc_serv:start_link(IpAddress, Port, {?MODULE, ds_handler, []}).
+    jsonrpc_serv:start_link(IpAddress, Port, [], {?MODULE, ds_handler, []}).
 
 ds_handler(<<"enforce-peer-ttl">>, undefined) ->
     ok = ds_serv:enforce_peer_ttl(),

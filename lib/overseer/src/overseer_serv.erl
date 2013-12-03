@@ -338,7 +338,7 @@ start_nodes(N) ->
     PublicKey = <<"foo">>,
     PrivateKey = <<"baz">>,
     Oa = {1,1,1,1,1,1,1,N},
-    Na = {{1,1,1,1}, 1},
+    Na = {{0,0,0,0}, 50000+N},
     {ok, NodeSup} =
         node_root_sup:start_node(Oa, Na, PublicKey, PrivateKey, true),
     Children = supervisor:which_children(NodeSup),

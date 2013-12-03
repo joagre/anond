@@ -12,7 +12,7 @@ dialyzer.plt: dialyzer_init.plt
 	rm -f $@ ; cp $< $@
 	$(DIALYZER) --check_plt --plt $@ || true
 
-DIALYZER_PLT_APPS=erts stdlib kernel sasl compiler tools crypto
+DIALYZER_PLT_APPS=compiler crypto erts kernel sasl stdlib tools
 
 dialyzer_init.plt:
 	rm -f $@
