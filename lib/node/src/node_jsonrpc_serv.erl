@@ -26,7 +26,7 @@
 -spec start_link(na(), supervisor:sup_ref()) -> {ok, pid()}.
 
 start_link({IpAddress, Port}, NodeSup) ->
-    %% I would prefer to use NodeServ instead of NodeSup as handler
+    %% I would prefer to use NodeRouteServ instead of NodeSup as handler
     %% argument but asking for it here would mean a deadlock. I could
     %% add support for some sort of delayed prcoessing in tcp_serv.erl 
     %% but I will not.
@@ -56,11 +56,11 @@ node_handler(Method, Params, _NodeSup) ->
 node_route_serv(NodeSup) ->
     case get(node_route_serv) of
         undefined ->
-            {ok, NodeServ} = node_sup:lookup_child(NodeSup, node_route_serv),
-            put(node_route_serv, NodeServ),
-            NodeServ;
-        NodeServ ->
-            NodeServ
+            {ok, NodeRouteServ} = node_sup:lookup_child(NodeSup, node_route_serv),
+            put(node_route_serv, NodeRouteServ),
+            NodeRouteServ;
+        NodeRouteServ ->
+            NodeRouteServ
     end.
 
 json_route_entry(Re) ->

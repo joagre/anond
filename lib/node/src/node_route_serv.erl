@@ -1,4 +1,4 @@
--module(node_serv).
+-module(node_route_serv).
 
 %%% external exports
 -export([start_link/4, stop/1, stop/2]).
@@ -84,11 +84,11 @@ stop(Ip, Timeout) ->
                 'node_tunnel_recv_serv') ->
                        'ok' | {'ok', node_db(), route_db()}.
 
-handshake(NodeServ, {node_tunnel_send_serv, Na, NodeTunnelSendServ}) ->
-    NodeServ ! {handshake, {node_tunnel_send_serv, Na, NodeTunnelSendServ}},
+handshake(NodeRouteServ, {node_tunnel_send_serv, Na, NodeTunnelSendServ}) ->
+    NodeRouteServ ! {handshake, {node_tunnel_send_serv, Na, NodeTunnelSendServ}},
     ok;
-handshake(NodeServ, node_tunnel_recv_serv) ->
-    serv:call(NodeServ, {handshake, node_tunnel_recv_serv}).
+handshake(NodeRouteServ, node_tunnel_recv_serv) ->
+    serv:call(NodeRouteServ, {handshake, node_tunnel_recv_serv}).
 
 %%%
 %%% exported: get_route_entries

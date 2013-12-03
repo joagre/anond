@@ -42,11 +42,11 @@
 -spec start_link(noa(), na(), na(), supervisor:sup_ref()) -> {'ok', pid()}.
 
 start_link(Oa, Na, PeerNa, NodeSup) ->
-    {ok, NodeServ} = node_sup:lookup_child(NodeSup, node_route_serv),
+    {ok, NodeRouteServ} = node_sup:lookup_child(NodeSup, node_route_serv),
     {ok, NodePathCostServ} =
         node_sup:lookup_child(NodeSup, node_path_cost_serv),
     {ok, NodeTunServ} = node_sup:lookup_child(NodeSup, node_tun_serv),
-    Args = [self(), Oa, Na, PeerNa, NodeServ, NodePathCostServ, NodeTunServ],
+    Args = [self(), Oa, Na, PeerNa, NodeRouteServ, NodePathCostServ, NodeTunServ],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
@@ -86,13 +86,13 @@ handshake(NodeTunnelRecvServ,
 %%% server loop
 %%%
 
-init(Parent, Oa, Na, PeerNa, NodeServ, NodePathCostServ, _NodeTunServ) ->
-    {ok, NodeDb, RouteDb} = node_route_serv:handshake(NodeServ, ?MODULE),
+init(Parent, Oa, Na, PeerNa, NodeRouteServ, NodePathCostServ, _NodeTunServ) ->
+    {ok, NodeDb, RouteDb} = node_route_serv:handshake(NodeRouteServ, ?MODULE),
 %    {ok, TunDevice} = node_tun_serv:handshake(NodeTunServ, ?MODULE),
     TunDevice = self(),
     Parent ! {self(), started},
     loop(#state{parent = Parent, oa = Oa, na = Na, peer_na = PeerNa,
-                node_route_serv = NodeServ, node_db = NodeDb, route_db = RouteDb,
+                node_route_serv = NodeRouteServ, node_db = NodeDb, route_db = RouteDb,
                 node_path_cost_serv = NodePathCostServ,
                 tun_device = TunDevice}).
 
@@ -118,7 +118,7 @@ receiver(#state{node_db = NodeDb,
                 route_db = RouteDb,
                 oa = {Oa0, Oa1, Oa2, Oa3, Oa4, Oa5, Oa6, Oa7},
                 peer_na = {PeerIpAddress, PeerPort},
-                node_route_serv = NodeServ,
+                node_route_serv = NodeRouteServ,
                 node_path_cost_serv = NodePathCostServ,
                 tun_device = TunDevice,
                 socket = Socket,
@@ -162,7 +162,7 @@ receiver(#state{node_db = NodeDb,
               na = {PeerIpAddress, PeerPort},
               path_cost = Pc,
               hops = Hops},
-            ok = node_route_serv:route_entry(NodeServ, Re),
+            ok = node_route_serv:route_entry(NodeRouteServ, Re),
             receiver(S);
         %% reply to echo request
         {ok, {PeerIpAddress, PeerPort,

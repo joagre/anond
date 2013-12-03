@@ -36,10 +36,10 @@
                         {'error', inet:posix()}.
 
 start_link(Na, PeerNa, NodeSup, NodeTunnelSup) ->
-    {ok, NodeServ} = node_sup:lookup_child(NodeSup, node_route_serv),
+    {ok, NodeRouteServ} = node_sup:lookup_child(NodeSup, node_route_serv),
     {ok, NodeTunnelRecvServ} =
         node_tunnel_sup:lookup_child(NodeTunnelSup, node_tunnel_recv_serv),
-    Args = [self(), Na, PeerNa, NodeServ, NodeTunnelRecvServ],
+    Args = [self(), Na, PeerNa, NodeRouteServ, NodeTunnelRecvServ],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
@@ -81,12 +81,12 @@ stop(Pid, Timeout) ->
 %%% server loop
 %%%
 
-init(Parent, {IpAddress, Port} = Na, PeerNa, NodeServ, NodeTunnelRecvServ) ->
+init(Parent, {IpAddress, Port} = Na, PeerNa, NodeRouteServ, NodeTunnelRecvServ) ->
     process_flag(trap_exit, true),
     Options = [binary, {ip, IpAddress}, {active, false}],
     case gen_udp:open(Port, Options) of
         {ok, Socket} ->
-            ok = node_route_serv:handshake(NodeServ, {?MODULE, Na, self()}),
+            ok = node_route_serv:handshake(NodeRouteServ, {?MODULE, Na, self()}),
             ok = node_tunnel_recv_serv:handshake(
                    NodeTunnelRecvServ, {?MODULE, Socket, self()}),
             Parent ! {self(), started},
