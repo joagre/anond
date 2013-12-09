@@ -18,9 +18,7 @@
       {app, node, [{incl_cond, include}]},
       {app, overseer, [{incl_cond, include}]},
       {app, procket, [{incl_cond, include}]},
-      {app, socks, [{incl_cond, include}]},
       {app, sasl, [{incl_cond, include}]},
       {app, stdlib, [{incl_cond, include}]},
       {app, tunctl, [{incl_cond, include}]},
-      {app, util, [{incl_cond, include}]},
-      {app, xmerl, [{incl_cond,include}]}]}.
+      {app, util, [{incl_cond, include}]}]}.

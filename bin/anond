@@ -25,7 +25,7 @@ pa=""
 if [ ! -f ${erl} ]; then
     erl="erl"
     interactive=true
-    pa=" -pa ${bindir}/../lib/common/ebin -pa ${bindir}/../lib/ds/ebin -pa ${bindir}/../lib/jsx/ebin -pa ${bindir}/../lib/node/ebin -pa ${bindir}/../lib/overseer/ebin -pa ${bindir}/../lib/procket/ebin -pa ${bindir}/../lib/socks/ebin -pa ${bindir}/../lib/tunctl/ebin -pa ${bindir}/../lib/util/ebin"
+    pa=" -pa ${bindir}/../lib/common/ebin -pa ${bindir}/../lib/ds/ebin -pa ${bindir}/../lib/jsx/ebin -pa ${bindir}/../lib/node/ebin -pa ${bindir}/../lib/overseer/ebin -pa ${bindir}/../lib/procket/ebin -pa ${bindir}/../lib/tunctl/ebin -pa ${bindir}/../lib/util/ebin"
 fi
 # @DEVEL_ONLY_STOP
 
@@ -76,11 +76,11 @@ case ${mode} in
         break
         ;;
     stop)
-        exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_serv stop
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv stop
         break
         ;;
     reload)
-        exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_serv reload
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv reload
         break
         ;;
 esac

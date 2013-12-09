@@ -32,15 +32,15 @@ start_link([]) ->
 %%% exported: start_node
 %%%
 
--spec start_node(noa(), na(), public_key:rsa_public_key(),
+-spec start_node(na(), noa(), public_key:rsa_public_key(),
                  public_key:rsa_private_key(), boolean()) ->
                         supervisor:startchild_ret().
 
-start_node(Oa, Na, PublicKey, PrivateKey, AutoRecalc) ->
+start_node(Na, Oa, PublicKey, PrivateKey, AutoRecalc) ->
     Id = {node_instance_sup, erlang:now()},
     NodeInstanceSupChildSpec =
         {Id, {node_instance_sup, start_link,
-              [Oa, Na, PublicKey, PrivateKey, AutoRecalc]},
+              [Na, Oa, PublicKey, PrivateKey, AutoRecalc]},
          permanent, infinity, supervisor, [node_instance_sup]},
     supervisor:start_child(?MODULE, NodeInstanceSupChildSpec).
 
@@ -49,4 +49,8 @@ start_node(Oa, Na, PublicKey, PrivateKey, AutoRecalc) ->
 %%%
 
 init([]) ->
-    {ok, {{one_for_one, 3, 10}, []}}.
+    NodeStarterServChildSpec =
+        {node_starter_serv,
+         {node_starter_serv, start_link, []},
+         permanent, 10000, worker, [node_starter_serv]},
+    {ok, {{one_for_one, 3, 10}, [NodeStarterServChildSpec]}}.

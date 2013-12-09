@@ -12,7 +12,6 @@
 %%% include files
 
 %%% constants
--define(SERVER, ?MODULE).
 
 %%% records
 
@@ -25,18 +24,18 @@
 -spec start_link([]) -> supervisor:startlink_ret().
 
 start_link(Args) ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, Args).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, Args).
 
 %%%
 %%% exported: init
 %%%
 
 init([]) ->
-    ConfigServChildSpec =
-        {common_config_serv, {common_config_serv, start_link, []},
-         permanent, 10000, worker, [config_serv]},
-    LogServChildSpec =
+    CommonConfigJsonServChildSpec =
+        {common_config_json_serv, {common_config_json_serv, start_link, []},
+         permanent, brutal_kill, worker, [common_config_json_serv]},
+    CommonLogServChildSpec =
         {common_log_serv, {common_log_serv, start_link, []},
-         permanent, 10000, worker, [log_serv]},
+         permanent, brutal_kill, worker, [common_log_serv]},
     {ok, {{one_for_one, 3, 10},
-          [ConfigServChildSpec, LogServChildSpec]}}.
+          [CommonConfigJsonServChildSpec, CommonLogServChildSpec]}}.

@@ -8,10 +8,11 @@
         }).
 
 -record(dbg_log_info, {
-          enabled       :: boolean(),
-          tty           :: boolean(),
-          file          :: {Enabled :: boolean(), Filename :: binary()},
-          module_filter :: [{'show', binary()} | {'hide', binary()}]
+          enabled             :: boolean(),
+          tty                 :: boolean(),
+          file                :: {Enabled :: boolean(), Filename :: binary()},
+          show_module_filters :: [binary()],
+          hide_module_filters :: [binary()]
          }).
 
 -record(error_log_info, {

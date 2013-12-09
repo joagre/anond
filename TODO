@@ -36,14 +36,13 @@ jsonrpc_serv.erl
 ----------------
 * Switch over to SSL
 
-common_config_serv.erl
-----------------------
-* Update anond.conf to make it possible to specify several nodes.
+common_config_json_serv.erl
+----------------------------
 
 overseer_serv.erl
 -----------------
-* This module should *not* start nodes. This should be done by the
-  common_config_serv.erl.
+* This module should *not* start nodes. This should be done by
+  node_starter_serv.erl (to be written).
 
 generic stuff
 -------------

@@ -146,7 +146,7 @@ init(Parent) ->
             {A1, A2, A3} = erlang:now(),
             random:seed({A1, A2, A3}),
             S = read_config(#state{}),
-            ok = config_serv:subscribe(),
+            ok = config_json_serv:subscribe(),
 	    PeerDb = ets:new(peer_db, [{keypos, 2}]),
 	    OaDb = ets:new(oa_db, [bag]),
             timelib:start_timer(S#state.peer_ttl, {enforce_peer_ttl, true}),
@@ -280,9 +280,9 @@ loop(#state{parent = Parent,
 %%%
 
 read_config(S) ->
-    [Simulation] = ?cfg([simulation]),
-    [PeerTTL] = ?cfg(['directory-server', 'peer-ttl']),
-    [MaxOasPerPeer] = ?cfg(['directory-server', 'max-oas-per-peer']),
+    Simulation = ?config([simulation]),
+    PeerTTL = ?config(['directory-server', 'peer-ttl']),
+    MaxOasPerPeer = ?config(['directory-server', 'max-oas-per-peer']),
     S#state{simulation = Simulation, peer_ttl = PeerTTL,
             max_oas_per_peer = MaxOasPerPeer}.
 

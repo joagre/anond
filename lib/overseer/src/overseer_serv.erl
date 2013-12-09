@@ -171,7 +171,7 @@ init(Parent) ->
     case catch register(?MODULE, self()) of
         true ->
             S = read_config(#state{}),
-            ok = config_serv:subscribe(),
+            ok = config_json_serv:subscribe(),
             case S#state.simulation of
                 true ->
                     Nodes = start_nodes(?NUMBER_OF_SIMULATION_NODES);
@@ -325,8 +325,8 @@ loop(#state{parent = Parent,
 %%%
 
 read_config(S) ->
-    [Simulation] = ?cfg(['simulation']),
-    [NumberOfNodes] = ?cfg(['number-of-nodes']),
+    Simulation = ?config(['simulation']),
+    NumberOfNodes = ?config(['number-of-nodes']),
     S#state{simulation = Simulation, number_of_nodes = NumberOfNodes}.
 
 start_nodes(0) ->
@@ -340,7 +340,7 @@ start_nodes(N) ->
     Oa = {1,1,1,1,1,1,1,N},
     Na = {{0,0,0,0}, 50000+N},
     {ok, NodeInstanceSup} =
-        node_root_sup:start_node(Oa, Na, PublicKey, PrivateKey, true),
+        node_sup:start_node(Na, Oa, PublicKey, PrivateKey, true),
     Children = supervisor:which_children(NodeInstanceSup),
     {value, {_Id, Ip, _Type, _Modules}} =
         lists:keysearch(node_route_serv, 1, Children),

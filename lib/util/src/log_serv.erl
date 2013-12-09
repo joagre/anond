@@ -31,17 +31,14 @@
 %%% types
 -type read_config_callback() ::
         fun(() -> {#daemon_log_info{}, #dbg_log_info{}, #error_log_info{}}).
--type error_reason() :: disk_log:open_error_rsn().
+-type error_reason() :: 'already_started' | disk_log:open_error_rsn().
 
 %%%
 %%% exported: start_link
 %%%
 
 -spec start_link(read_config_callback()) ->
-                        {'ok', pid()} |
-                            {'error',
-                             {'not_started', error_reason()} |
-                             'already_started'}.
+                        {'ok', pid()} | {'error', error_reason()}.
 
 start_link(ReadConfigCallback) ->
     Args = [self(), ReadConfigCallback, tty_available()],
@@ -80,6 +77,8 @@ dbg_log(Module, Line, Term) ->
 
 -spec format_error(error_reason()) -> iolist().
 
+format_error(already_started) ->
+    "Already started";
 format_error(Reason) ->
     disk_log:format_error(Reason).
 
@@ -96,7 +95,7 @@ init(Parent, ReadConfigCallback, TtyAvailable) ->
                     Parent ! {self(), started},
                     loop(S);
                 {error, Reason} ->
-                    Parent ! {self(), {not_started, Reason}}
+                    Parent ! {self(), Reason}
             end;
         _ ->
             Parent ! {self(), already_started}
@@ -108,7 +107,7 @@ setup(Parent, ReadConfigCallback, TtyAvailable) ->
         {ok, DaemonDiskLog} ->
             case open_log(DbgLogInfo) of
                 {ok, DbgDiskLog} ->
-                    ok = config_serv:subscribe(),
+                    ok = config_json_serv:subscribe(),
                     {ok, #state{parent = Parent,
                                 tty_available = TtyAvailable,
                                 read_config_callback = ReadConfigCallback,
@@ -238,10 +237,11 @@ write_to_daemon_tty(true, String) ->
 write_to_dbg_log(true, #dbg_log_info{enabled = true,
                                      tty = Tty,
                                      file = {FileEnabled, _Path},
-                                     module_filter = ModuleFilter},
+                                     show_module_filters = ShowModuleFilters,
+                                     hide_module_filters = HideModuleFilters},
                  DaemonDiskLog, Module, Line, Term)
   when Tty == true; FileEnabled == true ->
-    case module_member(?a2b(Module), ModuleFilter) of
+    case show_modules(?a2b(Module), ShowModuleFilters, HideModuleFilters) of
         true ->
             String = io_lib:format("~w: ~w: ~p", [Module, Line, Term]),
             write_to_dbg_log(DaemonDiskLog, String),
@@ -253,18 +253,23 @@ write_to_dbg_log(_TtyAvailable, _DbgLogInfo, _DbgDiskLog, _Module, _Line,
                  _Term) ->
     skip.
 
-module_member(_Module, [{show, <<"*">>}|_]) ->
-    true;
-module_member(_Module, [{hide, <<"*">>}|_]) ->
-    false;
-module_member(Module, [{show, Module}|_]) ->
-    true;
-module_member(Module, [{hide, Module}|_]) ->
-    false;
-module_member(_Module, []) ->
-    false;
-module_member(Module, [_|Rest]) ->
-    module_member(Module, Rest).
+show_modules(Module, ShowModuleFilters, HideModuleFilters) ->
+    case lists:member(<<"*">>, ShowModuleFilters) of
+        true ->
+            true;
+        false ->
+            case lists:member(<<"*">>, HideModuleFilters) of
+                true ->
+                    false;
+                false ->
+                    case lists:member(Module, ShowModuleFilters) of
+                        true ->
+                            true;
+                        false ->
+                            not(lists:member(Module, HideModuleFilters))
+                    end
+            end
+    end.
 
 write_to_dbg_log(undefined, _String) ->
     ok;

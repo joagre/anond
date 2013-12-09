@@ -23,13 +23,13 @@
 %%% exported: start_link
 %%%
 
--spec start_link(noa(), na(), public_key:rsa_public_key(),
+-spec start_link(na(), noa(), public_key:rsa_public_key(),
                  public_key:rsa_private_key(), boolean()) ->
                         supervisor:startlink_ret().
 
-start_link(Oa, Na, PublicKey, PrivateKey, AutoRecalc) ->
+start_link(Na, Oa, PublicKey, PrivateKey, AutoRecalc) ->
     supervisor:start_link(?MODULE,
-                          [Oa, Na, PublicKey, PrivateKey, AutoRecalc]).
+                          [Na, Oa, PublicKey, PrivateKey, AutoRecalc]).
 
 %%%
 %%% exported: lookup_child
@@ -52,11 +52,12 @@ lookup_child(NodeInstanceSup, Id) ->
 %%% exported: init
 %%%
 
-init([Oa, Na, PublicKey, PrivateKey, AutoRecalc]) ->
+init([Na, Oa, PublicKey, PrivateKey, AutoRecalc]) ->
     {1,1,1,1,1,1,1,N} = Oa, %% FIXME!!!
     NodeRouteServChildSpec =
         {node_route_serv,
-         {node_route_serv, start_link, [N, PublicKey, PrivateKey, AutoRecalc]},
+         {node_route_serv, start_link,
+          [Na, N, PublicKey, PrivateKey, AutoRecalc]},
          permanent, 10000, worker, [node_route_serv]},
     NodeJsonrpcServChildSpec =
         {node_jsonrpc_serv,

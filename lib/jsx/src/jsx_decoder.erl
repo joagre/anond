@@ -270,6 +270,7 @@ colon(<<?solidus>>, Handler, Stack, Config=#config{comments=true}) ->
 colon(<<>>, Handler, Stack, Config) ->
     incomplete(colon, <<>>, Handler, Stack, Config);
 colon(Bin, Handler, Stack, Config) ->
+    io:format("BIN: ~p~n", [Bin]),
     ?error(colon, Bin, Handler, Stack, Config).
 
 
@@ -931,6 +932,7 @@ maybe_done(<<?solidus>>, Handler, Stack, Config=#config{comments=true}) ->
 maybe_done(<<>>, Handler, Stack, Config) when length(Stack) > 0 ->
     incomplete(maybe_done, <<>>, Handler, Stack, Config);
 maybe_done(Bin, Handler, Stack, Config) ->
+    io:format("FJUTT: ~p~n", [Bin]),
     ?error(maybe_done, Bin, Handler, Stack, Config).
 
 

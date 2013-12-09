@@ -1,7 +1,7 @@
 -module(node_route_serv).
 
 %%% external exports
--export([start_link/4, stop/1, stop/2]).
+-export([start_link/5, stop/1, stop/2]).
 -export([handshake/2]).
 -export([get_route_entries/1, route_entry/2]).
 -export([get_nodes/1]).
@@ -9,7 +9,7 @@
 -export([update_path_cost/3]).
 
 %%% internal exports
--export([init/5]).
+-export([init/6]).
 
 %%% include files
 -include_lib("util/include/log.hrl").
@@ -26,8 +26,9 @@
 %%% records
 -record(state, {
           parent                    :: pid(),
+          na                        :: na(),
           oa                        :: oa(),
-          ip                        :: ip(),
+          ip                        :: ip(),  %% remove
           ttl                       :: integer(),
           peer_ips                  :: [ip()],
 	  public_key                :: public_key:rsa_public_key(),
@@ -47,12 +48,12 @@
 %%% exported: start_link
 %%%
 
--spec start_link(oa(), public_key:rsa_public_key(),
+-spec start_link(na(), oa(), public_key:rsa_public_key(),
                  public_key:rsa_private_key(), boolean()) ->
 			{'ok', ip()}.
 
-start_link(Oa, PublicKey, PrivateKey, AutoRecalc) ->
-    Args = [self(), Oa, PublicKey, PrivateKey, AutoRecalc],
+start_link(Na, Oa, PublicKey, PrivateKey, AutoRecalc) ->
+    Args = [self(), Na, Oa, PublicKey, PrivateKey, AutoRecalc],
     Ip = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Ip, started} ->
@@ -85,7 +86,8 @@ stop(Ip, Timeout) ->
                        'ok' | {'ok', node_db(), route_db()}.
 
 handshake(NodeRouteServ, {node_tunnel_send_serv, Na, NodeTunnelSendServ}) ->
-    NodeRouteServ ! {handshake, {node_tunnel_send_serv, Na, NodeTunnelSendServ}},
+    NodeRouteServ ! {handshake,
+                     {node_tunnel_send_serv, Na, NodeTunnelSendServ}},
     ok;
 handshake(NodeRouteServ, node_tunnel_recv_serv) ->
     serv:call(NodeRouteServ, {handshake, node_tunnel_recv_serv}).
@@ -162,12 +164,12 @@ update_path_cost(Ip, PeerIp, Pc) ->
 %%% server loop
 %%%
 
-init(Parent, Oa, PublicKey, PrivateKey, AutoRecalc) ->
+init(Parent, Na, Oa, PublicKey, PrivateKey, AutoRecalc) ->
     process_flag(trap_exit, true),
     {A1, A2, A3} = erlang:now(),
     random:seed({A1, A2, A3}),
-    S = read_config(#state{}),
-    ok = config_serv:subscribe(),
+    S = read_config(#state{na = Na}),
+    ok = config_json_serv:subscribe(),
     {ok, NodeDb} = node_route:create_node_db(),
     {ok, RouteDb} = node_route:create_route_db(),
     Ip = self(),
@@ -364,10 +366,15 @@ loop(#state{parent = Parent,
 %%%
 
 read_config(S) ->
-    [NumberOfPeers] = ?cfg([node, 'number-of-peers']),
-    [MeasurePcTimeout] = ?cfg([node, 'measure-path-cost-timeout']),
-    [RefreshPeersTimeout] = ?cfg([node, 'refresh-peers-timeout']),
-    [RecalcTimeout] = ?cfg([node, 'recalc-timeout']),
+    NodeInstance = ?config([nodes, {'node-address', S#state.na}]),
+    {value, {'number-of-peers', NumberOfPeers}} =
+        lists:keysearch('number-of-peers', 1, NodeInstance),
+    {value, {'measure-path-cost-timeout', MeasurePcTimeout}} =
+        lists:keysearch('measure-path-cost-timeout', 1, NodeInstance),
+    {value, {'refresh-peers-timeout', RefreshPeersTimeout}} =
+        lists:keysearch('refresh-peers-timeout', 1, NodeInstance),
+    {value, {'recalc-timeout', RecalcTimeout}} =
+        lists:keysearch('recalc-timeout', 1, NodeInstance),
     S#state{number_of_peers = NumberOfPeers,
             measure_path_cost_timeout = MeasurePcTimeout,
             refresh_peers_timeout = RefreshPeersTimeout,
