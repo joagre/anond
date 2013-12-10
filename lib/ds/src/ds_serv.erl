@@ -5,7 +5,7 @@
 -export([enforce_peer_ttl/0]).
 -export([get_number_of_peers/0, get_all_peers/0, get_random_peers/2]).
 -export([publish_peer/1, unpublish_peer/1, published_peers/1]).
--export([reserve_oa/2]).
+-export([reserve_oa/2, reserved_oas/1]).
 
 %%% internal exports
 -export([init/1]).
@@ -134,6 +134,15 @@ published_peers(Nas) ->
 
 reserve_oa(Oa, Na) ->
     serv:call(?MODULE, {reserve_oa, Oa, Na}).
+
+%%%
+%%% exported: reserved_oas
+%%%
+
+-spec reserved_oas(ip()) -> {'ok', [oa()]}.
+
+reserved_oas(Na) ->
+    serv:call(?MODULE, {reserved_oas, Na}).
 
 %%%
 %%% server loop
@@ -267,12 +276,16 @@ loop(#state{parent = Parent,
                             loop(S)
                     end
             end;
+        {From, {reserved_oas, Na}} ->
+            [Oas] = ets:match(OaDb, {'$1', Na}),
+            From ! {self(), {ok, Oas}},
+            loop(S);
         {'EXIT', Parent, Reason} ->
 	    true = ets:delete(PeerDb),
             exit(Reason);
-                UnknownMessage ->
-                    ?error_log({unknown_message, UnknownMessage}),
-                    loop(S)
+        UnknownMessage ->
+            ?error_log({unknown_message, UnknownMessage}),
+            loop(S)
     end.
 
 %%%

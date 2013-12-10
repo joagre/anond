@@ -3,7 +3,7 @@
 
 %%% external exports
 -export([start_link/1]).
--export([start_node/5]).
+-export([start_node/1, stop_node/1]).
 
 %%% internal exports
 
@@ -32,17 +32,32 @@ start_link([]) ->
 %%% exported: start_node
 %%%
 
--spec start_node(na(), noa(), public_key:rsa_public_key(),
-                 public_key:rsa_private_key(), boolean()) ->
-                        supervisor:startchild_ret().
+-spec start_node(na()) -> supervisor:startchild_ret().
 
-start_node(Na, Oa, PublicKey, PrivateKey, AutoRecalc) ->
+start_node(Na) ->
     Id = {node_instance_sup, erlang:now()},
     NodeInstanceSupChildSpec =
-        {Id, {node_instance_sup, start_link,
-              [Na, Oa, PublicKey, PrivateKey, AutoRecalc]},
+        {Id, {node_instance_sup, start_link, [Na]},
          permanent, infinity, supervisor, [node_instance_sup]},
     supervisor:start_child(?MODULE, NodeInstanceSupChildSpec).
+
+%%%
+%%% exported: stop_node
+%%%
+
+-spec stop_node(supervisor:child_id()) ->
+                       'ok' |
+                       {'error',
+                        'running' | 'restarting' | 'not_found' |
+                        'simple_one_for_one'}.
+
+stop_node(NodeInstanceSup) ->
+    case supervisor:terminate_child(?MODULE, NodeInstanceSup) of
+        ok ->
+            supervisor:delete_child(?MODULE, NodeInstanceSup);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %%%
 %%% exported: init

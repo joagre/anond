@@ -10,12 +10,14 @@
 -include_lib("util/include/log.hrl").
 -include_lib("util/include/config.hrl").
 -include_lib("util/include/shorthand.hrl").
+-include_lib("node/include/node.hrl").
 
 %%% constants
 
 %%% records
 -record(state, {
-          parent :: pid()
+          parent      :: pid(),
+          nas_db = [] :: [{na(), supervisor:sup_ref()}]
 	 }).
 
 %%% types
@@ -32,7 +34,7 @@ start_link() ->
     receive
 	{Pid, started} ->
 	    {ok, Pid};
-	{Pid, Reason} ->
+        {Pid, Reason} ->
             {error, Reason}
     end.
 
@@ -56,12 +58,15 @@ stop(Pid, Timeout) ->
 
 init(Parent) ->
     process_flag(trap_exit, true),
-    S = read_config(#state{}),    
+    ok = config_json_serv:subscribe(),
     Parent ! {self(), started},
+    S = read_config(#state{}),
     loop(S#state{parent = Parent}).
 
 loop(#state{parent = Parent} = S) ->
     receive
+        config_updated ->
+            loop(read_config(S));
 	{From, stop} ->
 	    From ! {self(), ok};
 	{'EXIT', Parent, Reason} ->
@@ -75,7 +80,46 @@ loop(#state{parent = Parent} = S) ->
 %%% init
 %%%
 
-read_config(S) ->
-    %%WHAT = ?cfg([node, 'node-address']),
-    %%?iof("WHAT: ~p~n", [WHAT]),
-    S.
+read_config(#state{nas_db = NasDb} = S) ->
+    Nas = [Na || [{'node-address', Na}|_] <- ?config([nodes])],
+    ?iof("BAJS1: ~p~n", [Nas]),
+    StillRunningNasDb = stop_nodes(NasDb, Nas),
+    ?iof("BAJS2: ~p~n", [StillRunningNasDb]),
+    NowRunningNasDb = start_nodes(StillRunningNasDb, Nas),
+    ?iof("BAJS3: ~p~n", [NowRunningNasDb]),
+    S#state{nas_db = NowRunningNasDb}.
+
+stop_nodes([], _Nas) ->
+    [];
+stop_nodes([{Na, NodeInstanceSup}|Rest], Nas) ->
+    case lists:member(Na, Nas) of
+        true ->
+            [{Na, NodeInstanceSup}|stop_nodes(Rest, Nas)];
+        false ->
+            case node_sup:stop_node(NodeInstanceSup) of
+                ok ->
+                    stop_nodes(Rest, Nas);
+                {error, Reason} ->
+                    ?error_log({could_not_stop_node, Reason}),
+                    stop_nodes(Rest, Nas)
+            end
+    end.
+
+start_nodes(NasDb, Nas) ->
+    start_nodes(NasDb, Nas, []).
+
+start_nodes(_NasDb, [], Acc) ->
+    Acc;
+start_nodes(NasDb, [Na|Rest], Acc) ->
+    case lists:keysearch(Na, 1, NasDb) of
+        {value, {Na, NodeInstanceSup}} ->
+            start_nodes(NasDb, Rest, [{Na, NodeInstanceSup}|Acc]);
+        false ->
+            case node_sup:start_node(Na) of
+                {ok, NodeInstanceSup} ->
+                    start_nodes(NasDb, Rest, [{Na, NodeInstanceSup}|Acc]);
+                {error, Reason} ->
+                    ?daemon_log("Could not start node (~p)", [Reason]),
+                    start_nodes(NasDb, Rest, Acc)
+            end
+    end.

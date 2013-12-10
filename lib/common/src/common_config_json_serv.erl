@@ -19,8 +19,6 @@
 -define(JSON_SCHEMA,
         [{simulation,
           #json_type{name = bool, typical = true}},
-         {'number-of-nodes',
-          #json_type{name = {int, 0, unbounded}, typical = 10}},
          {'directory-server',
           [{'peer-ttl',
             #json_type{name = {int, 1, 24}, info = <<"hours">>, typical = 3,

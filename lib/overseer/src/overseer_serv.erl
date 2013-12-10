@@ -17,6 +17,7 @@
 -include_lib("util/include/config.hrl").
 -include_lib("node/include/node.hrl").
 -include_lib("node/include/node_route.hrl").
+-include_lib("ds/include/ds.hrl").
 -include_lib("overseer/include/simulation.hrl").
 
 %%% constants
@@ -27,10 +28,9 @@
 %%% records
 -record(state, {
 	  parent          :: pid(),
-	  path_costs  :: [{{oa(), oa()}, path_cost()}],
+	  path_costs      :: [{{oa(), oa()}, path_cost()}],
 	  nodes           :: [{oa(), ip()}],
-          simulation      :: boolean(),
-          number_of_nodes :: integer()
+          simulation      :: boolean()
 	 }).
 
 %%% types
@@ -172,12 +172,7 @@ init(Parent) ->
         true ->
             S = read_config(#state{}),
             ok = config_json_serv:subscribe(),
-            case S#state.simulation of
-                true ->
-                    Nodes = start_nodes(?NUMBER_OF_SIMULATION_NODES);
-                false ->
-                    Nodes = start_nodes(S#state.number_of_nodes)
-            end,
+            Nodes = get_all_published_nodes(),
 	    Parent ! {self(), started},
 	    loop(S#state{parent = Parent,
                          path_costs = ?NON_RANDOM_PATH_COSTS,
@@ -326,25 +321,17 @@ loop(#state{parent = Parent,
 
 read_config(S) ->
     Simulation = ?config(['simulation']),
-    NumberOfNodes = ?config(['number-of-nodes']),
-    S#state{simulation = Simulation, number_of_nodes = NumberOfNodes}.
+    S#state{simulation = Simulation}.
 
-start_nodes(0) ->
+get_all_published_nodes() ->
+    {ok, Peers} = ds_serv:get_all_peers(),
+    get_all_published_nodes(Peers).
+
+get_all_published_nodes([]) ->
     [];
-start_nodes(N) ->
-    %% patrik: public_key:generate_key/1 is hard to understand in the
-    %% manual page public_key(3). Does it even generate RSA keys?
-    %%{PublicKey, PrivateKey} = public_key:generate_key(),
-    PublicKey = <<"foo">>,
-    PrivateKey = <<"baz">>,
-    Oa = {1,1,1,1,1,1,1,N},
-    Na = {{0,0,0,0}, 50000+N},
-    {ok, NodeInstanceSup} =
-        node_sup:start_node(Na, Oa, PublicKey, PrivateKey, true),
-    Children = supervisor:which_children(NodeInstanceSup),
-    {value, {_Id, Ip, _Type, _Modules}} =
-        lists:keysearch(node_route_serv, 1, Children),
-    [{N, Ip}|start_nodes(N-1)].
+get_all_published_nodes([#peer{ip = Ip}|Rest]) ->
+    {ok, [Oa]} = ds_serv:reserved_oas(Ip),
+    [{Oa, Ip}|get_all_published_nodes(Rest)].
 
 %%%
 %%% get_global_route_table

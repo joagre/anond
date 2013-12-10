@@ -1,7 +1,7 @@
 -module(node_route_serv).
 
 %%% external exports
--export([start_link/5, stop/1, stop/2]).
+-export([start_link/1, stop/1, stop/2]).
 -export([handshake/2]).
 -export([get_route_entries/1, route_entry/2]).
 -export([get_nodes/1]).
@@ -9,7 +9,7 @@
 -export([update_path_cost/3]).
 
 %%% internal exports
--export([init/6]).
+-export([init/2]).
 
 %%% include files
 -include_lib("util/include/log.hrl").
@@ -26,20 +26,21 @@
 %%% records
 -record(state, {
           parent                    :: pid(),
-          na                        :: na(),
-          oa                        :: oa(),
-          ip                        :: ip(),  %% remove
-          ttl                       :: integer(),
-          peer_ips                  :: [ip()],
-	  public_key                :: public_key:rsa_public_key(),
-	  private_key               :: public_key:rsa_private_key(),
           node_db                   :: node_db(),
           route_db                  :: route_db(),
-          auto_recalc               :: boolean(),
-          number_of_peers           :: integer(),
-          measure_path_cost_timeout :: integer(),
+          ip                        :: ip(),  %% remove
+          ttl                       :: integer(),
+          peer_ips = []             :: [ip()],
+          %% the rest comes from anond.conf
+          na                        :: na(),
+          oa                        :: oa(),
+	  public_key                :: public_key:rsa_public_key(),
+	  private_key               :: public_key:rsa_private_key(),
+          number_of_peers           :: integer(),          
+          measure_path_cost_timeout :: integer(),          
           refresh_peers_timeout     :: integer(),
-          recalc_timeout            :: integer()
+          recalc_timeout            :: integer(),
+          auto_recalc               :: boolean()
 	 }).
 
 %%% types
@@ -48,12 +49,10 @@
 %%% exported: start_link
 %%%
 
--spec start_link(na(), oa(), public_key:rsa_public_key(),
-                 public_key:rsa_private_key(), boolean()) ->
-			{'ok', ip()}.
+-spec start_link(na()) -> {'ok', ip()}.
 
-start_link(Na, Oa, PublicKey, PrivateKey, AutoRecalc) ->
-    Args = [self(), Na, Oa, PublicKey, PrivateKey, AutoRecalc],
+start_link(Na) ->
+    Args = [self(), Na],
     Ip = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Ip, started} ->
@@ -164,7 +163,7 @@ update_path_cost(Ip, PeerIp, Pc) ->
 %%% server loop
 %%%
 
-init(Parent, Na, Oa, PublicKey, PrivateKey, AutoRecalc) ->
+init(Parent, Na) ->
     process_flag(trap_exit, true),
     {A1, A2, A3} = erlang:now(),
     random:seed({A1, A2, A3}),
@@ -173,50 +172,45 @@ init(Parent, Na, Oa, PublicKey, PrivateKey, AutoRecalc) ->
     {ok, NodeDb} = node_route:create_node_db(),
     {ok, RouteDb} = node_route:create_route_db(),
     Ip = self(),
-    {ok, TTL} = ds_serv:publish_peer(#peer{ip = Ip, public_key = PublicKey}),
+    {ok, TTL} = ds_serv:publish_peer(#peer{ip = Ip,
+                                           public_key = S#state.public_key}),
     ?daemon_log("Published my ip (~w) on directory server.", [Ip]),
     timelib:start_timer(TTL, republish_self),
-    ok = ds_serv:reserve_oa(Oa, Ip),
-    ?daemon_log("Reserved my oa (~w) on directory server.", [Oa]),
+    ok = ds_serv:reserve_oa(S#state.oa, Ip),
+    ?daemon_log("Reserved my oa (~w) on directory server.", [S#state.oa]),
     %% patrik: init psp?
-    SelfRe = #route_entry{oa = Oa, ip = Ip, path_cost = 0, psp = <<"foo">>},
+    SelfRe = #route_entry{oa = S#state.oa, ip = Ip, path_cost = 0,
+                          psp = <<"foo">>},
     got_new = node_route:update_route_entry(RouteDb, SelfRe),
     timelib:start_timer(S#state.measure_path_cost_timeout, measure_path_cost),
     ?daemon_log("Peer refresh started...", []),
     timelib:start_timer(?BOOTSTRAP_TIMEOUT, bootstrap),
     if
-        AutoRecalc ->
+        S#state.auto_recalc ->
             RandomRecalcTimeout = random:uniform(S#state.recalc_timeout),
             timelib:start_timer(RandomRecalcTimeout, recalc);
         true ->
             ok
     end,
     Parent ! {self(), started},
-    loop(S#state{parent = Parent,
-                 oa = Oa,
-                 ip = Ip,
-                 peer_ips = [],
-                 ttl = TTL,
-                 public_key = PublicKey,
-                 private_key = PrivateKey,
-                 node_db = NodeDb,
-                 route_db = RouteDb,
-                 auto_recalc = AutoRecalc}).
+    loop(S#state{parent = Parent, node_db = NodeDb, route_db = RouteDb, ip = Ip,
+                 ttl = TTL}).
 
 loop(#state{parent = Parent,
-	    oa = Oa,
-            ip = Ip,
-            peer_ips = PeerIps,
-            ttl = _TTL,
-	    public_key = PublicKey,
-	    private_key = _PrivateKey,
             node_db = NodeDb,
 	    route_db = RouteDb,
-            auto_recalc = AutoRecalc,
+            ip = Ip,
+            ttl = _TTL,
+            peer_ips = PeerIps,
+            na = _Na,
+	    oa = Oa,
+	    public_key = PublicKey,
+	    private_key = _PrivateKey,
             number_of_peers = NumberOfPeers,
-            measure_path_cost_timeout = MeasurePcTimeout,
+            measure_path_cost_timeout = MeasurePcTimeout,            
             refresh_peers_timeout = RefreshPeersTimeout,
-            recalc_timeout = RecalcTimeout} = S) ->
+            recalc_timeout = RecalcTimeout,
+            auto_recalc = AutoRecalc} = S) ->
     receive
         bootstrap ->
             UpdatedPeerIps =
@@ -367,18 +361,28 @@ loop(#state{parent = Parent,
 
 read_config(S) ->
     NodeInstance = ?config([nodes, {'node-address', S#state.na}]),
-    {value, {'number-of-peers', NumberOfPeers}} =
-        lists:keysearch('number-of-peers', 1, NodeInstance),
-    {value, {'measure-path-cost-timeout', MeasurePcTimeout}} =
-        lists:keysearch('measure-path-cost-timeout', 1, NodeInstance),
-    {value, {'refresh-peers-timeout', RefreshPeersTimeout}} =
-        lists:keysearch('refresh-peers-timeout', 1, NodeInstance),
-    {value, {'recalc-timeout', RecalcTimeout}} =
-        lists:keysearch('recalc-timeout', 1, NodeInstance),
-    S#state{number_of_peers = NumberOfPeers,
-            measure_path_cost_timeout = MeasurePcTimeout,
-            refresh_peers_timeout = RefreshPeersTimeout,
-            recalc_timeout = RecalcTimeout}.
+    read_config(S, NodeInstance).
+
+read_config(S, []) ->
+    S;
+read_config(S, [{'node-address', _Value}|Rest]) ->
+    read_config(S, Rest);
+read_config(S, [{'overlay-addresses', [{_,_,_,_,_,_,_,N}]}|Rest]) ->
+    read_config(S#state{oa = N}, Rest);
+read_config(S, [{'public-key', Value}|Rest]) ->
+    read_config(S#state{public_key = Value}, Rest);
+read_config(S, [{'private-key', Value}|Rest]) ->
+    read_config(S#state{private_key = Value}, Rest);
+read_config(S, [{'number-of-peers', Value}|Rest]) ->
+    read_config(S#state{number_of_peers = Value}, Rest);
+read_config(S, [{'measure-path-cost-timeout', Value}|Rest]) ->
+    read_config(S#state{measure_path_cost_timeout = Value}, Rest);
+read_config(S, [{'refresh-peers-timeout', Value}|Rest]) ->
+    read_config(S#state{refresh_peers_timeout = Value}, Rest);
+read_config(S, [{'recalc-timeout', Value}|Rest]) ->
+    read_config(S#state{recalc_timeout = Value}, Rest);
+read_config(S, [{'auto-recalc', Value}|Rest]) ->
+    read_config(S#state{auto_recalc = Value}, Rest).
 
 %%%
 %%% path cost measurements
