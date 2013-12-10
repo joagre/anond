@@ -1,4 +1,4 @@
--module(node_jsonrpc_serv).
+-module(node_route_jsonrpc_serv).
 
 %%% external exports
 -export([start_link/2]).

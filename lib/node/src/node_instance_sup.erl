@@ -54,10 +54,10 @@ init([Na]) ->
         {node_route_serv,
          {node_route_serv, start_link, [Na]},
          permanent, 10000, worker, [node_route_serv]},
-    NodeJsonrpcServChildSpec =
-        {node_jsonrpc_serv,
-         {node_jsonrpc_serv, start_link, [Na, self()]},
-         permanent, 10000, worker, [node_jsonrpc_serv]},
+    NodeRouteJsonrpcServChildSpec =
+        {node_route_jsonrpc_serv,
+         {node_route_jsonrpc_serv, start_link, [Na, self()]},
+         permanent, 10000, worker, [node_route_jsonrpc_serv]},
 %    NodePathCostChildSpec =
 %        {node_path_cost_serv,
 %         {node_path_cost_serv, start_link,
@@ -73,4 +73,4 @@ init([Na]) ->
          permanent, infinity, supervisor, [node_tunnels_sup]},
     {ok, {{rest_for_one, 3, 10},
           [NodeRouteServChildSpec, NodeTunnelsSupChildSpec,
-           NodeJsonrpcServChildSpec]}}.
+           NodeRouteJsonrpcServChildSpec]}}.
