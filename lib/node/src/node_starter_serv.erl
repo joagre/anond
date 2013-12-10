@@ -82,11 +82,8 @@ loop(#state{parent = Parent} = S) ->
 
 read_config(#state{nas_db = NasDb} = S) ->
     Nas = [Na || [{'node-address', Na}|_] <- ?config([nodes])],
-    ?iof("BAJS1: ~p~n", [Nas]),
     StillRunningNasDb = stop_nodes(NasDb, Nas),
-    ?iof("BAJS2: ~p~n", [StillRunningNasDb]),
     NowRunningNasDb = start_nodes(StillRunningNasDb, Nas),
-    ?iof("BAJS3: ~p~n", [NowRunningNasDb]),
     S#state{nas_db = NowRunningNasDb}.
 
 stop_nodes([], _Nas) ->
