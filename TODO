@@ -1,3 +1,6 @@
+* maybe remove the need for bootstrap
+
+
 node_serv.erl
 -------------
 * Integrate with Patrik's loop detection and path cost library.

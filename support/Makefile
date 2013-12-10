@@ -2,7 +2,7 @@ include erl.mk
 
 .PHONY: dialyzer
 
-# procket and tunctl excluded
+# procket, tunctl and test excluded
 LIBS=common ds jsx node overseer util
 
 dialyzer: dialyzer.plt
