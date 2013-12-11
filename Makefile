@@ -1,6 +1,6 @@
 include support/erl.mk
 
-LIBS=common ds jsx node overseer procket tunctl util
+LIBS=common ds jsx node overseer procket test tunctl util
 
 all:
 	(cd bin; $(MAKE) all)
