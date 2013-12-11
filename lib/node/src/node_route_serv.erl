@@ -20,8 +20,8 @@
 -include_lib("ds/include/ds.hrl").
 
 %%% constants
--define(BOOTSTRAP_TIMEOUT, 1000*2).
--define(FIVE_SECONDS_TIMEOUT, 1000*5).
+-define(BOOTSTRAP_TIMEOUT, 1000).
+-define(FIVE_SECONDS_TIMEOUT, 5*1000).
 
 %%% records
 -record(state, {
@@ -183,8 +183,7 @@ init(Parent, Na) ->
                           psp = <<"foo">>},
     got_new = node_route:update_route_entry(RouteDb, SelfRe),
     timelib:start_timer(S#state.measure_path_cost_timeout, measure_path_cost),
-    ?daemon_log("Peer refresh started...", []),
-    timelib:start_timer(?BOOTSTRAP_TIMEOUT, bootstrap),
+    timelib:start_timer(?BOOTSTRAP_TIMEOUT, refresh_peers),
     if
         S#state.auto_recalc ->
             RandomRecalcTimeout = random:uniform(S#state.recalc_timeout),
@@ -212,12 +211,6 @@ loop(#state{parent = Parent,
             recalc_timeout = RecalcTimeout,
             auto_recalc = AutoRecalc} = S) ->
     receive
-        bootstrap ->
-            UpdatedPeerIps =
-                refresh_peers(
-                  Ip, PeerIps, NodeDb, RouteDb, AutoRecalc, NumberOfPeers,
-                  RefreshPeersTimeout),
-            loop(S#state{peer_ips = UpdatedPeerIps});
         config_updated ->
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
@@ -391,16 +384,19 @@ read_config(S, [{'auto-recalc', Value}|Rest]) ->
 measure_path_costs(_Ip, []) ->
     ok;
 measure_path_costs(Ip, [#peer{ip = PeerIp}|Rest]) ->
-    {ok, Pc} = overseer_serv:get_path_cost(Ip, PeerIp),
-    Ip ! {path_cost, PeerIp, Pc},
+    measure_path_cost(Ip, PeerIp),
     measure_path_costs(Ip, Rest).
 
 rotate_peer_ips([PeerIp|Rest]) ->
     lists:reverse([PeerIp|lists:reverse(Rest)]).
 
 measure_path_cost(Ip, PeerIp) ->
-    {ok, Pc} = overseer_serv:get_path_cost(Ip, PeerIp),
-    Ip ! {path_cost, PeerIp, Pc}.
+    case overseer_serv:get_path_cost(Ip, PeerIp) of
+        {ok, Pc} ->
+            Ip ! {path_cost, PeerIp, Pc};
+        not_available ->
+            ok
+    end.
 
 %%%
 %%% refresh_peers

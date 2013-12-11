@@ -210,6 +210,8 @@ write_to_daemon_log(true, #daemon_log_info{enabled = true,
     case erlang:process_info(Pid, registered_name) of
         [] ->
             String = io_lib:format("~w: ~w: "++Format, [Module, Pid|Args]);
+        undefined ->
+            String = io_lib:format("~w: ~w: "++Format, [Module, Pid|Args]);
         {registered_name, Module} ->
             String = io_lib:format("~w: "++Format, [Module|Args]);
         {registered_name, Name} ->

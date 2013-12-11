@@ -5,9 +5,9 @@
 test() ->
     IpAddress = {192,168,1,80},
     spawn(?MODULE, start_tunnel,
-          [<<"tun0">>, {10,0,0,1}, IpAddress, 8004, 8005]),
+          [<<"tun0">>, {10,0,0,1}, IpAddress, 9000, 9001]),
     spawn(?MODULE, start_tunnel,
-          [<<"tun1">>, {11,0,0,2}, IpAddress, 8005, 8004]).
+          [<<"tun1">>, {11,0,0,2}, IpAddress, 9001, 9000]).
 
 start_tunnel(TunDevice, TunIpAddress, IpAddress, SrcPort, DestPort) ->
     %% Initialize tun

@@ -21,6 +21,7 @@
 -include_lib("overseer/include/simulation.hrl").
 
 %%% constants
+-define(BOOTSTRAP_TIMEOUT, 3*1000).
 -define(NUMBER_OF_SIMULATION_NODES, 10).
 -define(MAX_PATH_COST, 100).
 -define(PERCENT_NUDGE, 5).
@@ -29,7 +30,7 @@
 -record(state, {
 	  parent          :: pid(),
 	  path_costs      :: [{{oa(), oa()}, path_cost()}],
-	  nodes           :: [{oa(), ip()}],
+	  nodes = []      :: [{oa(), ip()}],
           simulation      :: boolean()
 	 }).
 
@@ -147,7 +148,7 @@ recalc(Oa) ->
 %%% exported: get_path_cost
 %%%
 
--spec get_path_cost(ip(), ip()) -> {'ok', path_cost()}.
+-spec get_path_cost(ip(), ip()) -> {'ok', path_cost()} | not_available.
 
 get_path_cost(Ip, PeerIp) ->
     serv:call(?MODULE, {get_path_cost, Ip, PeerIp}).
@@ -172,11 +173,10 @@ init(Parent) ->
         true ->
             S = read_config(#state{}),
             ok = config_json_serv:subscribe(),
-            Nodes = get_all_published_nodes(),
+            timelib:start_timer(?BOOTSTRAP_TIMEOUT, get_all_published_nodes),
 	    Parent ! {self(), started},
 	    loop(S#state{parent = Parent,
-                         path_costs = ?NON_RANDOM_PATH_COSTS,
-                         nodes = Nodes});
+                         path_costs = ?NON_RANDOM_PATH_COSTS});
         _ ->
             Parent ! {self(), already_started}
     end.
@@ -186,6 +186,9 @@ loop(#state{parent = Parent,
 	    nodes = Nodes,
             simulation = Simulation} = S) ->
     receive
+        get_all_published_nodes ->
+            UpdatedNodes = get_all_published_nodes(),
+            loop(S#state{nodes = UpdatedNodes});
         config_updated ->
             loop(read_config(S));
 	{From, stop} ->
@@ -281,9 +284,14 @@ loop(#state{parent = Parent,
         {From, {get_path_cost, Ip, PeerIp}} when Simulation == true ->
             Oa = lookup_oa(Nodes, Ip),
             PeerOa = lookup_oa(Nodes, PeerIp),
-            {value, {_, Pc}} = lists:keysearch({Oa, PeerOa}, 1, Pcs),
-            From ! {self(), {ok, nudge_path_cost(Pc, ?PERCENT_NUDGE)}},
-            loop(S);
+            case lists:keysearch({Oa, PeerOa}, 1, Pcs) of
+                {value, {_, Pc}} ->
+                    From ! {self(), {ok, nudge_path_cost(Pc, ?PERCENT_NUDGE)}},
+                    loop(S);
+                false ->
+                    From ! {self(), not_available},
+                    loop(S)
+            end;
         {From, {get_path_cost, Ip, PeerIp}} ->
             Oa = lookup_oa(Nodes, Ip),
             PeerOa = lookup_oa(Nodes, PeerIp),

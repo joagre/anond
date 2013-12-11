@@ -1,4 +1,4 @@
--module(node_dummy_tcp_serv).
+-module(dummy_tcp_serv).
 
 %%% external exports
 -export([start_link/2]).
