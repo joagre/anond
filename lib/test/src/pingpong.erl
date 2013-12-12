@@ -1,23 +1,19 @@
 -module(pingpong).
 -compile(export_all).
 
-start() ->
+start1_2() ->
     spawn(fun() ->
-                  echo({192,168,1,80}, 9002, {192,168,1,80}, 9003, false)
-          end),
-    timer:sleep(1000),
-    spawn(fun() ->
-                  echo({192,168,1,80}, 9003, {192,168,1,80}, 9002, true)
+                  echo({10,0,0,1}, 9005, {10,0,0,2}, 9006)
           end).
 
-echo(IpAddress, Port, RemoteIpAddress, RemotePort, Ping) ->
+start2_1() ->
+    spawn(fun() ->
+                  echo({10,0,0,2}, 9006, {10,0,0,1}, 9005)
+          end).
+
+echo(IpAddress, Port, RemoteIpAddress, RemotePort) ->
+    register(?MODULE, self()),
     {ok, Socket} = gen_udp:open(Port, [list, {ip, IpAddress}, {active, true}]),
-    if
-        Ping ->
-            self() ! ping;
-        true ->
-            ok
-    end,
     loop(IpAddress, Port, RemoteIpAddress, RemotePort, Socket).
 
 loop(IpAddress, Port, RemoteIpAddress, RemotePort,  Socket) ->
@@ -25,9 +21,6 @@ loop(IpAddress, Port, RemoteIpAddress, RemotePort,  Socket) ->
         stop ->
             ok;
         ping ->
-            ok = gen_udp:send(Socket, RemoteIpAddress, RemotePort, "ping"),
-            ok = gen_udp:send(Socket, RemoteIpAddress, RemotePort, "ping"),
-            ok = gen_udp:send(Socket, RemoteIpAddress, RemotePort, "ping"),
             ok = gen_udp:send(Socket, RemoteIpAddress, RemotePort, "ping"),
             loop(IpAddress, Port, RemoteIpAddress, RemotePort, Socket);
         {udp, Socket, RemoteIpAddress, RemotePort, Packet} ->
