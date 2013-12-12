@@ -45,15 +45,13 @@ ds_handler(<<"get-random-peers">>, [{<<"my-na">>, BinaryMyNa}, {<<"n">>, N}]) ->
         {ok, MyNa} ->
             if
                 is_integer(N) ->
-%% Swicth over to na()
+                    %% Swicth over to na()
                     case ds_serv:get_random_peers(self(), N) of
 %                    case ds_serv:get_random_peers(MyNa, N) of
                         {ok, Peers} ->
                             {ok, [json_peer(Peer) || Peer <- Peers]};
                         too_few_peers ->
-                            JsonError = #json_error{
-                              code = ?DS_TOO_FEW_PEERS},
-                            {error, JsonError}
+                            {error, #json_error{code = ?DS_TOO_FEW_PEERS}}
                     end;
                 true ->
                     JsonError = #json_error{
@@ -74,8 +72,7 @@ ds_handler(<<"publish-peer">>, [{<<"na">>, BinaryNa},
     case decode_na(BinaryNa) of
         {ok, Na} ->
             Peer = #peer{na = Na, public_key = PublicKey, flags = Flags},
-            {ok, PeerTTL} = ds_serv:publish_peer(Peer),
-            {ok, PeerTTL};
+            ds_serv:publish_peer(Peer);
         {error, Reason} ->
             JsonError = #json_error{
               code = ?JSONRPC_INVALID_PARAMS,
