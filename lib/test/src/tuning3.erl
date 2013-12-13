@@ -1,27 +1,27 @@
 -module(tuning3).
 -compile(export_all).
 
-start80_95() ->
-    start_tunnel(<<"tun0">>, {10,0,0,1}, {192,168,1,80}, 5000,
+start80() ->
+    start_tunnel(<<"tun0">>, {10,0,0,1}, {10,0,0,2}, {192,168,1,80}, 5000,
                  {192,168,1,95}, 5001).
 
-start95_80() ->
-    start_tunnel(<<"tun0">>, {10,0,0,2}, {192,168,1,95}, 5001,
+start95() ->
+    start_tunnel(<<"tun0">>, {10,0,0,2}, {10,0,0,1}, {192,168,1,95}, 5001,
                  {192,168,1,80}, 5000).
 
-start_tunnel(TunDevice, TunIp, SrcIp, SrcPort, DestIp, DestPort) ->
+start_tunnel(TunDevice, TunIp, RemoteTunIp, SrcIp, SrcPort, DestIp, DestPort) ->
     spawn(?MODULE, init_tunnel,
-          [TunDevice, TunIp, SrcIp, SrcPort, DestIp, DestPort]).
+          [TunDevice, TunIp, RemoteTunIp, SrcIp, SrcPort, DestIp, DestPort]).
 
-init_tunnel(TunDevice, TunIp, SrcIp, SrcPort, DestIp, DestPort) ->
+init_tunnel(TunDevice, TunIp, RemoteTunIp, SrcIp, SrcPort, DestIp, DestPort) ->
     register(?MODULE, self()),
-    %% Initialize tun
+    %% initialize tun
     {ok, TunPid} = tuncer:create(TunDevice, [tun, no_pi, {active, true}]),
     ok = tuncer:up(TunPid, TunIp),
     ok = setup_routing(TunDevice, TunIp, {255,255,255,0}),
-    %% Intialize udp tunnel
+    %% intialize udp tunnel
     {ok, Socket} = gen_udp:open(SrcPort, [binary, {ip, SrcIp}, {active, true}]),
-    %% setup routing
+    pingpong:start(TunIp, 9000, RemoteTunIp, 9000),
     tunnel(TunDevice, TunIp, SrcIp, SrcPort, DestIp, DestPort, TunPid, Socket).
 
 tunnel(TunDevice, TunIp, SrcIp, SrcPort, DestIp, DestPort, TunPid, Socket) ->
@@ -49,8 +49,7 @@ tunnel(TunDevice, TunIp, SrcIp, SrcPort, DestIp, DestPort, TunPid, Socket) ->
 
 setup_routing(TunDevice, TunIp, Netmask) ->
     ok = eval_cmd("ifconfig ~s ~s netmask ~s",
-                  [binary_to_list(TunDevice), addr(TunIp), addr(Netmask)]),
-    ok = eval_cmd("ip route del ~s table local", [addr(TunIp)]).
+                  [binary_to_list(TunDevice), addr(TunIp), addr(Netmask)]).
 
 eval_cmd(Format, Args) ->
     Cmd = lists:flatten(io_lib:format(Format++" 2>&1", Args)),

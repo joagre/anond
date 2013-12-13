@@ -1,14 +1,9 @@
 -module(pingpong).
 -compile(export_all).
 
-start1_2() ->
+start(IpAddress, Port, RemoteIpAddress, RemotePort) ->
     spawn(fun() ->
-                  echo({10,0,0,1}, 9005, {10,0,0,2}, 9006)
-          end).
-
-start2_1() ->
-    spawn(fun() ->
-                  echo({10,0,0,2}, 9006, {10,0,0,1}, 9005)
+                  echo(IpAddress, Port, RemoteIpAddress, RemotePort)
           end).
 
 echo(IpAddress, Port, RemoteIpAddress, RemotePort) ->
