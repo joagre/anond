@@ -12,7 +12,9 @@
 
 -type ip_address_port() :: {inet:ip4_address(), inet:port_number()}.
 
--type json_value() :: integer() | boolean() | binary() | ip_address_port().
+-type json_value() :: json_enum() | integer() | boolean() | binary() |
+                      ip_address_port().
+-type json_enum() :: atom().
 
 -record(json_type, {
           name    :: type_name(),
