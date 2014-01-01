@@ -20,14 +20,12 @@
 
 -spec string_address(inet:ip_address()) -> string().
 
-string_address({A0, A1, A2, A3}) ->
-    lists:flatten([?i2l(A0), ".", ?i2l(A1), ".", ?i2l(A2), ".", ?i2l(A3)]);
-string_address({A0, A1, A2, A3, A4, A5, A6, A7}) ->
+string_address({A, B, C, D}) ->
+    lists:flatten([?i2l(A), ".", ?i2l(B), ".", ?i2l(C), ".", ?i2l(D)]);
+string_address({A, B, C, D, E, F, G, H}) ->
     lists:flatten(
-      [integer_to_list(A0, 16), ":", integer_to_list(A1, 16), ":",
-       integer_to_list(A2, 16), ":", integer_to_list(A3, 16), ":",
-       integer_to_list(A4, 16), ":", integer_to_list(A5, 16), ":",
-       integer_to_list(A6, 16), ":", integer_to_list(A7, 16)]).
+      [?i2l(A, 16), ":", ?i2l(B, 16), ":", ?i2l(C, 16), ":", ?i2l(D, 16), ":",
+       ?i2l(E, 16), ":", ?i2l(F, 16), ":", ?i2l(G, 16), ":", ?i2l(H, 16)]).
 
 %%%
 %%% exported: tcp_sockets

@@ -106,7 +106,7 @@ decode_oa(Oa) ->
 %%% exported: decode
 %%%
 
--spec decode(list(), fun()) -> [any()].
+-spec decode(list(), fun()) -> {'ok', [any()]} | {'error', any()}.
 
 decode(List, F) ->
     decode(List, F, []).

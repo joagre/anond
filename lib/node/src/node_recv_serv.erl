@@ -81,7 +81,8 @@ stop(Pid, Timeout) ->
 %%% exported: handshake
 %%%
 
--spec handshake(pid(), 'node_send_serv') -> {'ok', gen_udp:socket()}.
+-spec handshake(pid(), {'node_path_cost_serv', pid()} | 'node_send_serv') ->
+                       'ok' | {'ok', gen_udp:socket()}.
 
 handshake(NodeRecvServ, {node_path_cost_serv, NodePathCostServ}) ->
     NodeRecvServ ! {handshake, {node_path_cost_serv, NodePathCostServ}},

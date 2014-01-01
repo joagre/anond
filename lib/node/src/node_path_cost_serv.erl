@@ -3,6 +3,7 @@
 %%% external exports
 -export([start_link/2, stop/1, stop/2]).
 -export([updated_peer_nas/2]).
+-export([echo_reply/2]).
 
 %%% internal exports
 -export([init/4]).
@@ -27,7 +28,8 @@
           route_db                          :: route_db(),
           node_route_serv                   :: pid(),
           peer_nas = []                     :: [na()],
-          path_costs = []                   :: [{{na(), na()}, path_cost()}],
+          path_costs = []                   :: [{{byte(), byte()},
+                                                 path_cost()}],
           unique_id = 0                     :: non_neg_integer(),
           %% anond.conf parameters
           mode                              :: common_config_json_serv:mode(),
@@ -44,9 +46,7 @@
 %%% exported: start_link
 %%%
 
--spec start_link(na(), supervisor:sup_ref()) ->
-                        {'ok', pid()} |
-                        {'error', {'udp_failure', inet:posix()}}.
+-spec start_link(na(), supervisor:sup_ref()) -> {'ok', pid()}.
 
 start_link(Na, NodeInstanceSup) ->
     {ok, NodeRouteServ} =
@@ -58,9 +58,7 @@ start_link(Na, NodeInstanceSup) ->
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
-	    {ok, Pid};
-	{Pid, Reason} ->
-            {error, Reason}
+	    {ok, Pid}
     end.
 
 %%%
@@ -85,6 +83,16 @@ stop(Pid, Timeout) ->
 
 updated_peer_nas(NodePathCostServ, UpdatedPeerNas) ->
     NodePathCostServ ! {updated_peer_nas, UpdatedPeerNas},
+    ok.
+
+%%%
+%%% exported: echo_reply
+%%%
+
+-spec echo_reply(pid(), #echo_reply{}) -> 'ok'.
+
+echo_reply(NodePathCostServ, EchoReply) ->
+    NodePathCostServ ! EchoReply,
     ok.
 
 %%%
@@ -128,7 +136,7 @@ loop(#state{parent = Parent,
         measure when PeerNas == [] ->
             timelib:start_timer(DelayBetweenMeasurements, measure),
             loop(S);
-        measure when Mode == normal ->
+        measure ->
             PeerNa = hd(PeerNas),
             RotatedPeerNas = rotate_peer_nas(PeerNas),
             case Mode of
@@ -143,14 +151,17 @@ loop(#state{parent = Parent,
                     loop(S#state{peer_nas = RotatedPeerNas,
                                  unique_id = UniqueId+1});
                 simulation ->
-                    case lists:keysearch({Na, PeerNa}, 1, Pcs) of
+                    {{_, _, _, NaLsb}, _NaPort} = Na,
+                    {{_, _, _, PeerNaLsb}, _PeerNaPort} = PeerNa,
+                    case lists:keysearch({NaLsb, PeerNaLsb}, 1, Pcs) of
                         {value, {_, StoredPc}} ->
                             Pc = nudge_path_cost(StoredPc, ?PERCENT_NUDGE),
                             UpdatedPcs = Pcs;
                         false ->
                             Pc = random:uniform(?MAX_PATH_COST),
                             UpdatedPcs =
-                                [{{Na, PeerNa}, Pc}, {{PeerNa, Na}, Pc}|Pcs]
+                                [{{NaLsb, PeerNaLsb}, Pc},
+                                 {{PeerNaLsb, NaLsb}, Pc}|Pcs]
                     end,
                     ok = node_route_serv:update_path_cost(
                            NodeRouteServ, PeerNa, Pc),
@@ -158,9 +169,6 @@ loop(#state{parent = Parent,
                     loop(S#state{peer_nas = RotatedPeerNas,
                                  path_costs = UpdatedPcs})
             end;
-        {update_path_cost, PeerNa, Pc} ->
-            UpdatedPcs = update_path_cost(Na, PeerNa, Pc),
-            loop(S#state{path_costs = UpdatedPcs});
 	{From, stop} ->
 	    From ! {self(), ok};
         {'EXIT', Parent, Reason} ->
@@ -186,19 +194,20 @@ measure_path_cost(NodeDb, RouteDb, UniqueId, Na, NumberOfEchoRequests,
     case length(EchoReplyLatencies) of
         NumberOfEchoReplies
           when NumberOfEchoReplies > AcceptableNumberOfEchoReplies ->
-            %% Letting the path cost be the averge latency in
-            %% milli-seconds could be considered naive. YMMV.
             AverageEchoReplyLatency =
                 lists:foldl(fun(EchoReplyLatency, Sum) ->
                                     EchoReplyLatency+Sum end,
                             0, EchoReplyLatencies)/NumberOfEchoReplies,
             trunc(AverageEchoReplyLatency);
         NumberOfEchoReplies ->
+            {NaIpAddress, _NaPort} = Na,
+            {PeerNaIpAddress, _PeerNaPort} = PeerNa,
             PacketLoss = trunc(NumberOfEchoReplies/NumberOfEchoRequests*100),
             ?daemon_log("Echo requests sent from ~s to ~s resulted in more "
                         "than ~w% packet loss",
-                        [net_tools:string_address(Na),
-                         net_tools:string_address(PeerNa), PacketLoss]),
+                        [net_tools:string_address(NaIpAddress),
+                         net_tools:string_address(PeerNaIpAddress),
+                         PacketLoss]),
             -1
     end.
 
@@ -243,27 +252,14 @@ nudge_path_cost(-1, _Percent) ->
 nudge_path_cost(Pc, Percent) ->
     random:uniform(Percent)/100*Pc+Pc.
 
-update_path_cost(Na, PeerNa, Pc) ->
-    update_path_cost(Na, PeerNa, Pc, []).
-
-update_path_cost(_Na, _PeerNa, _Pc, []) ->
-    unknown_path_cost;
-update_path_cost(Na, PeerNa, NewPc,
-                 [{{Na, PeerNa}, _OldPc}, {{PeerNa, Na}, _OldPc}|Rest]) ->
-    [{{Na, PeerNa}, NewPc}, {{PeerNa, Na}, NewPc}|Rest];
-update_path_cost(Na, PeerNa, NewPc,
-                 [{{PeerNa, Na}, _OldPc}, {{Na, PeerNa}, _OldPc}|Rest]) ->
-    [{{PeerNa, Na}, NewPc}, {{Na, PeerNa}, NewPc}|Rest];
-update_path_cost(Na, PeerNa, NewPc, [Pc, Cp|Rest]) ->
-    [Pc, Cp|update_path_cost(Na, PeerNa, NewPc, Rest)].
-
 %%%
 %%% init
 %%%
 
 read_config(S) ->
-    PathCost = ?config([nodes, {'node-address', S#state.na, 'path-cost'}]),
-    read_config(S, PathCost).
+    Mode = ?config([mode]),
+    PathCost = ?config([nodes, {'node-address', S#state.na}, 'path-cost']),
+    read_config(S#state{mode = Mode}, PathCost).
 
 read_config(S, []) ->
     S;

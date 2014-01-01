@@ -117,7 +117,7 @@
 %%% records
 
 %%% types
--type mode() :: 'normal' | 'random' | 'simulation10'.
+-type mode() :: 'normal' | 'simulation'.
 
 %%%
 %%% exported: start_link
