@@ -24,7 +24,8 @@
 	  parent           :: pid(),
 	  peer_db          :: ets:tid(),
           oa_db            :: ets:tid(),
-          mode             :: common_jsonrpc_serv:mode(),
+          %% anond.conf parameters
+          mode             :: common_config_jsonrpc_serv:mode(),
           peer_ttl         :: non_neg_integer(),
           max_oas_per_peer :: non_neg_integer()
 	 }).

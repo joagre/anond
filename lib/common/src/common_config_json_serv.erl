@@ -3,6 +3,7 @@
 %%% external exports
 -export([start_link/0]).
 -export([stop/0, reload/0]).
+-export_type([mode/0]).
 
 %%% internal exports
 -export([config_handler/1]).
