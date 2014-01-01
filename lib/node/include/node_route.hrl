@@ -7,13 +7,10 @@
 
 -record(route_entry, {
 	  oa        :: oa() | '_',
-          noa       :: noa() | '_', %% should replace oa
-	  ip        :: ip() | '_',  % replace with na
           na        :: na() | '_',
 	  path_cost :: path_cost() | '_',
 	  flags = 0 :: integer() | '_',
-          hops = [] :: [ip()] | '_',
-          nhops = [] :: [na()] | '_', % replace hops
+          hops = [] :: [na()] | '_', %% remove when psp is working
           psp       :: binary() | '_' % patrik: should be binary?
 	 }).
 
@@ -22,12 +19,11 @@
 -type node_db() :: ets:tid().
 
 -record(node, {
-	  ip         :: ip() | '_' | '$1',
-          na         :: na() | '_', %% replace ip with this
-	  public_key :: public_key:rsa_public_key() | '_',
-	  path_cost  :: path_cost() | '_',
-	  flags = 0  :: integer() | '_',
-          send_serv  :: pid() | '_'
+          na             :: na() | '_',
+	  public_key     :: public_key:rsa_public_key() | '_',
+	  path_cost      :: path_cost() | '_',
+	  flags = 0      :: integer() | '_',
+          node_send_serv :: pid() | '_'
 	 }).
 
 -define(F_NODE_UPDATED, (1 bsl 0)).

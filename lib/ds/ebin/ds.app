@@ -2,7 +2,7 @@
 {application, ds,
  [{description,"The anond ds application"},
   {vsn, "1.0"},
-  {modules, [ds_app, ds_serv, ds_sup]},
+  {modules, [ds_app, ds_jsonrpc, ds_jsonrpc_serv, ds_serv, ds_sup]},
   {registered, [ds_serv, ds_sup]},
   {mod, {ds_app, []}},
   {env, []},

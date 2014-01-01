@@ -1,7 +1,7 @@
 -module(node_route_serv).
 
 %%% external exports
--export([start_link/1, stop/1, stop/2]).
+-export([start_link/2, stop/1, stop/2]).
 -export([handshake/2]).
 -export([get_route_entries/1, route_entry/2]).
 -export([get_nodes/1]).
@@ -9,18 +9,17 @@
 -export([update_path_cost/3]).
 
 %%% internal exports
--export([init/2]).
+-export([init/3]).
 
 %%% include files
--include_lib("util/include/log.hrl").
--include_lib("util/include/config.hrl").
--include_lib("util/include/shorthand.hrl").
+
+-include_lib("ds/include/ds.hrl").
 -include_lib("node/include/node.hrl").
 -include_lib("node/include/node_route.hrl").
--include_lib("ds/include/ds.hrl").
+-include_lib("util/include/config.hrl").
+-include_lib("util/include/log.hrl").
 
 %%% constants
--define(BOOTSTRAP_TIMEOUT, 1000).
 -define(FIVE_SECONDS_TIMEOUT, 5*1000).
 
 %%% records
@@ -28,18 +27,19 @@
           parent                    :: pid(),
           node_db                   :: node_db(),
           route_db                  :: route_db(),
-          ip                        :: ip(),  %% remove
-          ttl                       :: integer(),
-          peer_ips = []             :: [ip()],
-          %% the rest comes from anond.conf
+          ttl                       :: non_neg_integer(),
+          peer_nas = []             :: [na()],
+          node_instance_sup         :: supervisor:child(),
+          node_path_cost_serv       :: pid(),
+          %% anond.conf parameters
+          directory_server          :: {inet:ip4_address(), inet:port_number()},
           na                        :: na(),
           oa                        :: oa(),
 	  public_key                :: public_key:rsa_public_key(),
 	  private_key               :: public_key:rsa_private_key(),
-          number_of_peers           :: integer(),          
-          measure_path_cost_timeout :: integer(),          
-          refresh_peers_timeout     :: integer(),
-          recalc_timeout            :: integer(),
+          number_of_peers           :: non_neg_integer(),          
+          refresh_peers_timeout     :: non_neg_integer(),
+          recalc_timeout            :: non_neg_integer(),
           auto_recalc               :: boolean()
 	 }).
 
@@ -49,15 +49,15 @@
 %%% exported: start_link
 %%%
 
--spec start_link(na()) -> {'ok', ip()}.
+-spec start_link(na(), supervisor:sup_ref()) -> {'ok', pid()}.
 
-start_link(Na) ->
-    Args = [self(), Na],
-    Ip = proc_lib:spawn_link(?MODULE, init, Args),
+start_link(Na, NodeInstanceSup) ->
+    Args = [self(), Na, NodeInstanceSup],
+    Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
-	{Ip, started} ->
-	    {ok, Ip};
-	{Ip, Reason} ->
+	{Pid, started} ->
+	    {ok, Pid};
+	{Pid, Reason} ->
             {error, Reason}
     end.
 
@@ -65,105 +65,107 @@ start_link(Na) ->
 %%% exported: stop
 %%%
 
--spec stop(ip()) -> 'ok'.
+-spec stop(pid()) -> 'ok'.
 
-stop(Ip) -> 
-    stop(Ip, 15000).
+stop(Pid) -> 
+    stop(Pid, 15000).
 
--spec stop(ip(), timeout()) -> 'ok'.
+-spec stop(pid(), timeout()) -> 'ok'.
 
-stop(Ip, Timeout) ->
-    serv:call(Ip, stop, Timeout).
+stop(Pid, Timeout) ->
+    serv:call(Pid, stop, Timeout).
 
 %%%
 %%% exported: handshake
 %%%
 
 -spec handshake(pid(),
-                {'node_tunnel_send_serv', na(), pid()} |
-                'node_tunnel_recv_serv') ->
+                {'node_send_serv', na(), pid()} |
+                'node_recv_serv' |
+                {'node_path_cost_serv', pid()}) ->
                        'ok' | {'ok', node_db(), route_db()}.
 
-handshake(NodeRouteServ, {node_tunnel_send_serv, Na, NodeTunnelSendServ}) ->
-    NodeRouteServ ! {handshake,
-                     {node_tunnel_send_serv, Na, NodeTunnelSendServ}},
-    ok;
-handshake(NodeRouteServ, node_tunnel_recv_serv) ->
-    serv:call(NodeRouteServ, {handshake, node_tunnel_recv_serv}).
+handshake(Pid, node_recv_serv) ->
+    serv:call(Pid, {handshake, node_recv_serv});
+handshake(Pid, {node_path_cost_serv, NodePathCostServ}) ->
+    serv:call(Pid, {handshake, {node_path_cost_serv, NodePathCostServ}});
+handshake(Pid, {node_send_serv, Na, NodeSendServ}) ->
+    Pid ! {handshake, {node_send_serv, Na, NodeSendServ}},
+    ok.
 
 %%%
 %%% exported: get_route_entries
 %%%
 
--spec get_route_entries(ip()) -> {'ok', [#route_entry{}]}.
+-spec get_route_entries(pid()) -> {'ok', [#route_entry{}]}.
 
-get_route_entries(Ip) ->
-    serv:call(Ip, get_route_entries).
+get_route_entries(Pid) ->
+    serv:call(Pid, get_route_entries).
 
 %%%
 %%% exported: route_entry
 %%%
 
--spec route_entry(ip(), #route_entry{}) -> 'ok'.
+-spec route_entry(pid(), #route_entry{}) -> 'ok'.
 
-route_entry(Ip, Re) ->
-    Ip ! Re,
+route_entry(Pid, Re) ->
+    Pid ! Re,
     ok.
 
 %%%
 %%% exported: get_nodes
 %%%
 
--spec get_nodes(ip()) -> {'ok', [#node{}]}.
+-spec get_nodes(pid()) -> {'ok', [#node{}]}.
 
-get_nodes(Ip) ->
-    serv:call(Ip, get_nodes).
+get_nodes(Pid) ->
+    serv:call(Pid, get_nodes).
 
 %%%
 %%% exported: enable_recalc
 %%%
 
--spec enable_recalc(ip()) -> 'ok'.
+-spec enable_recalc(pid()) -> 'ok'.
 
-enable_recalc(Ip) ->
-    Ip ! enable_recalc,
+enable_recalc(Pid) ->
+    Pid ! enable_recalc,
     ok.
 
 %%%
 %%% exported: disable_recalc
 %%%
 
--spec disable_recalc(ip()) -> 'ok'.
+-spec disable_recalc(pid()) -> 'ok'.
 
-disable_recalc(Ip) ->
-    Ip ! disable_recalc,
+disable_recalc(Pid) ->
+    Pid ! disable_recalc,
     ok.
 
 %%%
 %%% exported: recalc
 %%%
 
--spec recalc(ip()) -> 'ok'.
+-spec recalc(pid()) -> 'ok'.
 
-recalc(Ip) ->
-    Ip ! recalc,
+recalc(Pid) ->
+    Pid ! recalc,
     ok.
 
 %%%
 %%% exported: update_path_cost
 %%%
 
--spec update_path_cost(ip(), ip(), path_cost()) -> 'ok'.
+-spec update_path_cost(pid(), na(), path_cost()) -> 'ok'.
 
-update_path_cost(Ip, PeerIp, Pc) ->
-    Ip ! {path_cost, PeerIp, Pc},
+update_path_cost(Pid, Na, Pc) ->
+    Pid ! {path_cost, Na, Pc},
     ok.
 
 %%%
 %%% server loop
 %%%
 
-init(Parent, Na) ->
+init(Parent, Na, NodeInstanceSup) ->
     process_flag(trap_exit, true),
     {A1, A2, A3} = erlang:now(),
     random:seed({A1, A2, A3}),
@@ -171,149 +173,193 @@ init(Parent, Na) ->
     ok = config_json_serv:subscribe(),
     {ok, NodeDb} = node_route:create_node_db(),
     {ok, RouteDb} = node_route:create_route_db(),
-    Ip = self(),
-    {ok, TTL} = ds_serv:publish_peer(#peer{ip = Ip,
-                                           public_key = S#state.public_key}),
-    ?daemon_log("Published my ip (~w) on directory server.", [Ip]),
-    timelib:start_timer(TTL, republish_self),
-    ok = ds_serv:reserve_oa(S#state.oa, Ip),
-    ?daemon_log("Reserved my oa (~w) on directory server.", [S#state.oa]),
-    %% patrik: init psp?
-    SelfRe = #route_entry{oa = S#state.oa, ip = Ip, path_cost = 0,
-                          psp = <<"foo">>},
-    got_new = node_route:update_route_entry(RouteDb, SelfRe),
-    timelib:start_timer(S#state.measure_path_cost_timeout, measure_path_cost),
-    timelib:start_timer(?BOOTSTRAP_TIMEOUT, refresh_peers),
-    if
-        S#state.auto_recalc ->
-            RandomRecalcTimeout = random:uniform(S#state.recalc_timeout),
-            timelib:start_timer(RandomRecalcTimeout, recalc);
-        true ->
-            ok
-    end,
+    self() ! bootstrap,
     Parent ! {self(), started},
-    loop(S#state{parent = Parent, node_db = NodeDb, route_db = RouteDb, ip = Ip,
-                 ttl = TTL}).
+    loop(S#state{parent = Parent, node_db = NodeDb, route_db = RouteDb,
+                 node_instance_sup = NodeInstanceSup}).
 
 loop(#state{parent = Parent,
             node_db = NodeDb,
 	    route_db = RouteDb,
-            ip = Ip,
             ttl = _TTL,
-            peer_ips = PeerIps,
-            na = _Na,
+            peer_nas = PeerNas,
+            node_instance_sup = NodeInstanceSup,
+            node_path_cost_serv = NodePathCostServ,
+            directory_server = DsIpAddressPort,
+            na = {NaIpAddress, _NaPort} = Na,
 	    oa = Oa,
 	    public_key = PublicKey,
 	    private_key = _PrivateKey,
             number_of_peers = NumberOfPeers,
-            measure_path_cost_timeout = MeasurePcTimeout,            
             refresh_peers_timeout = RefreshPeersTimeout,
             recalc_timeout = RecalcTimeout,
             auto_recalc = AutoRecalc} = S) ->
     receive
+        bootstrap ->
+            case ds_jsonrpc:publish_peer(
+                   NaIpAddress, DsIpAddressPort,
+                   #peer{na = Na, public_key = PublicKey}) of
+                {ok, UpdatedTTL} ->
+                    ?daemon_log("Published node address ~w", [Na]),
+                    case ds_jsonrpc:reserve_oa(
+                           NaIpAddress, DsIpAddressPort, Oa, Na) of
+                        ok ->
+                            ?daemon_log("Reserved overlay address ~w", [Oa]),
+                            %% patrik: init psp
+                            Re =
+                                #route_entry{oa = Oa, na = Na, path_cost = 0,
+                                             psp = <<"foo">>},
+                            got_new =
+                                node_route:update_route_entry(RouteDb, Re),
+                            self() ! refresh_peers,
+                            timelib:start_timer(UpdatedTTL/2, republish_self),
+                            if
+                                S#state.auto_recalc ->
+                                    RandomRecalcTimeout =
+                                        random:uniform(RecalcTimeout),
+                                    timelib:start_timer(
+                                      RandomRecalcTimeout, recalc),
+                                    loop(S#state{ttl = UpdatedTTL});
+                                true ->
+                                    loop(S#state{ttl = UpdatedTTL})
+                            end;
+                        {error, Reason} ->
+                            ?dbg_log(Reason),
+                            ?daemon_log(
+                               "Could not reserve overlay address ~w. Retrying "
+                               "in five seconds...", [Oa]),
+                            timelib:start_timer(
+                              ?FIVE_SECONDS_TIMEOUT, bootstrap),
+                            loop(S)
+                    end;
+                {error, Reason}->
+                    ?dbg_log(Reason),
+                    ?daemon_log(
+                       "Could not publish node address ~w. Retrying in five "
+                       "seconds...", [Na]),
+                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, bootstrap),
+                    loop(S)
+            end;
         config_updated ->
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
         republish_self ->
-            {ok, UpdatedTTL} =
-                ds_serv:publish_peer(#peer{ip = Ip, public_key = PublicKey}),
-            ?daemon_log("Republished itself on the directory server.", []),
-            timelib:start_timer(UpdatedTTL, republish_self),
-            loop(S#state{ttl = UpdatedTTL});
+            case ds_jsonrpc:publish_peer(
+                   NaIpAddress, DsIpAddressPort,
+                   #peer{na = Na, public_key = PublicKey}) of
+                {ok, UpdatedTTL} ->
+                    ?daemon_log("Republished node address ~w", [Na]),
+                    timelib:start_timer(UpdatedTTL/2, republish_self),
+                    loop(S#state{ttl = UpdatedTTL});
+                {error, Reason}->
+                    ?dbg_log(Reason),
+                    ?daemon_log(
+                       "Could not publish node address ~w. Retrying in five "
+                       "seconds...", [Na]),
+                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, republish_self),
+                    loop(S)
+            end;
         refresh_peers ->
-            ?daemon_log("Peer refresh started...", []),
-            UpdatedPeerIps = 
-                refresh_peers(Ip, PeerIps, NodeDb, RouteDb, AutoRecalc,
-                              NumberOfPeers, RefreshPeersTimeout),
-            loop(S#state{peer_ips = UpdatedPeerIps});
-        measure_path_cost when PeerIps == [] ->
-            loop(S);
-        measure_path_cost ->
-            PeerIp = hd(PeerIps),
-            RotatedPeerIps = rotate_peer_ips(PeerIps),
-            Self = self(),
-            spawn(
-              fun() ->
-                      measure_path_cost(Ip, PeerIp),
-                      timelib:start_timer(MeasurePcTimeout, Self,
-                                          measure_path_cost)
-              end),
-            loop(S#state{peer_ips = RotatedPeerIps});
+            ?daemon_log("Peer refresh started", []),
+            case refresh_peers(NodeDb, RouteDb, PeerNas, NodeInstanceSup,
+                               DsIpAddressPort, Na, NumberOfPeers,
+                               AutoRecalc) of
+                {ok, UpdatedPeerNas} ->
+                    timelib:start_timer(RefreshPeersTimeout, refresh_peers),
+                    ok = node_path_cost_serv:updated_peer_node_adresses(
+                           NodePathCostServ, UpdatedPeerNas),
+                    loop(S#state{peer_nas = UpdatedPeerNas});
+                {error, Reason} ->
+                    ?dbg_log(Reason),
+                    ?daemon_log(
+                       "Could not refresh peers. Retrying in five seconds...",
+                       []),
+                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, refresh_peers),
+                    loop(S)
+            end;
 	{From, stop} ->
 	    ok = node_route:delete_node_db(NodeDb),
 	    ok = node_route:delete_route_db(RouteDb),
 	    From ! {self(), ok};
-        {handshake, {node_tunnel_send_serv, PeerNa, NodeTunnelSendServ}} ->
-            ok = node_route:add_send_serv(NodeDb, PeerNa, NodeTunnelSendServ),
+        {handshake, {node_send_serv, PeerNa, NodeSendServ}} ->
+            ok = node_route:add_node_send_serv(NodeDb, PeerNa, NodeSendServ),
             loop(S);
-        {From, {handshake, node_tunnel_recv_serv}} ->
+        {From, {handshake, node_recv_serv}} ->
 	    From ! {self(), {ok, NodeDb, RouteDb}},
             loop(S);
+        {From, {handshake, {node_path_cost_serv, NodePathCostServ}}} ->
+	    From ! {self(), {ok, NodeDb, RouteDb}},
+            loop(S#state{node_path_cost_serv = NodePathCostServ});
 	{From, get_route_entries} ->
 	    {ok, Res} = node_route:get_route_entries(RouteDb),
 	    From ! {self(), {ok, Res}},
 	    loop(S);
 	#route_entry{oa = Oa} ->
 	    loop(S);
-        #route_entry{oa = DestOa, ip = ViaIp, path_cost = Pc,
-                       hops = Hops} = Re ->
-            case node_route:is_member_node(NodeDb, ViaIp) of
+        #route_entry{oa = DestOa, na = ViaNa, path_cost = Pc,
+                     hops = Hops} = Re ->
+            case node_route:is_member_node(NodeDb, ViaNa) of
                 true ->
-                    UpdatedPeerIps = PeerIps;
+                    UpdatedPeerNas = PeerNas;
                 false ->
-                    ?daemon_log("~w added incoming peer ~w.", [Oa, ViaIp]),
-                    Node = #node{ip = ViaIp, path_cost = Pc,
+                    ?daemon_log("~w added incoming peer ~w.", [Oa, ViaNa]),
+                    Node = #node{na = ViaNa, path_cost = Pc,
                                  flags = ?F_NODE_UPDATED},
-                    UpdatedPeerIps = [ViaIp|PeerIps],
+                    UpdatedPeerNas = [ViaNa|PeerNas],
+                    ok = node_path_cost_serv:updated_peer_node_adresses(
+                           NodePathCostServ, UpdatedPeerNas),
+                    {ok, _NodeSendServ} =
+                        node_send_sup:start_node_send_serv(
+                          Na, ViaNa, NodeInstanceSup),
                     ok = node_route:add_node(NodeDb, Node)
             end,
             %% patrik: lists:member/2 should return the same result as you
             %% when you look into #route_entry.psp, see node_route.hrl
-            case lists:member(Ip, Hops) of
+            case lists:member(Na, Hops) of
                 true ->
-                    ?dbg_log({loop_rejected, Ip, Hops}),
+                    ?dbg_log({loop_rejected, Na, Hops}),
                     ?daemon_log(
                        "~w rejected looping route entry: ~w -> ~w (~w)",
-                       [Oa, DestOa, ViaIp, Pc]),
-                    loop(S#state{peer_ips = UpdatedPeerIps});
+                       [Oa, DestOa, ViaNa, Pc]),
+                    loop(S#state{peer_nas = UpdatedPeerNas});
                 false ->
                     case node_route:update_route_entry(RouteDb, Re) of
                         {updated, #route_entry{path_cost = CurrentPc}} ->
                             ?daemon_log(
                                "~w updated existing route: ~w -> ~w (~w, ~w) "
                                "with new path cost ~w",
-                               [Oa, DestOa, ViaIp, CurrentPc, Hops, Pc]),
-                            loop(S#state{peer_ips = UpdatedPeerIps});
+                               [Oa, DestOa, ViaNa, CurrentPc, Hops, Pc]),
+                            loop(S#state{peer_nas = UpdatedPeerNas});
                         {kept, _CurrentRe} ->
                             ?daemon_log(
                                "~w kept existing route: ~w -> ~w (~w, ~w)",
-                               [Oa, DestOa, ViaIp, Pc, Hops]),
-                            loop(S#state{peer_ips = UpdatedPeerIps});
+                               [Oa, DestOa, ViaNa, Pc, Hops]),
+                            loop(S#state{peer_nas = UpdatedPeerNas});
                         got_new ->
                             ?daemon_log(
                                "~w got new route: ~w -> ~w (~w, ~w)",
-                               [Oa, DestOa, ViaIp, Pc, Hops]),
-                            loop(S#state{peer_ips = UpdatedPeerIps});
+                               [Oa, DestOa, ViaNa, Pc, Hops]),
+                            loop(S#state{peer_nas = UpdatedPeerNas});
                         {got_better,
                          #route_entry{
-                           ip = CurrentViaIp, path_cost = CurrentPc,
+                           na = CurrentViaNa, path_cost = CurrentPc,
                            hops = CurrentHops}} ->
                             ?daemon_log(
                                "~w got better route: ~w -> ~w (~w, ~w) "
                                "replacing ~w -> ~w (~w, ~w)",
-                               [Oa, DestOa, ViaIp, Pc, Hops,
-                                DestOa, CurrentViaIp, CurrentPc, CurrentHops]),
-                            loop(S#state{peer_ips = UpdatedPeerIps});
+                               [Oa, DestOa, ViaNa, Pc, Hops,
+                                DestOa, CurrentViaNa, CurrentPc, CurrentHops]),
+                            loop(S#state{peer_nas = UpdatedPeerNas});
                         {got_worse,
                          #route_entry{
-                           ip = CurrentViaIp, path_cost = CurrentPc,
+                           na = CurrentViaNa, path_cost = CurrentPc,
                            hops = CurrentHops}} ->
                             ?daemon_log(
                                "~w got worse route: ~w -> ~w (~w, ~w) "
                                "not replacing ~w -> ~w (~w, ~w)",
-                               [Oa, DestOa, ViaIp, Pc, Hops,
-                                DestOa, CurrentViaIp, CurrentPc, CurrentHops]),
-                            loop(S#state{peer_ips = UpdatedPeerIps})
+                               [Oa, DestOa, ViaNa, Pc, Hops,
+                                DestOa, CurrentViaNa, CurrentPc, CurrentHops]),
+                            loop(S#state{peer_nas = UpdatedPeerNas})
                     end
             end;
 	{From, get_nodes} ->
@@ -327,7 +373,7 @@ loop(#state{parent = Parent,
             loop(S#state{auto_recalc = false});
 	recalc ->
 	    ?daemon_log("** ~w recalculates its route table.", [Oa]),
-            ok = node_route:recalc(Ip, NodeDb, RouteDb),
+            ok = node_route:recalc(Na, NodeDb, RouteDb),
             if
                 AutoRecalc ->
                     RandomRecalcTimeout = random:uniform(RecalcTimeout),
@@ -336,8 +382,8 @@ loop(#state{parent = Parent,
                 true ->
                     loop(S)
             end;
-	{path_cost, PeerIp, Pc}  ->
-	    ok = node_route:update_path_cost(NodeDb, PeerIp, Pc),
+	{path_cost, PeerNa, Pc}  ->
+	    ok = node_route:update_path_cost(NodeDb, PeerNa, Pc),
 	    loop(S);
 	{'EXIT', Parent, Reason} ->
 	    ok = node_route:delete_node_db(NodeDb),
@@ -358,18 +404,18 @@ read_config(S) ->
 
 read_config(S, []) ->
     S;
-read_config(S, [{'node-address', _Value}|Rest]) ->
-    read_config(S, Rest);
-read_config(S, [{'overlay-addresses', [{_,_,_,_,_,_,_,N}]}|Rest]) ->
-    read_config(S#state{oa = N}, Rest);
+read_config(S, [{'directory-server', Value}|Rest]) ->
+    read_config(S#state{directory_server = Value}, Rest);
+read_config(S, [{'node-address', Value}|Rest]) ->
+    read_config(S#state{na = Value}, Rest);
+read_config(S, [{'overlay-addresses', [Oa]}|Rest]) ->
+    read_config(S#state{oa = Oa}, Rest);
 read_config(S, [{'public-key', Value}|Rest]) ->
     read_config(S#state{public_key = Value}, Rest);
 read_config(S, [{'private-key', Value}|Rest]) ->
     read_config(S#state{private_key = Value}, Rest);
 read_config(S, [{'number-of-peers', Value}|Rest]) ->
     read_config(S#state{number_of_peers = Value}, Rest);
-read_config(S, [{'measure-path-cost-timeout', Value}|Rest]) ->
-    read_config(S#state{measure_path_cost_timeout = Value}, Rest);
 read_config(S, [{'refresh-peers-timeout', Value}|Rest]) ->
     read_config(S#state{refresh_peers_timeout = Value}, Rest);
 read_config(S, [{'recalc-timeout', Value}|Rest]) ->
@@ -378,93 +424,80 @@ read_config(S, [{'auto-recalc', Value}|Rest]) ->
     read_config(S#state{auto_recalc = Value}, Rest).
 
 %%%
-%%% path cost measurements
-%%%
-
-measure_path_costs(_Ip, []) ->
-    ok;
-measure_path_costs(Ip, [#peer{ip = PeerIp}|Rest]) ->
-    measure_path_cost(Ip, PeerIp),
-    measure_path_costs(Ip, Rest).
-
-rotate_peer_ips([PeerIp|Rest]) ->
-    lists:reverse([PeerIp|lists:reverse(Rest)]).
-
-measure_path_cost(Ip, PeerIp) ->
-    case overseer_serv:get_path_cost(Ip, PeerIp) of
-        {ok, Pc} ->
-            Ip ! {path_cost, PeerIp, Pc};
-        not_available ->
-            ok
-    end.
-
-%%%
 %%% refresh_peers
 %%%
 
-refresh_peers(Ip, PeerIps, NodeDb, RouteDb, AutoRecalc, NumberOfPeers,
-              RefreshPeersTimeout) ->
-    ?daemon_log("Known peers: ~w", [PeerIps]),
-    {ok, PublishedPeerIps} = ds_serv:published_peers(PeerIps),
-    ?daemon_log("Still published peers: ~w", [PublishedPeerIps]),
-    UnreachableNodes = node_route:unreachable_nodes(NodeDb),
-    UnreachablePeerIps = [Node#node.ip || Node <- UnreachableNodes],
-    ?daemon_log("Unreachable peers: ~w", [UnreachablePeerIps]),
-    RemainingPeerIps = PublishedPeerIps--UnreachablePeerIps,
-    ?daemon_log("Remaining published and reachable peers: ~w",
-                [RemainingPeerIps]),
-    case NumberOfPeers-length(RemainingPeerIps) of
-        NumberOfMissingPeers when NumberOfMissingPeers > 0 ->
-            ?daemon_log("Need ~w additional peers...", [NumberOfMissingPeers]),
-            case ds_serv:get_random_peers(Ip, NumberOfMissingPeers) of
-                too_few_peers ->
-                    ?daemon_log("Can not find ~w additional peers. "
-                                "Retrying in five seconds...",
+refresh_peers(NodeDb, RouteDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
+              {NaIpAddress, _NaPort} = Na, NumberOfPeers, AutoRecalc) ->
+    ?daemon_log("Known peers: ~w", [PeerNas]),
+    case ds_jsonrpc:published_peers(NaIpAddress, DsIpAddressPort, PeerNas) of
+        {ok, PublishedPeerNas} ->
+            ?daemon_log("Still published peers: ~w", [PublishedPeerNas]),
+            UnreachableNodes = node_route:unreachable_nodes(NodeDb),
+            UnreachablePeerNas = [Node#node.na || Node <- UnreachableNodes],
+            ?daemon_log("Unreachable peers: ~w", [UnreachablePeerNas]),
+            RemainingPeerNas = PublishedPeerNas--UnreachablePeerNas,
+            ?daemon_log("Remaining published and reachable peers: ~w",
+                        [RemainingPeerNas]),
+            case NumberOfPeers-length(RemainingPeerNas) of
+                NumberOfMissingPeers when NumberOfMissingPeers > 0 ->
+                    ?daemon_log("Need ~w additional peers...",
                                 [NumberOfMissingPeers]),
-                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, refresh_peers),
-                    PeerIps;
-                {ok, NewPeers} ->
-                    NewPeerIps = [NewPeer#peer.ip || NewPeer <- NewPeers],
-                    ?daemon_log("Found ~w new peers: ~w", [NumberOfMissingPeers,
-                                                           NewPeerIps]),
-                    purge_peers(NodeDb, RouteDb, RemainingPeerIps, PeerIps),
-                    ?daemon_log("Measures initial path costs to new nodes...",
-                                []),
-                    spawn(
-                      fun() ->
-                              measure_path_costs(Ip, NewPeers)
-                      end),
-                    lists:foreach(
-                      fun(#peer{ip = PeerIp, public_key = PeerPublicKey}) ->
-                              Node = #node{
-                                ip = PeerIp,
-                                public_key = PeerPublicKey,
-                                flags = ?F_NODE_UPDATED bor
-                                    ?F_NODE_IS_INCOMING_PEER},
-                              ok = node_route:add_node(NodeDb, Node)
-                      end, NewPeers),
-                    if
-                        AutoRecalc ->
-                            ok = node_route:recalc(Ip, NodeDb, RouteDb);
-                        true ->
-                            ok
-                    end,
-                    timelib:start_timer(RefreshPeersTimeout, refresh_peers),
-                    RemainingPeerIps++NewPeerIps
+                    get_more_peers(NodeDb, RouteDb, PeerNas, NodeInstanceSup,
+                                   DsIpAddressPort, Na, AutoRecalc,
+                                   RemainingPeerNas, NumberOfMissingPeers);
+                true ->
+                    {ok, RemainingPeerNas}
             end;
-        _ ->
-            RemainingPeerIps
+        {error, Reason} ->
+            {error, Reason}
     end.
 
-purge_peers(_NodeDb, _RouteDb, _RemainingPeerIps, []) ->
+get_more_peers(NodeDb, RouteDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
+               {NaIpAddress, _NaPort} = Na, AutoRecalc, RemainingPeerNas,
+               NumberOfMissingPeers) ->
+    case ds_jsonrpc:get_random_peers(
+           NaIpAddress, DsIpAddressPort, Na, NumberOfMissingPeers) of
+        {ok, NewPeers} ->
+            NewPeerNas = [NewPeer#peer.na || NewPeer <- NewPeers],
+            ?daemon_log("Found ~w new peers: ~w",
+                        [NumberOfMissingPeers, NewPeerNas]),
+            purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
+                        PeerNas),
+            lists:foreach(
+              fun(#peer{na = PeerNa, public_key = PeerPublicKey}) ->
+                      Node = #node{
+                        na = PeerNa,
+                        public_key = PeerPublicKey,
+                        flags = ?F_NODE_UPDATED bor ?F_NODE_IS_INCOMING_PEER},
+                      {ok, _NodeSendServ} =
+                          node_send_sup:start_node_send_serv(
+                            Na, PeerNa, NodeInstanceSup),
+                      ok = node_route:add_node(NodeDb, Node)
+              end, NewPeers),
+            if
+                AutoRecalc ->
+                    ok = node_route:recalc(Na, NodeDb, RouteDb);
+                true ->
+                    ok
+            end,
+            {ok, NewPeerNas++RemainingPeerNas};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+purge_peers(_NodeDb, _RouteDb, _NodeInstanceSup, _RemainingPeerNas, []) ->
     ok;
-purge_peers(NodeDb, RouteDb, RemainingPeerIps, [PeerIp|Rest]) ->
-    case lists:member(PeerIp, RemainingPeerIps) of
+purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
+            [PeerNa|Rest]) ->
+    case lists:member(PeerNa, RemainingPeerNas) of
         false ->
-            ok = node_route:delete_node(NodeDb, PeerIp),            
-            ok = node_route:update_path_costs(RouteDb, PeerIp, -1),
-            purge_peers(NodeDb, RouteDb, RemainingPeerIps, Rest);
+            ok = node_route:delete_node(NodeDb, PeerNa),
+            ok = node_send_sup:stop_node_send_serv(PeerNa, NodeInstanceSup),
+            ok = node_route:update_path_costs(RouteDb, PeerNa, -1),
+            purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
+                        Rest);
         true ->
-            purge_peers(NodeDb, RouteDb,
-                        lists:delete(PeerIp, RemainingPeerIps), Rest)
+            purge_peers(NodeDb, RouteDb, NodeInstanceSup,
+                        lists:delete(PeerNa, RemainingPeerNas), Rest)
     end.

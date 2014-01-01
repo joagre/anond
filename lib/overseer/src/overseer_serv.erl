@@ -6,7 +6,6 @@
 -export([get_neighbours/0, get_neighbours/1]).
 -export([enable_recalc/0, enable_recalc/1, disable_recalc/0, disable_recalc/1]).
 -export([recalc/0, recalc/1]).
--export([get_path_cost/2, update_path_cost/3]).
 
 %%% internal exports
 -export([init/1]).
@@ -18,20 +17,14 @@
 -include_lib("node/include/node.hrl").
 -include_lib("node/include/node_route.hrl").
 -include_lib("ds/include/ds.hrl").
--include_lib("overseer/include/simulation.hrl").
 
 %%% constants
 -define(BOOTSTRAP_TIMEOUT, 3*1000).
--define(NUMBER_OF_SIMULATION_NODES, 10).
--define(MAX_PATH_COST, 100).
--define(PERCENT_NUDGE, 5).
 
 %%% records
 -record(state, {
 	  parent          :: pid(),
-	  path_costs      :: [{{oa(), oa()}, path_cost()}],
-	  nodes = []      :: [{oa(), ip()}],
-          simulation      :: boolean()
+	  nodes = []      :: [{oa(), na()}]
 	 }).
 
 %%% types
@@ -145,25 +138,6 @@ recalc(Oa) ->
     serv:call(?MODULE, {recalc, Oa}).
 
 %%%
-%%% exported: get_path_cost
-%%%
-
--spec get_path_cost(ip(), ip()) -> {'ok', path_cost()} | not_available.
-
-get_path_cost(Ip, PeerIp) ->
-    serv:call(?MODULE, {get_path_cost, Ip, PeerIp}).
-
-%%%
-%%% exported: update_path_cost
-%%%
-
--spec update_path_cost(oa(), oa(), path_cost()) ->
-                                 'ok' | 'unknown_path_cost'.
-
-update_path_cost(Oa, PeerOa, Pc) ->
-    serv:call(?MODULE, {update_path_cost, Oa, PeerOa, Pc}).
-
-%%%
 %%% server loop
 %%%
 
@@ -175,16 +149,12 @@ init(Parent) ->
             ok = config_json_serv:subscribe(),
             timelib:start_timer(?BOOTSTRAP_TIMEOUT, get_all_published_nodes),
 	    Parent ! {self(), started},
-	    loop(S#state{parent = Parent,
-                         path_costs = ?NON_RANDOM_PATH_COSTS});
+	    loop(S#state{parent = Parent});
         _ ->
             Parent ! {self(), already_started}
     end.
 
-loop(#state{parent = Parent,
-	    path_costs = Pcs,
-	    nodes = Nodes,
-            simulation = Simulation} = S) ->
+loop(#state{parent = Parent, nodes = Nodes} = S) ->
     receive
         get_all_published_nodes ->
             UpdatedNodes = get_all_published_nodes(),
@@ -197,12 +167,12 @@ loop(#state{parent = Parent,
 	    From ! {self(), get_global_route_table(Nodes)},
 	    loop(S);
 	{From, {get_route_table, Oa}} ->
-            case lookup_ip(Nodes, Oa) of
+            case lookup_na(Nodes, Oa) of
                 unknown_oa ->
                     From ! {self(), unknown_oa},
                     loop(S);
-                Ip ->
-                    {ok, Res} = node_route_serv:get_route_entries(Ip),
+                Na ->
+                    {ok, Res} = node_route_serv:get_route_entries(Na),
                     RouteTable =
                         [{ReOa, Pc, lookup_oa(Nodes, Hops)} ||
                             #route_entry{oa = ReOa,
@@ -214,107 +184,72 @@ loop(#state{parent = Parent,
 	{From, get_neighbours} ->
             AllNeighbours =
                 lists:map(
-                  fun({Oa, Ip}) ->
-                          {ok, ActualNodes} = node_route_serv:get_nodes(Ip),
-                          {Oa, [{lookup_oa(Nodes, ActualNode#node.ip),
+                  fun({Oa, Na}) ->
+                          {ok, ActualNodes} = node_route_serv:get_nodes(Na),
+                          {Oa, [{lookup_oa(Nodes, ActualNode#node.na),
                                  ActualNode#node.path_cost} ||
                                    ActualNode <- ActualNodes]}
                   end, Nodes),
             From ! {self(), {ok, AllNeighbours}},
             loop(S);
 	{From, {get_neighbours, Oa}} ->
-            case lookup_ip(Nodes, Oa) of
+            case lookup_na(Nodes, Oa) of
                 unknown_oa ->
                     From ! {self(), unknown_oa},
                     loop(S);
-                Ip ->
-                    {ok, ActualNodes} = node_route_serv:get_nodes(Ip),
+                Na ->
+                    {ok, ActualNodes} = node_route_serv:get_nodes(Na),
                     Neighbours =
-                        [{lookup_oa(Nodes, ActualNode#node.ip),
+                        [{lookup_oa(Nodes, ActualNode#node.na),
                           ActualNode#node.path_cost} ||
                             ActualNode <- ActualNodes],
                     From ! {self(), {ok, Neighbours}},
                     loop(S)
             end;
 	{From, enable_recalc} ->
-            lists:foreach(fun({_Oa, Ip}) ->
-                                  ok = node_route_serv:enable_recalc(Ip)
+            lists:foreach(fun({_Oa, Na}) ->
+                                  ok = node_route_serv:enable_recalc(Na)
                           end, Nodes),
             From ! {self(), ok},
             loop(S);
         {From, {enable_recalc, Oa}} ->
-            case lookup_ip(Nodes, Oa) of
+            case lookup_na(Nodes, Oa) of
                 unknown_oa ->
                     From ! {self(), unknown_oa},
                     loop(S);
-                Ip ->
-                    From ! {self(), node_route_serv:enable_recalc(Ip)},
+                Na ->
+                    From ! {self(), node_route_serv:enable_recalc(Na)},
                     loop(S)
             end;
 	{From, disable_recalc} ->
-            lists:foreach(fun({_Oa, Ip}) ->
-                                  ok = node_route_serv:disable_recalc(Ip)
+            lists:foreach(fun({_Oa, Na}) ->
+                                  ok = node_route_serv:disable_recalc(Na)
                           end, Nodes),
             From ! {self(), ok},
             loop(S);
         {From, {disable_recalc, Oa}} ->
-            case lookup_ip(Nodes, Oa) of
+            case lookup_na(Nodes, Oa) of
                 unknown_oa ->
                     From ! {self(), unknown_oa},
                     loop(S);
-                Ip ->
-                    From ! {self(), node_route_serv:disable_recalc(Ip)},
+                Na ->
+                    From ! {self(), node_route_serv:disable_recalc(Na)},
                     loop(S)
             end;
 	{From, recalc} ->
-            lists:foreach(fun({_Oa, Ip}) ->
-                                  ok = node_route_serv:recalc(Ip)
+            lists:foreach(fun({_Oa, Na}) ->
+                                  ok = node_route_serv:recalc(Na)
                           end, Nodes),
             From ! {self(), ok},
             loop(S);
         {From, {recalc, Oa}} ->
-            case lookup_ip(Nodes, Oa) of
+            case lookup_na(Nodes, Oa) of
                 unknown_oa ->
                     From ! {self(), unknown_oa},
                     loop(S);
-                Ip ->
-                    From ! {self(), node_route_serv:recalc(Ip)},
+                Na ->
+                    From ! {self(), node_route_serv:recalc(Na)},
                     loop(S)
-            end;
-        {From, {get_path_cost, Ip, PeerIp}} when Simulation == true ->
-            Oa = lookup_oa(Nodes, Ip),
-            PeerOa = lookup_oa(Nodes, PeerIp),
-            case lists:keysearch({Oa, PeerOa}, 1, Pcs) of
-                {value, {_, Pc}} ->
-                    From ! {self(), {ok, nudge_path_cost(Pc, ?PERCENT_NUDGE)}},
-                    loop(S);
-                false ->
-                    From ! {self(), not_available},
-                    loop(S)
-            end;
-        {From, {get_path_cost, Ip, PeerIp}} ->
-            Oa = lookup_oa(Nodes, Ip),
-            PeerOa = lookup_oa(Nodes, PeerIp),
-            case lists:keysearch({Oa, PeerOa}, 1, Pcs) of
-                {value, {_, Pc}} ->
-                    From ! {self(),
-                            {ok, nudge_path_cost(Pc, ?PERCENT_NUDGE)}},
-                    loop(S);
-                false ->
-                    RandomPc = random:uniform(?MAX_PATH_COST),
-                    From ! {self(), {ok, RandomPc}},
-                    UpdatedPcs = [{{Oa, PeerOa}, RandomPc},
-                                  {{PeerOa, Oa}, RandomPc}|Pcs],
-                    loop(S#state{path_costs = UpdatedPcs})
-            end;
-	{From, {update_path_cost, Oa, PeerOa, Pc}} ->
-            case update_path_costs(Oa, PeerOa, Pc, Pcs) of
-                unknown_path_cost ->
-                    From ! {self(), unknown_path_cost},
-                    loop(S);
-                UpdatedPcs ->
-                    From ! {self(), ok},
-                    loop(S#state{path_costs = UpdatedPcs})
             end;
         {'EXIT', Parent, Reason} ->
             exit(Reason);
@@ -328,8 +263,7 @@ loop(#state{parent = Parent,
 %%%
 
 read_config(S) ->
-    Simulation = ?config(['simulation']),
-    S#state{simulation = Simulation}.
+    S.
 
 get_all_published_nodes() ->
     {ok, Peers} = ds_serv:get_all_peers(),
@@ -337,9 +271,9 @@ get_all_published_nodes() ->
 
 get_all_published_nodes([]) ->
     [];
-get_all_published_nodes([#peer{ip = Ip}|Rest]) ->
-    {ok, [Oa]} = ds_serv:reserved_oas(Ip),
-    [{Oa, Ip}|get_all_published_nodes(Rest)].
+get_all_published_nodes([#peer{na = Na}|Rest]) ->
+    {ok, [Oa]} = ds_serv:reserved_oas(Na),
+    [{Oa, Na}|get_all_published_nodes(Rest)].
 
 %%%
 %%% get_global_route_table
@@ -351,13 +285,13 @@ get_global_route_table(Nodes) ->
 
 get_all_route_entries([]) ->
     [];
-get_all_route_entries([{Oa, Ip}|Rest]) ->
-    {ok, RouteEntries} = node_route_serv:get_route_entries(Ip),
-    [{Oa, Ip, RouteEntries}|get_all_route_entries(Rest)].
+get_all_route_entries([{Oa, Na}|Rest]) ->
+    {ok, RouteEntries} = node_route_serv:get_route_entries(Na),
+    [{Oa, Na, RouteEntries}|get_all_route_entries(Rest)].
 
 merge_route_entries([], _AllRouteEntries) ->
     [];
-merge_route_entries([{Oa, _Ip, RouteEntries}|Rest], AllRouteEntries) ->
+merge_route_entries([{Oa, _Na, RouteEntries}|Rest], AllRouteEntries) ->
     [traverse_each_destination(Oa, RouteEntries, AllRouteEntries)|
      merge_route_entries(Rest, AllRouteEntries)].
 
@@ -366,23 +300,23 @@ traverse_each_destination(_FromOa, [], _AllRouteEntries) ->
 traverse_each_destination(Oa, [#route_entry{oa = Oa}|Rest],
                           AllRouteEntries) ->
     traverse_each_destination(Oa, Rest, AllRouteEntries);
-traverse_each_destination(FromOa, [#route_entry{oa = ToOa, ip = Ip,
+traverse_each_destination(FromOa, [#route_entry{oa = ToOa, na = Na,
                                                   path_cost = Pc}|Rest],
                           AllRouteEntries) ->
-    OaTrail = walk_to_destination(ToOa, Ip, AllRouteEntries, []),
+    OaTrail = walk_to_destination(ToOa, Na, AllRouteEntries, []),
     [{FromOa, ToOa, Pc, OaTrail}|
      traverse_each_destination(FromOa, Rest, AllRouteEntries)].
 
-walk_to_destination(ToOa, Ip, AllRouteEntries, Acc) ->
-    case lists:keysearch(Ip, 2, AllRouteEntries) of
+walk_to_destination(ToOa, Na, AllRouteEntries, Acc) ->
+    case lists:keysearch(Na, 2, AllRouteEntries) of
         false ->
             [];
-        {value, {NextOa, Ip, RouteEntries}} ->
+        {value, {NextOa, Na, RouteEntries}} ->
             case lists:keysearch(ToOa, 2, RouteEntries) of
                 {value, #route_entry{oa = ToOa, path_cost = 0}} ->
                     lists:reverse([NextOa|Acc]);
-                {value, #route_entry{oa = ToOa, ip = NextIp}} ->
-                    walk_to_destination(ToOa, NextIp, AllRouteEntries,
+                {value, #route_entry{oa = ToOa, na = NextNa}} ->
+                    walk_to_destination(ToOa, NextNa, AllRouteEntries,
                                         [NextOa|Acc]);
                 false ->
                     []
@@ -390,47 +324,23 @@ walk_to_destination(ToOa, Ip, AllRouteEntries, Acc) ->
     end.
 
 %%%
-%%% update_path_cost
-%%%
-
-update_path_costs(_Oa, _PeerOa, _Pc, []) ->
-    unknown_path_cost;
-update_path_costs(Oa, PeerOa, NewPc,
-                  [{{Oa, PeerOa}, _OldPc}, {{PeerOa, Oa}, _OldPc}|Rest]) ->
-    [{{Oa, PeerOa}, NewPc}, {{PeerOa, Oa}, NewPc}|Rest];
-update_path_costs(Oa, PeerOa, NewPc,
-                  [{{PeerOa, Oa}, _OldPc}, {{Oa, PeerOa}, _OldPc}|Rest]) ->
-    [{{PeerOa, Oa}, NewPc}, {{Oa, PeerOa}, NewPc}|Rest];
-update_path_costs(Oa, PeerOa, NewPc, [Pc, Cp|Rest]) ->
-    [Pc, Cp|update_path_costs(Oa, PeerOa, NewPc, Rest)].
-
-%%%
-%%% get_path_cost 
-%%%
-
-nudge_path_cost(-1, _Percent) ->
-    -1;
-nudge_path_cost(Pc, Percent) ->
-    random:uniform(Percent)/100*Pc+Pc.
-
-%%%
 %%% node lookup functions
 %%%
 
 lookup_oa(_Nodes, []) ->
     [];
-lookup_oa(Nodes, [Ip|Rest]) ->
-    [lookup_oa(Nodes, Ip)|lookup_oa(Nodes, Rest)];
-lookup_oa([], Ip) ->
-    Ip;
-lookup_oa([{Oa, Ip}|_Rest], Ip) ->
+lookup_oa(Nodes, [Na|Rest]) ->
+    [lookup_oa(Nodes, Na)|lookup_oa(Nodes, Rest)];
+lookup_oa([], Na) ->
+    Na;
+lookup_oa([{Oa, Na}|_Rest], Na) ->
     Oa;
-lookup_oa([_Node|Rest], Ip) ->
-    lookup_oa(Rest, Ip).
+lookup_oa([_Node|Rest], Na) ->
+    lookup_oa(Rest, Na).
 
-lookup_ip([], _Oa) ->
+lookup_na([], _Oa) ->
     unknown_oa;
-lookup_ip([{Oa, Ip}|_Rest], Oa) ->
-    Ip;
-lookup_ip([_Node|Rest], Oa) ->
-    lookup_ip(Rest, Oa).
+lookup_na([{Oa, Na}|_Rest], Oa) ->
+    Na;
+lookup_na([_Node|Rest], Oa) ->
+    lookup_na(Rest, Oa).

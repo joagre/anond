@@ -3,7 +3,7 @@
 %%% external exports
 -export([start_link/4]).
 -export([lookup/1, lookup/2]).
--export([subscribe/0]).
+-export([subscribe/0, subscribe/1]).
 -export([tcp_send/3]).
 -export([format_error/1]).
 
@@ -50,7 +50,8 @@
         {'not_base64', json_value(), json_path()} |
         {'not_valid_directory', string(), json_path()} |
         {'file_error', file:filename(), file:posix(), json_path()} |
-        {'not_string', json_value(), json_path()}.
+        {'not_string', json_value(), json_path()} |
+        {'invalid_value', json_value(), json_path()}.
 
 %%%
 %%% exported: start_link
@@ -109,6 +110,12 @@ lookup(JsonPath, DefaultJsonValue) ->
 
 subscribe() ->
     ?MODULE ! {subscribe, self()},
+    ok.
+
+-spec subscribe(pid()) -> 'ok'.
+
+subscribe(Pid) ->
+    ?MODULE ! {subscribe, Pid},
     ok.
 
 %%%
@@ -184,6 +191,10 @@ format_error({config, {file_error, Filename, Reason, JsonPath}}) ->
                    file:format_error(Reason)]);
 format_error({config, {not_string, Value, JsonPath}}) ->
     io_lib:format("~s: ~s is not a valid string",
+                  [json_path_to_string(JsonPath),
+                   json_value_to_string(Value)]);
+format_error({config, {invalid_value, Value, JsonPath}}) ->
+    io_lib:format("~s: ~s is not a valid value",
                   [json_path_to_string(JsonPath),
                    json_value_to_string(Value)]);
 format_error(UnknownReason) ->
@@ -402,27 +413,27 @@ validate([JsonSchema|JsonSchemaRest],
      validate([JsonSchema|JsonSchemaRest], JsonTermRest, JsonPath)].
 
 %% bool
-validate_value(#json_type{name = bool, convert = Convert}, Value, _JsonPath)
+validate_value(#json_type{name = bool, convert = Convert}, Value, JsonPath)
   when is_boolean(Value) ->
-    convert_value(Convert, Value);
+    convert_value(Convert, Value, JsonPath);
 validate_value(#json_type{name = bool}, Value, JsonPath) ->
     throw({not_bool, Value, JsonPath});
 %% int
 validate_value(#json_type{name = {int, From, unbounded}, convert = Convert},
-               Value, _JsonPath)
+               Value, JsonPath)
   when is_integer(Value) andalso Value >= From andalso Value >= From ->
-    convert_value(Convert, Value);
+    convert_value(Convert, Value, JsonPath);
 validate_value(#json_type{name = {int, From, To}, convert = Convert}, Value,
-               _JsonPath)
+               JsonPath)
   when is_integer(Value) andalso Value >= From andalso Value =< To ->
-    convert_value(Convert, Value);
+    convert_value(Convert, Value, JsonPath);
 validate_value(#json_type{name = {int, From, To}}, Value, JsonPath)
   when is_integer(Value) ->
     throw({int_out_of_range, Value, From, To, JsonPath});
 validate_value(#json_type{name = {int, _From, _To}}, Value, JsonPath) ->
     throw({not_int, Value, JsonPath});
 %% ipv4address:port
-validate_value(#json_type{name = 'ipv4address:port', convert =Convert}, Value,
+validate_value(#json_type{name = 'ipv4address:port', convert = Convert}, Value,
                JsonPath)
   when is_binary(Value) ->
     case string:tokens(?b2l(Value), ":") of
@@ -431,7 +442,8 @@ validate_value(#json_type{name = 'ipv4address:port', convert =Convert}, Value,
                 {ok, Ipv4Address} ->
                     case catch ?l2i(PortString) of
                         Port when is_integer(Port) ->
-                            convert_value(Convert, {Ipv4Address, Port});
+                            convert_value(Convert, {Ipv4Address, Port},
+                                          JsonPath);
                         _ ->
                             throw({not_ipv4_address_port, Value, JsonPath})
                     end;
@@ -449,16 +461,16 @@ validate_value(#json_type{name = ipv6address, convert = Convert}, Value,
   when is_binary(Value) ->
     case inet:parse_ipv6_address(?b2l(Value)) of
         {ok, Ipv6Address} ->
-            convert_value(Convert, Ipv6Address);
+            convert_value(Convert, Ipv6Address, JsonPath);
         {error, einval} ->
             throw({not_ipv6_address, Value, JsonPath})
     end;
 validate_value(#json_type{name = ipv6address}, Value, JsonPath) ->
     throw({not_ipv6_address, Value, JsonPath});
 %% base64
-validate_value(#json_type{name = base64, convert = Convert}, Value, _JsonPath)
+validate_value(#json_type{name = base64, convert = Convert}, Value, JsonPath)
   when is_binary(Value) ->
-    convert_value(Convert, Value);
+    convert_value(Convert, Value, JsonPath);
 validate_value(#json_type{name = base64}, Value, JsonPath) ->
     throw({not_base64, Value, JsonPath});
 %% filename
@@ -467,9 +479,9 @@ validate_value(#json_type{name = filename, convert = Convert}, Value, JsonPath)
     Dirname = filename:dirname(?b2l(Value)),
     case file:read_file_info(Dirname) of
         {ok, #file_info{type = directory, access = read}} ->
-            convert_value(Convert, Value);
+            convert_value(Convert, Value, JsonPath);
         {ok, #file_info{type = directory, access = read_write}} ->
-            convert_value(Convert, Value);
+            convert_value(Convert, Value, JsonPath);
         {ok, _FileInfo} ->
             throw({not_valid_directory, Dirname, JsonPath});
         {error, Reason} ->
@@ -478,16 +490,21 @@ validate_value(#json_type{name = filename, convert = Convert}, Value, JsonPath)
 validate_value(#json_type{name = filename}, Value, JsonPath) ->
     throw({file_error, Value, enotdir, JsonPath});
 %% string
-validate_value(#json_type{name = string, convert = Convert}, Value, _JsonPath)
+validate_value(#json_type{name = string, convert = Convert}, Value, JsonPath)
   when is_binary(Value) ->
-    convert_value(Convert, Value);
+    convert_value(Convert, Value, JsonPath);
 validate_value(#json_type{name = string}, Value, JsonPath) ->
     throw({not_string, Value, JsonPath}).
 
-convert_value(undefined, Value) ->
+convert_value(undefined, Value, _JsonPath) ->
     Value;
-convert_value(Convert, Value) ->
-    Convert(Value).
+convert_value(Convert, Value, JsonPath) ->
+    case catch Convert(Value) of
+        {'EXIT', _Reason} ->
+            throw({invalid_value, Value, JsonPath});
+        ConvertedValue ->
+            ConvertedValue
+    end.
 
 validate_values(_JsonType, [], _JsonPath) ->
     [];

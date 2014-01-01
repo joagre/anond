@@ -7,7 +7,7 @@
 -export([jsonrpc_handler/2]).
 
 %%% include files
--include_lib("util/include/jsonrpc.hrl").
+-include_lib("util/include/jsonrpc_serv.hrl").
 -include_lib("util/include/log.hrl").
 -include_lib("util/include/shorthand.hrl").
 
@@ -37,14 +37,16 @@ start_link(IpAddress, Port, Options, Handler) ->
 jsonrpc_handler(Socket, Handler) ->
     case gen_tcp:recv(Socket, 0) of
         {ok, {http_request, 'POST', {abs_path, <<"/jsonrpc">>}, {1, 1}}} ->
+            ok = inet:setopts(Socket, [{packet, httph_bin}]),
             {ok, HeaderValues} =
                 httplib:get_headers(Socket, [{'content-length', -1}]),
+            ok = inet:setopts(Socket, [binary, {packet, 0}]),
             BinaryContentLength =
                 httplib:lookup_header_value('content-length', HeaderValues),
             case catch ?b2i(BinaryContentLength) of
                 ContentLength when is_integer(ContentLength) ->
                     jsonrpc_handler(Socket, Handler, ContentLength);
-                _->
+                _ ->
                     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
                     send(Socket, null, JsonError)
             end;
@@ -93,8 +95,8 @@ jsonrpc_handler(Socket, _Handler, ContentLength) ->
 recv(Socket, ContentLength) ->
     ok = inet:setopts(Socket, [binary, {packet, 0}]),
     case gen_tcp:recv(Socket, ContentLength) of
-        {ok, EncodedJson} ->
-            case catch jsx:decode(EncodedJson) of
+        {ok, Response} ->
+            case catch jsx:decode(Response) of
                 [{<<"jsonrpc">>, <<"2.0">>},
                  {<<"method">>, Method},
                  {<<"params">>, Params},
@@ -122,19 +124,19 @@ send(Socket, Id, #json_error{code = Code, message = Message, data = Data}) ->
         UpdatedMessage ->
             ok
     end,
-    Json =
+    Request =
         [{<<"jsonrpc">>, <<"2.0">>},
          {<<"error">>, [{<<"code">>, Code}]++
               message_if_any(UpdatedMessage)++
               data_if_any(Data)},
          {<<"id">>, Id}],
-    send_to_client(Socket, Id, Json);
+    send_to_client(Socket, Id, Request);
 send(Socket, Id, Result) ->
-    Json =
+    Request =
         [{<<"jsonrpc">>, <<"2.0">>},
          {<<"result">>, Result},
          {<<"id">>, Id}],
-    send_to_client(Socket, Id, Json).
+    send_to_client(Socket, Id, Request).
 
 message(?JSONRPC_PARSE_ERROR) ->
     <<"Invalid JSON was received by the server">>;
@@ -159,20 +161,18 @@ data_if_any(undefined) ->
 data_if_any(Data) ->
     [{<<"data">>, Data}].
 
-send_to_client(Socket, Id, Json) ->
-    case catch jsx:encode(Json) of
-        EncodedJson when is_binary(EncodedJson) ->
-            case jsx:prettify(EncodedJson) of
-                PrettifiedJson when is_binary(PrettifiedJson) ->
-                    ContentLength = ?i2l(size(PrettifiedJson)),
-                    gen_tcp:send(
-                      Socket,
-                      [<<"HTTP/1.1 200\r\n">>,
-                       <<"Content-Type: application/json\r\n">>,
-                       <<"Content-Length: ">>, ContentLength, <<"\r\n">>,
-                       <<"Connection: close\r\n\r\n">>,
-                       PrettifiedJson])
-            end;
+send_to_client(Socket, Id, Request) ->
+    case catch jsx:encode(Request) of
+        EncodedRequest when is_binary(EncodedRequest) ->
+            PrettifiedRequest = jsx:prettify(EncodedRequest),
+            ContentLength = ?i2l(size(PrettifiedRequest)),
+            gen_tcp:send(
+              Socket,
+              [<<"HTTP/1.1 200 OK\r\n">>,
+               <<"Content-Type: application/json\r\n">>,
+               <<"Content-Length: ">>, ContentLength, <<"\r\n">>,
+               <<"Connection: close\r\n\r\n">>,
+               PrettifiedRequest]);
         _ ->
             JsonError = #json_error{code = ?JSONRPC_INTERNAL_ERROR},
             send(Socket, Id, JsonError)

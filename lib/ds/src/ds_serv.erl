@@ -11,12 +11,11 @@
 -export([init/1]).
 
 %%% include files
+-include_lib("ds/include/ds.hrl").
+-include_lib("node/include/node.hrl").
 -include_lib("util/include/config.hrl").
 -include_lib("util/include/log.hrl").
 -include_lib("util/include/shorthand.hrl").
--include_lib("node/include/node.hrl").
--include_lib("overseer/include/simulation.hrl").
--include_lib("ds/include/ds.hrl").
 
 %%% constants
 
@@ -25,9 +24,9 @@
 	  parent           :: pid(),
 	  peer_db          :: ets:tid(),
           oa_db            :: ets:tid(),
-          simulation       :: boolean(),
-          peer_ttl         :: integer(),
-          max_oas_per_peer :: integer()
+          mode             :: common_jsonrpc_serv:mode(),
+          peer_ttl         :: non_neg_integer(),
+          max_oas_per_peer :: non_neg_integer()
 	 }).
 
 %%% types
@@ -76,7 +75,7 @@ enforce_peer_ttl() ->
 %%% exported: get_number_of_peers
 %%%
 
--spec get_number_of_peers() -> {'ok', integer()}.
+-spec get_number_of_peers() -> {'ok', non_neg_integer()}.
 
 get_number_of_peers() ->
     serv:call(?MODULE, get_number_of_peers).
@@ -94,8 +93,8 @@ get_all_peers() ->
 %%% exported: get_random_peers
 %%%
 
--spec get_random_peers(ip(), integer()) ->
-                              {'ok', [#peer{}]} | 'too_few_peers'.
+-spec get_random_peers(na(), non_neg_integer()) ->
+                              {'ok', [#peer{}]} | {'error', 'too_few_peers'}.
 get_random_peers(MyNa, N) ->
     serv:call(?MODULE, {get_random_peers, MyNa, N}).
 
@@ -103,7 +102,7 @@ get_random_peers(MyNa, N) ->
 %%% exported: publish_peer
 %%%
 
--spec publish_peer(#peer{}) -> {'ok', PeerTTL :: integer()}.
+-spec publish_peer(#peer{}) -> {'ok', PeerTTL :: non_neg_integer()}.
 
 publish_peer(Peer) ->
     serv:call(?MODULE, {publish_peer, Peer}).
@@ -112,7 +111,7 @@ publish_peer(Peer) ->
 %%% exported: unpublish_peer
 %%%
 
--spec unpublish_peer(ip()) -> 'ok'.
+-spec unpublish_peer(na()) -> 'ok'.
 
 unpublish_peer(Na) ->
     serv:call(?MODULE, {unpublish_peer, Na}).
@@ -121,7 +120,7 @@ unpublish_peer(Na) ->
 %%% exported: published_peers
 %%%
 
--spec published_peers([ip()]) -> {'ok', [ip()]}.
+-spec published_peers([na()]) -> {'ok', [na()]}.
 
 published_peers(Nas) ->
     serv:call(?MODULE, {published_peers, Nas}).
@@ -130,7 +129,8 @@ published_peers(Nas) ->
 %%% exported: reserve_oa
 %%%
 
--spec reserve_oa(oa(), ip()) -> 'ok' | 'no_such_peer' | 'too_many_oas'.
+-spec reserve_oa(oa(), na()) ->
+                        'ok' | {'error', 'no_such_peer' | 'too_many_oas'}.
 
 reserve_oa(Oa, Na) ->
     serv:call(?MODULE, {reserve_oa, Oa, Na}).
@@ -139,7 +139,7 @@ reserve_oa(Oa, Na) ->
 %%% exported: reserved_oas
 %%%
 
--spec reserved_oas(ip()) -> {'ok', [oa()]}.
+-spec reserved_oas(na()) -> {'ok', [oa()]} | {'error', 'no_reserved_oas'}.
 
 reserved_oas(Na) ->
     serv:call(?MODULE, {reserved_oas, Na}).
@@ -168,7 +168,7 @@ init(Parent) ->
 loop(#state{parent = Parent,
             peer_db = PeerDb,
             oa_db = OaDb,
-            simulation = Simulation,
+            mode = Mode,
             peer_ttl = PeerTTL,
             max_oas_per_peer = MaxOasPerPeer} = S) ->
     receive
@@ -179,7 +179,7 @@ loop(#state{parent = Parent,
             ?daemon_log("Looking for stale peers...", []),
             StaleNas =
                 ets:foldl(
-                  fun(#peer{ip = Na, last_updated = LastUpdated}, Acc) ->
+                  fun(#peer{na = Na, last_updated = LastUpdated}, Acc) ->
                           Delta = timelib:ugnow_delta({minus, LastUpdated}),
                           if
                               Delta > PeerTTL ->
@@ -191,7 +191,7 @@ loop(#state{parent = Parent,
             lists:foreach(fun(Na) ->
                                   true = ets:delete(PeerDb, Na),
                                   true = ets:match_delete(OaDb, {'_', Na}),
-                                  ?daemon_log("Removed stale peer ~w.", [Na])
+                                  ?daemon_log("Removed stale peer ~w", [Na])
                           end, StaleNas),
             if
                 Repeat ->
@@ -201,62 +201,69 @@ loop(#state{parent = Parent,
                     loop(S)
             end;
 	{From, stop} ->
+            ?daemon_log("Stopping directory server...", []),
 	    ets:delete(PeerDb),
 	    ets:delete(OaDb),
 	    From ! {self(), ok};
         {From, get_number_of_peers} ->
-            From ! {self(), {ok, ets:info(PeerDb, size)}},
+            NumberOfPeers = ets:info(PeerDb, size),
+            ?daemon_log("Calculated number of peers (~w)", [NumberOfPeers]),
+            From ! {self(), {ok, NumberOfPeers}},
             loop(S);
         {From, get_all_peers} ->
             AllPeers = ets:foldl(fun(Peer, Acc) -> [Peer|Acc] end, [], PeerDb),
-            ?daemon_log("All ~w peers returned.", [length(AllPeers)]),
+            ?daemon_log("Extracted all (~w) peers", [length(AllPeers)]),
             From ! {self(), {ok, AllPeers}},
             loop(S);
         %% return two non random peers as defined in simulation.hrl
-        {From, {get_random_peers, MyNa, 2}} when Simulation == true ->
+        {From, {get_random_peers, MyNa, 2}} when Mode == simulation ->
             {SimulatedOas, SimulatedPeers} =
                 get_simulated_peers(PeerDb, OaDb, MyNa),
-            ?daemon_log("~w simulated peers returned: ~w",
-                        [length(SimulatedOas), SimulatedOas]),
+            ?daemon_log(
+               "Extracted ~w simulated and non-random peers: ~w",
+               [length(SimulatedOas), SimulatedOas]),
             From ! {self(), {ok, SimulatedPeers}},
             loop(S);
         {From, {get_random_peers, MyNa, N}} when is_integer(N) ->
             case ets:info(PeerDb, size) of
                 Size when N >= Size ->
-                    ?daemon_log("~w random peers could not be returned.",
+                    ?daemon_log("~w random peers could not be extracted",
                                 [Size]),
-                    From ! {self(), too_few_peers},
+                    From ! {self(), {error, too_few_peers}},
                     loop(S);
                 _Size ->
                     RandomPeers = get_random_peers(PeerDb, MyNa, N),
                     RandomNas =
                         [RandomPeer#peer.na || RandomPeer <- RandomPeers],
-                    ?daemon_log("~w random peers returned: ~w",
+                    ?daemon_log("Extracted ~w random peers: ~w",
                                 [length(RandomNas), RandomNas]),
                     From ! {self(), {ok, RandomPeers}},
                     loop(S)
             end;
-        {From, {publish_peer, #peer{ip = Na} = Peer}} ->
+        {From, {publish_peer, #peer{na = Na} = Peer}} ->
             UpdatedPeer = Peer#peer{last_updated = timelib:ugnow()},
             true = ets:insert(PeerDb, UpdatedPeer),
-            ?daemon_log("Peer ~w published.", [Na]),
+            ?daemon_log("Peer ~w published", [Na]),
             From ! {self(), {ok, PeerTTL}},
             loop(S);
         {From, {unpublish_peer, Na}} ->
             true = ets:delete(PeerDb, Na),
-            ?daemon_log("Peer ~w unpublished.", [Na]),
+            ?daemon_log("Peer ~w unpublished", [Na]),
             From ! {self(), ok},
             loop(S);
         {From, {published_peers, Nas}} ->
-            PublishedNas = [Na || Na <- Nas, ets:member(PeerDb, Na) == true],
-            From ! {self(), {ok, PublishedNas}},
+            StillPublishedNas =
+                [Na || Na <- Nas, ets:member(PeerDb, Na) == true],
+            ?daemon_log("Out of these peers ~w, these are still published ~w",
+                        [Nas, StillPublishedNas]),
+            From ! {self(), {ok, StillPublishedNas}},
             loop(S);
         {From, {reserve_oa, Oa, Na}} ->
             case ets:lookup(PeerDb, Na) of
                 [] ->
                     ?daemon_log("Rejected reservation of overlay address ~w to "
-                                "unknown peer ~w.", [Oa, Na]),
-                    From ! {self(), no_such_peer},
+                                "unknown peer ~w", [Oa, Na]),
+                    From ! {self(), {error, no_such_peer}},
                     loop(S);
                 _ ->
                     NumberOfOas = length(ets:lookup(OaDb, Oa)),
@@ -264,22 +271,29 @@ loop(#state{parent = Parent,
                         NumberOfOas =< MaxOasPerPeer ->
                             true = ets:insert(OaDb, {Oa, Na}),
                             ?daemon_log(
-                               "Reserved overlay address ~w to peer ~w.",
+                               "Reserved overlay address ~w to peer ~w",
                                [Oa, Na]),
                             From ! {self(), ok},
                             loop(S);
                         true ->
                             ?daemon_log("Peer ~w tried to reserve more than ~w "
-                                        "overlay addresses.",
+                                        "overlay addresses",
                                         [Na, MaxOasPerPeer]),
-                            From ! {self(), too_many_oas},
+                            From ! {self(), {error, too_many_oas}},
                             loop(S)
                     end
             end;
         {From, {reserved_oas, Na}} ->
-            [Oas] = ets:match(OaDb, {'$1', Na}),
-            From ! {self(), {ok, Oas}},
-            loop(S);
+            case ets:match(OaDb, {'$1', Na}) of
+                [Oas] ->
+                    ?daemon_log("~w has these overlay addresses reserved: ~w",
+                                [Na, Oas]),
+                    From ! {self(), {ok, Oas}},
+                    loop(S);
+                [] ->
+                    From ! {self(), {error, no_reserved_oas}},
+                    loop(S)
+            end;
         {'EXIT', Parent, Reason} ->
 	    true = ets:delete(PeerDb),
             exit(Reason);
@@ -293,11 +307,10 @@ loop(#state{parent = Parent,
 %%%
 
 read_config(S) ->
-    Simulation = ?config([simulation]),
+    Mode = ?config([mode]),
     PeerTTL = ?config(['directory-server', 'peer-ttl']),
     MaxOasPerPeer = ?config(['directory-server', 'max-oas-per-peer']),
-    S#state{simulation = Simulation, peer_ttl = PeerTTL,
-            max_oas_per_peer = MaxOasPerPeer}.
+    S#state{mode = Mode, peer_ttl = PeerTTL, max_oas_per_peer = MaxOasPerPeer}.
 
 %%%
 %%% get_random_peers

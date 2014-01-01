@@ -3,7 +3,7 @@
 
 %%% external exports
 -export([start_link/1]).
--export([start_node/1, stop_node/1]).
+-export([start_node_instance/1, stop_node_instance/1]).
 
 %%% internal exports
 
@@ -29,29 +29,29 @@ start_link([]) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %%%
-%%% exported: start_node
+%%% exported: start_node_instance
 %%%
 
--spec start_node(na()) -> supervisor:startchild_ret().
+-spec start_node_instance(na()) -> supervisor:startchild_ret().
 
-start_node(Na) ->
-    Id = {node_instance_sup, erlang:now()},
+start_node_instance(Na) ->
+    Id = {node_instance_sup, Na},
     NodeInstanceSupChildSpec =
         {Id, {node_instance_sup, start_link, [Na]},
          permanent, infinity, supervisor, [node_instance_sup]},
     supervisor:start_child(?MODULE, NodeInstanceSupChildSpec).
 
 %%%
-%%% exported: stop_node
+%%% exported: stop_node_instance
 %%%
 
--spec stop_node(supervisor:child_id()) ->
-                       'ok' |
-                       {'error',
-                        'running' | 'restarting' | 'not_found' |
-                        'simple_one_for_one'}.
+-spec stop_node_instance(pid()) ->
+                                'ok' |
+                                {'error',
+                                 'running' | 'restarting' | 'not_found' |
+                                 'simple_one_for_one'}.
 
-stop_node(NodeInstanceSup) ->
+stop_node_instance(NodeInstanceSup) ->
     case supervisor:terminate_child(?MODULE, NodeInstanceSup) of
         ok ->
             supervisor:delete_child(?MODULE, NodeInstanceSup);

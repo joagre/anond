@@ -82,41 +82,42 @@ loop(#state{parent = Parent} = S) ->
 
 read_config(#state{nas_db = NasDb} = S) ->
     Nas = [Na || [{'node-address', Na}|_] <- ?config([nodes])],
-    StillRunningNasDb = stop_nodes(NasDb, Nas),
-    NowRunningNasDb = start_nodes(StillRunningNasDb, Nas),
+    StillRunningNasDb = stop_node_instances(NasDb, Nas),
+    NowRunningNasDb = start_node_instances(StillRunningNasDb, Nas),
     S#state{nas_db = NowRunningNasDb}.
 
-stop_nodes([], _Nas) ->
+stop_node_instances([], _Nas) ->
     [];
-stop_nodes([{Na, NodeInstanceSup}|Rest], Nas) ->
+stop_node_instances([{Na, NodeInstanceSup}|Rest], Nas) ->
     case lists:member(Na, Nas) of
         true ->
-            [{Na, NodeInstanceSup}|stop_nodes(Rest, Nas)];
+            [{Na, NodeInstanceSup}|stop_node_instances(Rest, Nas)];
         false ->
-            case node_sup:stop_node(NodeInstanceSup) of
+            case node_sup:stop_node_instance(NodeInstanceSup) of
                 ok ->
-                    stop_nodes(Rest, Nas);
+                    stop_node_instances(Rest, Nas);
                 {error, Reason} ->
                     ?error_log({could_not_stop_node, Reason}),
-                    stop_nodes(Rest, Nas)
+                    stop_node_instances(Rest, Nas)
             end
     end.
 
-start_nodes(NasDb, Nas) ->
-    start_nodes(NasDb, Nas, []).
+start_node_instances(NasDb, Nas) ->
+    start_node_instances(NasDb, Nas, []).
 
-start_nodes(_NasDb, [], Acc) ->
+start_node_instances(_NasDb, [], Acc) ->
     Acc;
-start_nodes(NasDb, [Na|Rest], Acc) ->
+start_node_instances(NasDb, [Na|Rest], Acc) ->
     case lists:keysearch(Na, 1, NasDb) of
         {value, {Na, NodeInstanceSup}} ->
-            start_nodes(NasDb, Rest, [{Na, NodeInstanceSup}|Acc]);
+            start_node_instances(NasDb, Rest, [{Na, NodeInstanceSup}|Acc]);
         false ->
-            case node_sup:start_node(Na) of
+            case node_sup:start_node_instance(Na) of
                 {ok, NodeInstanceSup} ->
-                    start_nodes(NasDb, Rest, [{Na, NodeInstanceSup}|Acc]);
+                    start_node_instances(NasDb, Rest,
+                                         [{Na, NodeInstanceSup}|Acc]);
                 {error, Reason} ->
                     ?daemon_log("Could not start node (~p)", [Reason]),
-                    start_nodes(NasDb, Rest, Acc)
+                    start_node_instances(NasDb, Rest, Acc)
             end
     end.

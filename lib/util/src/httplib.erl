@@ -7,6 +7,7 @@
 -export([download/3]).
 -export([inflate_file/2]).
 -export([send_file/2]).
+-export([post/7]).
 
 %%% internal exports
 
@@ -25,6 +26,7 @@
 -type header_name() :: atom() | binary().
 -type header_value() :: any().
 -type header_values() :: [{header_name(), header_value()}].
+-type post_error_reason() :: inet:posix() | 'invalid_content_length'.
 
 %%%
 %%% exported: get_headers
@@ -238,5 +240,59 @@ send_file(Socket, IoDevice, Position) ->
         eof ->
             ok;
         {error, Reason} ->
+            {error, Reason}
+    end.
+
+%%%
+%%% exported: post
+%%%
+
+-spec post(inet:ip_address(), inet:ip_address(), inet:port_number(), timeout(),
+           binary(), binary(), binary()) ->
+                  'ok' | {'error', post_error_reason()}.
+
+post(NicIpAddress, IpAddress, Port, Timeout, Uri, ContentType, Payload) ->
+    HttpRequest =
+        [<<"POST ">>, Uri, <<" HTTP/1.1\r\n">>,
+         <<"Content-Type: ">>, ContentType, <<"\r\n">>,
+         <<"Content-Length: ">>, ?i2l(size(Payload)), <<"\r\n">>,
+         <<"Connection: close\r\n\r\n">>,
+         Payload],
+    Options = [{packet, http_bin}, {active, false}, {ip, NicIpAddress}],
+    case gen_tcp:connect(IpAddress, Port, Options, Timeout) of
+        {ok, Socket} ->
+            send_and_recv(Timeout, HttpRequest, Socket);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+send_and_recv(Timeout, HttpRequest, Socket) ->
+    case gen_tcp:send(Socket, HttpRequest) of
+        ok ->
+            recv(Timeout, Socket);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+recv(Timeout, Socket) ->
+    case gen_tcp:recv(Socket, 0, Timeout) of
+        {ok, {http_response, {1, 1}, 200, <<"OK">>}} ->
+            ok = inet:setopts(Socket, [{packet, httph_bin}]),
+            {ok, HeaderValues} =
+                httplib:get_headers(Socket, [{'content-length', -1}]),
+            ok = inet:setopts(Socket, [binary, {packet, 0}]),
+            BinaryContentLength =
+                httplib:lookup_header_value('content-length', HeaderValues),
+            case catch ?b2i(BinaryContentLength) of
+                ContentLength when is_integer(ContentLength) ->
+                    Result = gen_tcp:recv(Socket, ContentLength, Timeout),
+                    gen_tcp:close(Socket),
+                    Result;
+                _ ->
+                    gen_tcp:close(Socket),
+                    {error, invalid_content_length}
+            end;
+        {error, Reason} ->
+            gen_tcp:close(Socket),
             {error, Reason}
     end.

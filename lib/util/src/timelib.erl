@@ -1,10 +1,9 @@
 -module(timelib).
 
 %%% external exports
--export([ugnow/0]).
--export([gnow/0]).
--export([ugnow_delta/1]).
--export([gnow_delta/1]).
+-export([mk_timestamp/0]).
+-export([ugnow/0, gnow/0]).
+-export([ugnow_delta/1, gnow_delta/1]).
 -export([stop_timer/1, start_timer/2, start_timer/3]).
 -export([format_now/0]).
 
@@ -21,6 +20,16 @@
 %%% records
 
 %%% types
+
+%%%
+%%% mk_timestamp
+%%%
+
+-spec mk_timestamp() -> timeout().
+
+mk_timestamp() ->
+    {MegaSecs, Secs, MicroSecs} = os:timestamp(),
+    (MegaSecs*1000000+Secs)*1000000+MicroSecs.
 
 %%%
 %%% exported: ugnow

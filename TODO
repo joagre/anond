@@ -1,16 +1,19 @@
-* maybe remove the need for bootstrap
-
-
-node_serv.erl
--------------
+node_route_serv.erl
+-------------------
+* Switch over from ip() to na() types.
 * Integrate with Patrik's loop detection and path cost library.
 
 node_route_jsonrpc_serv.erl
 ---------------------------
+* Continously choose new neighbours, discard old.
+* Continously choose new overlay addresses, discard old.
 
 node_tun_serv.erl
 -----------------
 * Implement it.
+* Intercept DNS traffic. Forward DNS lookups to other overlay
+  nodes. Forward lookups for the "anond" domain to the anond directory
+  server.
 
 node_path_cost_serv.erl
 -----------------------
@@ -18,12 +21,16 @@ node_path_cost_serv.erl
 
 node_tunnel_{recv,send}_serv.erl
 --------------------------------
-* Make all UDP traffic encrypted.
+* Make all UDP traffic encrypted. How do we generate key pairs? OpenSSL?
 * Send everything in 512 byte cells.
+* Add support for optional steady-state-byte-streams.
 
 ds_serv.erl
 -----------
 * Switch over from ip() to na() types.
+* Add experimneltal flag for ds in anond.conf. cloak experimental functions.
+* http://www.h-online.com/security/features/How-Skype-Co-get-round-firewalls-747197.html
+* Use OA as public key?
 * Add ip-address and port to anond.conf.
 * Use dets instead of ets.
 * Add anond.conf parameter to set directory for dets file.
@@ -37,15 +44,13 @@ ds_serv.erl
 
 jsonrpc_serv.erl
 ----------------
-* Switch over to SSL
+* Switch over to SSL ( How do we generate key pairs? OpenSSL?)
 
 common_config_json_serv.erl
 ----------------------------
 
 overseer_serv.erl
 -----------------
-* This module should *not* start nodes. This should be done by
-  node_starter_serv.erl (to be written).
 
 generic stuff
 -------------

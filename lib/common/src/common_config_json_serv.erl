@@ -17,16 +17,25 @@
 -define(DEFAULT_CONTROL_ADDRESS, {127, 0, 0, 1}).
 -define(DEFAULT_CONTROL_PORT, 23765).
 -define(JSON_SCHEMA,
-        [{simulation,
-          #json_type{name = bool, typical = true}},
+        [{mode,
+          #json_type{name = string, typical = normal,
+                     convert = fun(<<"normal">>) -> normal;
+                                  (<<"simulation">>) -> simulation
+                               end}},
          {'directory-server',
-          [{'peer-ttl',
+          [{listen,
+            #json_type{name = 'ipv4address:port',
+                       typical = {{192,168,1,80}, 6700}}},
+           {'peer-ttl',
             #json_type{name = {int, 1, 24}, info = <<"hours">>, typical = 3,
                        convert = fun(Value) -> Value*1000*60*60 end}},
            {'max-oas-per-peer',
             #json_type{name = {int, 1, 20}, typical = 10}}]},
          {nodes,
-          [[{'node-address',
+          [[{'directory-server',
+             #json_type{name = 'ipv4address:port',
+                        typical = {{192,168,1,80}, 6700}}},
+            {'node-address',
              #json_type{name = 'ipv4address:port'}},
             {'overlay-addresses',
              [#json_type{name = ipv6address}]},
@@ -36,10 +45,6 @@
              #json_type{name = base64}},
             {'number-of-peers',
              #json_type{name = {int, 2, 1000}, typical = 100}},
-            {'measure-path-cost-timeout',
-             #json_type{name = {int, 2, 60}, info = <<"seconds">>,
-                        typical = 10,
-                        convert = fun(Value) -> Value*1000 end}},
             {'refresh-peers-timeout',
              #json_type{name = {int, 5, 120}, info = <<"minutes">>,
                         typical = 60,
@@ -49,8 +54,22 @@
                         typical = 15,
                         convert = fun(Value) -> Value*1000 end}},
             {'auto-recalc',
-             #json_type{name = bool, typical = true}
-            }]]},
+             #json_type{name = bool, typical = true}},
+            {'path-cost',
+             [{"number-of-echo-requests",
+               #json_type{name = {int, 8, 128}, typical = 16}},
+              {"acceptable-number-of-echo-replies",
+               #json_type{name = {int, 8, 128}, typical = 8}},
+              {"delay-between-echo-requests",
+               #json_type{name = {int, 200, 2000}, info = <<"milliseconds">>,
+                          typical = 1000}},
+              {"delay-between-mesurements",
+               #json_type{name = {int, 1000, 1600}, info = <<"milliseconds">>,
+                          typical = 5000}},
+              {'echo-reply-timeout',
+               #json_type{name = {int, 1, 60}, info = <<"seconds">>,
+                          typical = 2,
+                          convert = fun(Value) -> Value*1000 end}}]}]]},
          {'anond-control',
           [{listen,
             #json_type{name = 'ipv4address:port',
@@ -97,6 +116,7 @@
 %%% records
 
 %%% types
+-type mode() :: 'normal' | 'random' | 'simulation10'.
 
 %%%
 %%% exported: start_link

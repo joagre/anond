@@ -3,7 +3,8 @@ include erl.mk
 .PHONY: dialyzer
 
 # procket, tunctl and test excluded
-LIBS=common ds jsx node overseer util
+#LIBS=common ds jsx node overseer util
+LIBS=common ds jsx util
 
 dialyzer: dialyzer.plt
 	$(DIALYZER) -q --no_check_plt --plt $< -r $(LIBS:%=../lib/%/ebin)
