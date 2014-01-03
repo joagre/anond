@@ -79,8 +79,10 @@ stop(Pid, Timeout) ->
 %%% exported: updated_peer_nas
 %%%
 
--spec updated_peer_nas(pid(), [na()]) -> 'ok'.
+-spec updated_peer_nas(pid() | 'undefined', [na()]) -> 'ok'.
 
+updated_peer_nas(undefined, UpdatedPeerNas) ->
+    ok;
 updated_peer_nas(NodePathCostServ, UpdatedPeerNas) ->
     NodePathCostServ ! {updated_peer_nas, UpdatedPeerNas},
     ok.

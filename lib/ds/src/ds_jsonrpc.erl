@@ -103,7 +103,7 @@ get_random_peers(NicIpAddress, {IpAddress, Port}, MyNa, N) ->
 %%% exported: publish_peer
 %%%
 
--spec publish_peer(inet:ip_address(), na(), #peer{}) ->
+-spec publish_peer(inet:ipv4_address(), na(), #peer{}) ->
                           {'ok', PeerTTL :: non_neg_integer()} |
                           {'error', error_reason()}.
 

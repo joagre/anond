@@ -27,7 +27,7 @@
           tcp_serv         :: pid(),
           config_filename  :: file:filename(),
           json_schema      :: json_schema(),
-	  json_term        :: jsx:json_term(),
+	  json_term        :: json_term(),
           subscribers = [] :: [pid()]
          }).
 
@@ -82,7 +82,7 @@ start_link(ConfigFilename, JsonSchema, ControlAddressPortPath, Handler) ->
 %%% exported: lookup
 %%%
 
--spec lookup(json_path()) -> jsx:json_term() | json_value().
+-spec lookup(json_path()) -> json_term().
 
 lookup(JsonPath) ->
     case serv:call(?MODULE, {lookup, JsonPath}) of
@@ -92,7 +92,7 @@ lookup(JsonPath) ->
             JsonTermOrValue
     end.
 
--spec lookup(json_path(), json_value()) -> jsx:json_term() | json_value().
+-spec lookup(json_path(), json_value()) -> json_term().
 
 lookup(JsonPath, DefaultJsonValue) ->
     case serv:call(?MODULE, {lookup, JsonPath, DefaultJsonValue}) of

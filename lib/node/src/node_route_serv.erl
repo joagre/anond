@@ -212,7 +212,8 @@ loop(#state{parent = Parent,
                             got_new =
                                 node_route:update_route_entry(RouteDb, Re),
                             self() ! refresh_peers,
-                            timelib:start_timer(UpdatedTTL/2, republish_self),
+                            timelib:start_timer(trunc(UpdatedTTL/2),
+                                                republish_self),
                             if
                                 S#state.auto_recalc ->
                                     RandomRecalcTimeout =
@@ -249,7 +250,7 @@ loop(#state{parent = Parent,
                    #peer{na = Na, public_key = PublicKey}) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Republished node address ~w", [Na]),
-                    timelib:start_timer(UpdatedTTL/2, republish_self),
+                    timelib:start_timer(trunc(UpdatedTTL/2), republish_self),
                     loop(S#state{ttl = UpdatedTTL});
                 {error, Reason}->
                     ?dbg_log(Reason),
@@ -266,7 +267,7 @@ loop(#state{parent = Parent,
                                AutoRecalc) of
                 {ok, UpdatedPeerNas} ->
                     timelib:start_timer(RefreshPeersTimeout, refresh_peers),
-                    ok = node_path_cost_serv:updated_peer_node_adresses(
+                    ok = node_path_cost_serv:updated_peer_nas(
                            NodePathCostServ, UpdatedPeerNas),
                     loop(S#state{peer_nas = UpdatedPeerNas});
                 {error, Reason} ->
@@ -306,7 +307,7 @@ loop(#state{parent = Parent,
                     Node = #node{na = ViaNa, path_cost = Pc,
                                  flags = ?F_NODE_UPDATED},
                     UpdatedPeerNas = [ViaNa|PeerNas],
-                    ok = node_path_cost_serv:updated_peer_node_adresses(
+                    ok = node_path_cost_serv:updated_peer_nas(
                            NodePathCostServ, UpdatedPeerNas),
                     {ok, _NodeSendServ} =
                         node_send_sup:start_node_send_serv(
@@ -446,7 +447,7 @@ refresh_peers(NodeDb, RouteDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
                     get_more_peers(NodeDb, RouteDb, PeerNas, NodeInstanceSup,
                                    DsIpAddressPort, Na, AutoRecalc,
                                    RemainingPeerNas, NumberOfMissingPeers);
-                true ->
+                _ ->
                     {ok, RemainingPeerNas}
             end;
         {error, Reason} ->

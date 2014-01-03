@@ -247,8 +247,8 @@ send_file(Socket, IoDevice, Position) ->
 %%% exported: post
 %%%
 
--spec post(inet:ip_address(), inet:ip_address(), inet:port_number(), timeout(),
-           binary(), binary(), binary()) ->
+-spec post(inet:ip_address() | 'undefined', inet:ip_address(),
+           inet:port_number(), timeout(), binary(), binary(), binary()) ->
                   'ok' | {'error', post_error_reason()}.
 
 post(NicIpAddress, IpAddress, Port, Timeout, Uri, ContentType, Payload) ->
@@ -258,7 +258,12 @@ post(NicIpAddress, IpAddress, Port, Timeout, Uri, ContentType, Payload) ->
          <<"Content-Length: ">>, ?i2l(size(Payload)), <<"\r\n">>,
          <<"Connection: close\r\n\r\n">>,
          Payload],
-    Options = [{packet, http_bin}, {active, false}, {ip, NicIpAddress}],
+    case NicIpAddress of
+        undefined ->
+            Options = [{packet, http_bin}, {active, false}];
+        _ ->
+            Options = [{packet, http_bin}, {active, false}, {ip, NicIpAddress}]
+    end,
     case gen_tcp:connect(IpAddress, Port, Options, Timeout) of
         {ok, Socket} ->
             send_and_recv(Timeout, HttpRequest, Socket);

@@ -24,24 +24,25 @@
 %%% exported: call
 %%%
 
--spec call(inet:ip_address(), inet:ip_address(), inet:port_number(),
-           binary()) ->
+-spec call(inet:ip_address() | 'undefined', inet:ip_address(),
+           inet:port_number(), binary()) ->
                   {'ok', jsx:json_term()}  | {'error', error_reason()}.
 
 call(NicIpAddress, IpAddress, Port, Method) ->
     call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
          undefined).
 
--spec call(inet:ip_address(), inet:ip_address(), inet:port_number(),
-           binary(), jsx:json_term() | 'undefined') ->
-                  {'ok', jsx:json_term()} | {'error', error_reason()}.
+-spec call(inet:ip_address() | 'undefined', inet:ip_address(),
+           inet:port_number(), binary(), jsx:json_term() | 'undefined') ->
+                  {'ok',  jsx:json_term()} | {'error', error_reason()}.
 
 call(NicIpAddress, IpAddress, Port, Method, Params) ->
     call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
          Params).
 
--spec call(inet:ip_address(), inet:ip_address(), inet:port_number(), timeout(),
-           binary(), binary(), jsx:json_term() | 'undefined') ->
+-spec call(inet:ip_address() | 'undefined', inet:ip_address(),
+           inet:port_number(), timeout(), binary(), binary(),
+           jsx:json_term() | 'undefined') ->
                   {'ok', jsx:json_term()} | {'error', error_reason()}.
 
 call(NicIpAddress, IpAddress, Port, Timeout, Uri, Method, Params) ->
@@ -81,8 +82,7 @@ call(NicIpAddress, IpAddress, Port, Timeout, Uri, Method, Params) ->
                         [{<<"jsonrpc">>, <<"2.0">>},
                          {<<"error">>, [{<<"code">>, Code}]},
                          {<<"id">>, Id}] ->
-                            JsonError = #json_error{
-                              code = Code},
+                            JsonError = #json_error{code = Code},
                             {error, JsonError};
                         [{<<"jsonrpc">>, <<"2.0">>},
                          {<<"result">>, Result},

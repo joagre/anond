@@ -11,10 +11,18 @@
         'string'.
 
 -type ip_address_port() :: {inet:ip4_address(), inet:port_number()}.
-
--type json_value() :: json_enum() | integer() | boolean() | binary() |
-                      ip_address_port().
--type json_enum() :: atom().
+-type enum() :: atom().
+-type json_value() :: ip_address_port() |
+                      enum() |
+                      integer() |
+                      boolean() |
+                      binary() |
+                      'null' |
+                      float().
+-type json_term() ::
+        [{binary() | atom(), json_term()}] |
+        [json_term()] |
+        json_value().
 
 -record(json_type, {
           name    :: type_name(),
