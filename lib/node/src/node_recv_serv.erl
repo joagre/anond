@@ -5,7 +5,7 @@
 -export([handshake/2]).
 
 %%% internal exports
--export([init/5, receiver/1]).
+-export([init/3, receiver/1]).
 
 %%% include files
 -include_lib("node/include/node.hrl").
@@ -20,21 +20,21 @@
 
 %%% records
 -record(serv_state, {
-          parent   :: pid(),
+          parent :: pid(),
           na :: na(),
           receiver :: pid(),
           socket   :: gen_udp:socket()
          }).
 
 -record(receiver_state, {
-          na                      :: na(),
-          oa                      :: oa(),
-          node_db                 :: node_db(),
-          route_db                :: route_db(),
-          node_route_serv         :: pid(),
-          node_path_cost_serv     :: pid(),
-          tun_device              :: pid(),
-          socket                  :: gen_udp:socket()
+          na                  :: na(),
+          oa                  :: oa(),
+          node_db             :: node_db(),
+          route_db            :: route_db(),
+          node_route_serv     :: pid(),
+          node_path_cost_serv :: pid(),
+          tun_device          :: pid(),
+          socket              :: gen_udp:socket()
 	 }).
 
 %%% types
@@ -48,13 +48,7 @@
                         {'error', {'udp_failure', inet:posix()}}.
 
 start_link(Na, NodeInstanceSup) ->
-    {ok, NodeRouteServ} =
-        node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
-    {ok, NodePathCostServ} =
-        node_instance_sup:lookup_child(NodeInstanceSup, node_path_cost_serv),
-    {ok, NodeTunServ} =
-        node_instance_sup:lookup_child(NodeInstanceSup, node_tun_serv),
-    Args = [self(), Na, NodeRouteServ, NodePathCostServ, NodeTunServ],
+    Args = [self(), Na, NodeInstanceSup],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
@@ -81,40 +75,38 @@ stop(Pid, Timeout) ->
 %%% exported: handshake
 %%%
 
--spec handshake(pid(), {'node_path_cost_serv', pid()} | 'node_send_serv') ->
-                       'ok' | {'ok', gen_udp:socket()}.
+-spec handshake(pid(), 'node_send_serv' | {'node_path_cost_serv', pid()}) ->
+                       {'ok', gen_udp:socket()} | 'ok'.
 
+handshake(NodeRecvServ, node_send_serv) ->
+    serv:call(NodeRecvServ, {handshake, node_send_serv});
 handshake(NodeRecvServ, {node_path_cost_serv, NodePathCostServ}) ->
     NodeRecvServ ! {handshake, {node_path_cost_serv, NodePathCostServ}},
-    ok;
-handshake(NodeRecvServ, node_send_serv) ->
-    serv:call(NodeRecvServ, {handshake, node_send_serv}).
+    ok.
 
 %%%
 %%% server loop
 %%%
 
-init(Parent, Na, NodeRouteServ, NodePathCostServ, _NodeTunServ) ->
+init(Parent, Na, NodeInstanceSup) ->
     process_flag(trap_exit, true),
-    {ok, NodeDb, RouteDb} = node_route_serv:handshake(NodeRouteServ, ?MODULE),
-    %%{ok, TunDevice} = node_tun_serv:handshake(NodeTunServ, ?MODULE),
-    TunDevice = self(),
     {IpAddress, Port} = Na,
     Options = [binary, {ip, IpAddress}, {active, false}],
     case gen_udp:open(Port, Options) of
         {ok, Socket} ->
+            Parent ! {self(), started},
+            {ok, NodeRouteServ} =
+                node_instance_sup:lookup_child(NodeInstanceSup,
+                                               node_route_serv),
+            {ok, NodeDb, RouteDb} =
+                node_route_serv:handshake(NodeRouteServ, ?MODULE),            
             S = read_config(#receiver_state{
-                               na = Na, node_db = NodeDb,
-                               route_db = RouteDb,
+                               na = Na, node_db = NodeDb, route_db = RouteDb,
                                node_route_serv = NodeRouteServ,
-                               node_path_cost_serv = NodePathCostServ,
-                               tun_device = TunDevice,
+                               tun_device = self(),
                                socket = Socket}),
             Receiver = proc_lib:spawn_link(?MODULE, receiver, [S]),
-            Parent ! {self(), started},
-            loop(#serv_state{parent = Parent,
-                             na = Na,
-                             receiver = Receiver,
+            loop(#serv_state{parent = Parent, na = Na, receiver = Receiver,
                              socket = Socket});
         {error, Reason} ->
             Parent ! {self(), {udp_failure, Reason}}
@@ -125,13 +117,13 @@ loop(#serv_state{parent = Parent,
                  receiver = Receiver,
                  socket = Socket} = S) ->
     receive
+        {From, {handshake, node_send_serv}} ->
+            From ! {self(), {ok, Socket}},
+            loop(S);
         {handshake, {node_path_cost_serv, NodePathCostServ}} ->
             Receiver ! {node_path_cost_serv, NodePathCostServ},
             ok = gen_udp:send(Socket, NaIpAddress, NaPort,
                               <<?MESSAGE_ARRIVED:8>>),
-            loop(S);
-        {From, {handshake, node_send_serv}} ->
-            From ! {self(), {ok, Socket}},
             loop(S);
 	{From, stop} ->
 	    From ! {self(), ok};

@@ -18,6 +18,7 @@
 -include_lib("node/include/node_route.hrl").
 -include_lib("util/include/config.hrl").
 -include_lib("util/include/log.hrl").
+-include_lib("util/include/shorthand.hrl").
 
 %%% constants
 -define(FIVE_SECONDS_TIMEOUT, 5*1000).
@@ -195,6 +196,9 @@ loop(#state{parent = Parent,
             recalc_timeout = RecalcTimeout,
             auto_recalc = AutoRecalc} = S) ->
     receive
+        config_updated ->
+            ?daemon_log("Configuration changed...", []),
+            loop(read_config(S));
         bootstrap ->
             case ds_jsonrpc:publish_peer(
                    NaIpAddress, DsIpAddressPort,
@@ -241,9 +245,6 @@ loop(#state{parent = Parent,
                     timelib:start_timer(?FIVE_SECONDS_TIMEOUT, bootstrap),
                     loop(S)
             end;
-        config_updated ->
-            ?daemon_log("Configuration changed...", []),
-            loop(read_config(S));
         republish_self ->
             case ds_jsonrpc:publish_peer(
                    NaIpAddress, DsIpAddressPort,
@@ -288,9 +289,9 @@ loop(#state{parent = Parent,
         {From, {handshake, node_recv_serv}} ->
 	    From ! {self(), {ok, NodeDb, RouteDb}},
             loop(S);
-        {From, {handshake, {node_path_cost_serv, NodePathCostServ}}} ->
+        {From, {handshake, {node_path_cost_serv, NewNodePathCostServ}}} ->
 	    From ! {self(), {ok, NodeDb, RouteDb}},
-            loop(S#state{node_path_cost_serv = NodePathCostServ});
+            loop(S#state{node_path_cost_serv = NewNodePathCostServ});
 	{From, get_route_entries} ->
 	    {ok, Res} = node_route:get_route_entries(RouteDb),
 	    From ! {self(), {ok, Res}},
@@ -422,7 +423,9 @@ read_config(S, [{'refresh-peers-timeout', Value}|Rest]) ->
 read_config(S, [{'recalc-timeout', Value}|Rest]) ->
     read_config(S#state{recalc_timeout = Value}, Rest);
 read_config(S, [{'auto-recalc', Value}|Rest]) ->
-    read_config(S#state{auto_recalc = Value}, Rest).
+    read_config(S#state{auto_recalc = Value}, Rest);
+read_config(S, [{'path-cost', _}|Rest]) ->
+    read_config(S, Rest).
 
 %%%
 %%% refresh_peers

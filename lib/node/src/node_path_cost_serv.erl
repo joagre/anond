@@ -6,7 +6,7 @@
 -export([echo_reply/2]).
 
 %%% internal exports
--export([init/4]).
+-export([init/3]).
 -export([send_echo_requests/5]).
 
 %%% include files
@@ -17,7 +17,6 @@
 -include_lib("util/include/log.hrl").
 
 %%% constants
--define(MAX_PATH_COST, 1000).
 -define(PERCENT_NUDGE, 5).
 
 %%% records
@@ -28,7 +27,8 @@
           route_db                          :: route_db(),
           node_route_serv                   :: pid(),
           peer_nas = []                     :: [na()],
-          path_costs = []                   :: [{{byte(), byte()},
+          path_costs = []                   :: [{{inet:port_number(),
+                                                  inet:port_number()},
                                                  path_cost()}],
           unique_id = 0                     :: non_neg_integer(),
           %% anond.conf parameters
@@ -49,12 +49,7 @@
 -spec start_link(na(), supervisor:sup_ref()) -> {'ok', pid()}.
 
 start_link(Na, NodeInstanceSup) ->
-    {ok, NodeRouteServ} =
-        node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
-    {ok, NodeRecvServ} =
-        node_instance_sup:lookup_child(NodeInstanceSup,
-                                       {node_recv_serv, self()}),
-    Args = [self(), Na, NodeRouteServ, NodeRecvServ],
+    Args = [self(), Na, NodeInstanceSup],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
@@ -81,7 +76,7 @@ stop(Pid, Timeout) ->
 
 -spec updated_peer_nas(pid() | 'undefined', [na()]) -> 'ok'.
 
-updated_peer_nas(undefined, UpdatedPeerNas) ->
+updated_peer_nas(undefined, _UpdatedPeerNas) ->
     ok;
 updated_peer_nas(NodePathCostServ, UpdatedPeerNas) ->
     NodePathCostServ ! {updated_peer_nas, UpdatedPeerNas},
@@ -101,19 +96,22 @@ echo_reply(NodePathCostServ, EchoReply) ->
 %%% server loop
 %%%
 
-init(Parent, Na, NodeRouteServ, NodeRecvServ) ->
+init(Parent, Na, NodeInstanceSup) ->
     process_flag(trap_exit, true),
+    ok = config_json_serv:subscribe(),
+    S = read_config(#state{parent = Parent, path_costs = ?NON_RANDOM_PATH_COSTS,
+                           na = Na}),
+    Parent ! {self(), started},
+    {ok, NodeRouteServ} =
+        node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
+    {ok, NodeRecvServ} =
+        node_instance_sup:lookup_child(NodeInstanceSup, node_recv_serv),
     {ok, NodeDb, RouteDb} =
         node_route_serv:handshake(NodeRouteServ, {?MODULE, self()}),
     ok = node_recv_serv:handshake(NodeRecvServ, {?MODULE, self()}),
-    S = read_config(#state{parent = Parent, node_db = NodeDb,
-                           route_db = RouteDb, node_route_serv = NodeRouteServ,
-                           path_costs = ?NON_RANDOM_PATH_COSTS,
-                           na = Na}),
-    ok = config_json_serv:subscribe(),
     self() ! measure,
-    Parent ! {self(), started},
-    loop(S).
+    loop(S#state{node_db = NodeDb, route_db = RouteDb,
+                 node_route_serv = NodeRouteServ}).
 
 loop(#state{parent = Parent,
             node_db = NodeDb,
@@ -152,24 +150,17 @@ loop(#state{parent = Parent,
                     timelib:start_timer(DelayBetweenMeasurements, measure),
                     loop(S#state{peer_nas = RotatedPeerNas,
                                  unique_id = UniqueId+1});
+                %% see doc/small_simulation.jpg
                 simulation ->
-                    {{_, _, _, NaLsb}, _NaPort} = Na,
-                    {{_, _, _, PeerNaLsb}, _PeerNaPort} = PeerNa,
-                    case lists:keysearch({NaLsb, PeerNaLsb}, 1, Pcs) of
-                        {value, {_, StoredPc}} ->
-                            Pc = nudge_path_cost(StoredPc, ?PERCENT_NUDGE),
-                            UpdatedPcs = Pcs;
-                        false ->
-                            Pc = random:uniform(?MAX_PATH_COST),
-                            UpdatedPcs =
-                                [{{NaLsb, PeerNaLsb}, Pc},
-                                 {{PeerNaLsb, NaLsb}, Pc}|Pcs]
-                    end,
+                    {_NaIpAddress, NaPort} = Na,
+                    {_PeerNaIpAddress, PeerNaPort} = PeerNa,
+                    {value, {_, StoredPc}} =
+                        lists:keysearch({NaPort, PeerNaPort}, 1, Pcs),
+                    Pc = nudge_path_cost(StoredPc, ?PERCENT_NUDGE),
                     ok = node_route_serv:update_path_cost(
                            NodeRouteServ, PeerNa, Pc),
                     timelib:start_timer(DelayBetweenMeasurements, measure),
-                    loop(S#state{peer_nas = RotatedPeerNas,
-                                 path_costs = UpdatedPcs})
+                    loop(S#state{peer_nas = RotatedPeerNas})
             end;
 	{From, stop} ->
 	    From ! {self(), ok};
@@ -260,7 +251,9 @@ nudge_path_cost(Pc, Percent) ->
 
 read_config(S) ->
     Mode = ?config([mode]),
-    PathCost = ?config([nodes, {'node-address', S#state.na}, 'path-cost']),
+    NodeInstance = ?config([nodes, {'node-address', S#state.na}]),
+    {value, {'path-cost', PathCost}} =
+        lists:keysearch('path-cost', 1, NodeInstance),
     read_config(S#state{mode = Mode}, PathCost).
 
 read_config(S, []) ->

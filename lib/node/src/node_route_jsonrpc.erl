@@ -71,7 +71,7 @@ get_nodes(NicIpAddress, {IpAddress, Port}) ->
                            'ok' | {'error', error_reason()}.
 
 enable_recalc(NicIpAddress, {IpAddress, Port}) ->
-    case jsonrpc:call(undefined, IpAddress, Port, <<"enable-ecalc">>) of
+    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"enable-ecalc">>) of
         {ok, true} ->
             ok;
         {error, Reason} ->
@@ -86,7 +86,7 @@ enable_recalc(NicIpAddress, {IpAddress, Port}) ->
                             'ok' | {'error', error_reason()}.
 
 disable_recalc(NicIpAddress, {IpAddress, Port}) ->
-    case jsonrpc:call(undefined, IpAddress, Port, <<"disable-ecalc">>) of
+    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"disable-ecalc">>) of
         {ok, true} ->
             ok;
         {error, Reason} ->
@@ -101,7 +101,7 @@ disable_recalc(NicIpAddress, {IpAddress, Port}) ->
                     'ok' | {'error', error_reason()}.
 
 recalc(NicIpAddress, {IpAddress, Port}) ->
-    case jsonrpc:call(undefined, IpAddress, Port, <<"recalc">>) of
+    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"recalc">>) of
         {ok, true} ->
             ok;
         {error, Reason} ->

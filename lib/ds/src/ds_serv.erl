@@ -216,15 +216,20 @@ loop(#state{parent = Parent,
             ?daemon_log("Extracted all (~w) peers", [length(AllPeers)]),
             From ! {self(), {ok, AllPeers}},
             loop(S);
-        %% return two non random peers as defined in simulation.hrl
+        %% see doc/small_simulation.jpg; return two non-random peers
         {From, {get_random_peers, MyNa, 2}} when Mode == simulation ->
-            {SimulatedOas, SimulatedPeers} =
-                get_simulated_peers(PeerDb, OaDb, MyNa),
-            ?daemon_log(
-               "Extracted ~w simulated and non-random peers: ~w",
-               [length(SimulatedOas), SimulatedOas]),
-            From ! {self(), {ok, SimulatedPeers}},
-            loop(S);
+            case get_simulated_peers(PeerDb, MyNa) of
+                {ok, SimulatedNas, SimulatedPeers} ->
+                    ?daemon_log(
+                       "Extracted ~w simulated and non-random peers: ~w",
+                       [length(SimulatedNas), SimulatedNas]),
+                    From ! {self(), {ok, SimulatedPeers}},
+                    loop(S);
+                {error, Reason} ->
+                    ?daemon_log("2 random peers could not be extracted", []),
+                    From ! {self(), {error, Reason}},
+                    loop(S)
+            end;
         {From, {get_random_peers, MyNa, N}} when is_integer(N) ->
             case ets:info(PeerDb, size) of
                 Size when N >= Size ->
@@ -317,22 +322,29 @@ read_config(S) ->
 %%% get_random_peers
 %%%
 
-get_simulated_peers(PeerDb, OaDb, MyNa) ->
-    [[Oa]] = ets:match(OaDb, {'$1', MyNa}),
-    {value, {Oa, PeerOas}} = lists:keysearch(Oa, 1, ?NON_RANDOM_PEERS),
-    PeerNas = oas_to_nas(OaDb, PeerOas),
-    Peers =
-        lists:map(fun(PeerNa) ->
-                          [Peer] = ets:lookup(PeerDb, PeerNa),
-                          Peer
-                  end, PeerNas),
-    {PeerOas, Peers}.
+get_simulated_peers(PeerDb, {MyNaIpAddress, MyNaPort}) ->
+    {value, {MyNaPort, PeerNaPorts}} =
+        lists:keysearch(MyNaPort, 1, ?NON_RANDOM_PEERS),
+    PeerNas = [{MyNaIpAddress, PeerNaPort} || PeerNaPort <- PeerNaPorts],
+    case lookup_simulated_peers(PeerDb, PeerNas) of
+        {ok, Peers} ->
+            {ok, PeerNas, Peers};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
-oas_to_nas(_OaDb, []) ->
-    [];
-oas_to_nas(OaDb, [Oa|Rest]) ->
-    [[Na]] = ets:match(OaDb, {Oa, '$1'}),
-    [Na|oas_to_nas(OaDb, Rest)].
+lookup_simulated_peers(PeerDb, PeerNas) ->
+    lookup_simulated_peers(PeerDb, PeerNas, []).
+
+lookup_simulated_peers(_PeerDb, [], Acc) ->
+    {ok, lists:reverse(Acc)};
+lookup_simulated_peers(PeerDb, [PeerNa|Rest], Acc) ->
+    case ets:lookup(PeerDb, PeerNa) of
+        [Peer] ->
+            lookup_simulated_peers(PeerDb, Rest, [Peer|Acc]);
+        [] ->
+            {error, too_few_peers}
+    end.
 
 %% http://en.wikipedia.org/wiki/Reservoir_sampling
 get_random_peers(PeerDb, MyNa, N) ->
