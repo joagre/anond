@@ -3,7 +3,8 @@
 %%% external exports
 -export([start_link/0, stop/0, stop/1]).
 -export([enforce_peer_ttl/0]).
--export([get_number_of_peers/0, get_all_peers/0, get_random_peers/2]).
+-export([get_number_of_peers/0, get_peer/1, get_all_peers/0,
+         get_random_peers/2]).
 -export([publish_peer/1, unpublish_peer/1, published_peers/1]).
 -export([reserve_oa/2, reserved_oas/1]).
 
@@ -80,6 +81,15 @@ enforce_peer_ttl() ->
 
 get_number_of_peers() ->
     serv:call(?MODULE, get_number_of_peers).
+
+%%%
+%%% exported: get_peer
+%%%
+
+-spec get_peer(na()) -> {'ok', #peer{}} | {'error', 'no_such_peer'}.
+
+get_peer(Na) ->
+    serv:call(?MODULE, {get_peer, Na}).
 
 %%%
 %%% exported: get_all_peers
@@ -192,7 +202,8 @@ loop(#state{parent = Parent,
             lists:foreach(fun(Na) ->
                                   true = ets:delete(PeerDb, Na),
                                   true = ets:match_delete(OaDb, {'_', Na}),
-                                  ?daemon_log("Removed stale peer ~w", [Na])
+                                  ?daemon_log("Removed stale peer ~s",
+                                              [net_tools:string_address(Na)])
                           end, StaleNas),
             if
                 Repeat ->
@@ -211,6 +222,15 @@ loop(#state{parent = Parent,
             ?daemon_log("Calculated number of peers (~w)", [NumberOfPeers]),
             From ! {self(), {ok, NumberOfPeers}},
             loop(S);
+        {From, {get_peer, Na}} ->
+            case ets:lookup(PeerDb, Na) of
+                [Peer] ->
+                    From ! {self(), {ok, Peer}},
+                    loop(S);
+                [] ->
+                    From ! {self(), {error, no_such_peer}},
+                    loop(S)
+            end;
         {From, get_all_peers} ->
             AllPeers = ets:foldl(fun(Peer, Acc) -> [Peer|Acc] end, [], PeerDb),
             ?daemon_log("Extracted all (~w) peers", [length(AllPeers)]),
@@ -221,8 +241,9 @@ loop(#state{parent = Parent,
             case get_simulated_peers(PeerDb, MyNa) of
                 {ok, SimulatedNas, SimulatedPeers} ->
                     ?daemon_log(
-                       "Extracted ~w simulated and non-random peers: ~w",
-                       [length(SimulatedNas), SimulatedNas]),
+                       "Extracted ~w simulated and non-random peers: ~s",
+                       [length(SimulatedNas),
+                        net_tools:string_addresses(SimulatedNas)]),
                     From ! {self(), {ok, SimulatedPeers}},
                     loop(S);
                 {error, Reason} ->
@@ -241,34 +262,38 @@ loop(#state{parent = Parent,
                     RandomPeers = get_random_peers(PeerDb, MyNa, N),
                     RandomNas =
                         [RandomPeer#peer.na || RandomPeer <- RandomPeers],
-                    ?daemon_log("Extracted ~w random peers: ~w",
-                                [length(RandomNas), RandomNas]),
+                    ?daemon_log("Extracted ~w random peers: ~s",
+                                [length(RandomNas),
+                                 net_tools:string_addresses(RandomNas)]),
                     From ! {self(), {ok, RandomPeers}},
                     loop(S)
             end;
         {From, {publish_peer, #peer{na = Na} = Peer}} ->
             UpdatedPeer = Peer#peer{last_updated = timelib:ugnow()},
             true = ets:insert(PeerDb, UpdatedPeer),
-            ?daemon_log("Peer ~w published", [Na]),
+            ?daemon_log("Peer ~s published", [net_tools:string_address(Na)]),
             From ! {self(), {ok, PeerTTL}},
             loop(S);
         {From, {unpublish_peer, Na}} ->
             true = ets:delete(PeerDb, Na),
-            ?daemon_log("Peer ~w unpublished", [Na]),
+            ?daemon_log("Peer ~s unpublished", [net_tools:string_address(Na)]),
             From ! {self(), ok},
             loop(S);
         {From, {published_peers, Nas}} ->
             StillPublishedNas =
                 [Na || Na <- Nas, ets:member(PeerDb, Na) == true],
-            ?daemon_log("Out of these peers ~w, these are still published ~w",
-                        [Nas, StillPublishedNas]),
+            ?daemon_log("Out of these peers ~s, these are still published ~s",
+                        [net_tools:string_addresses(Nas),
+                         net_tools:string_addresses(StillPublishedNas)]),
             From ! {self(), {ok, StillPublishedNas}},
             loop(S);
         {From, {reserve_oa, Oa, Na}} ->
             case ets:lookup(PeerDb, Na) of
                 [] ->
-                    ?daemon_log("Rejected reservation of overlay address ~w to "
-                                "unknown peer ~w", [Oa, Na]),
+                    ?daemon_log("Rejected reservation of overlay address ~s to "
+                                "unknown peer ~s",
+                                [net_tools:string_address(Oa),
+                                 net_tools:string_address(Na)]),
                     From ! {self(), {error, no_such_peer}},
                     loop(S);
                 _ ->
@@ -277,14 +302,16 @@ loop(#state{parent = Parent,
                         NumberOfOas =< MaxOasPerPeer ->
                             true = ets:insert(OaDb, {Oa, Na}),
                             ?daemon_log(
-                               "Reserved overlay address ~w to peer ~w",
-                               [Oa, Na]),
+                               "Reserved overlay address ~s to peer ~s",
+                               [net_tools:string_address(Oa),
+                                net_tools:string_address(Na)]),
                             From ! {self(), ok},
                             loop(S);
                         true ->
-                            ?daemon_log("Peer ~w tried to reserve more than ~w "
+                            ?daemon_log("Peer ~s tried to reserve more than ~w "
                                         "overlay addresses",
-                                        [Na, MaxOasPerPeer]),
+                                        [net_tools:string_address(Na),
+                                         MaxOasPerPeer]),
                             From ! {self(), {error, too_many_oas}},
                             loop(S)
                     end
@@ -292,8 +319,9 @@ loop(#state{parent = Parent,
         {From, {reserved_oas, Na}} ->
             case ets:match(OaDb, {'$1', Na}) of
                 [Oas] ->
-                    ?daemon_log("~w has these overlay addresses reserved: ~w",
-                                [Na, Oas]),
+                    ?daemon_log("~s has these overlay addresses reserved: ~s",
+                                [net_tools:string_address(Na),
+                                 net_tools:string_addresses(Oas)]),
                     From ! {self(), {ok, Oas}},
                     loop(S);
                 [] ->

@@ -30,9 +30,9 @@
 %%% types
 -type global_route_table() ::
         [{oa(), {oa(), path_cost(),
-                 [oa()] | {'not_available', jsonrpc:error_reason()}}}].
--type route_table() :: [{oa(), path_cost(), [oa()]}].
--type neighbours() :: [{oa(), path_cost()}].
+                 [na()] | {'not_available', jsonrpc:error_reason()}}}].
+-type route_table() :: [{oa(), path_cost(), [na()]}].
+-type neighbours() :: [{na(), path_cost()}].
 
 %%%
 %%% exported: start_link
@@ -77,28 +77,27 @@ get_global_route_table() ->
 %%% exported: get_route_table
 %%%
 
--spec get_route_table(oa()) -> {'ok', route_table()} |
-                               {'error', jsonrpc:error_reason() | 'unknown_oa'}.
+-spec get_route_table(na()) -> {'ok', route_table()} |
+                               {'error', jsonrpc:error_reason()}.
 
-get_route_table(Oa) ->
-    serv:call(?MODULE, {get_route_table, Oa}).
+get_route_table(Na) ->
+    serv:call(?MODULE, {get_route_table, Na}).
 
 %%%
 %%% exported: get_neighbours
 %%%
 
--spec get_neighbours() -> {'ok', [{oa(),
-                                   neighbours() |
+-spec get_neighbours() -> {'ok', [{na(), neighbours() |
                                    {'not_available', jsonrpc:error_reason()}}]}.
 
 get_neighbours() ->
     serv:call(?MODULE, get_neighbours).
 
--spec get_neighbours(oa()) -> {'ok', neighbours()} |
-                              {'error', jsonrpc:error_reason() | 'unknown_oa'}.
+-spec get_neighbours(na()) -> {'ok', neighbours()} |
+                              {'error', jsonrpc:error_reason()}.
 
-get_neighbours(Oa) ->
-    serv:call(?MODULE, {get_neighbours, Oa}).
+get_neighbours(Na) ->
+    serv:call(?MODULE, {get_neighbours, Na}).
 
 %%%
 %%% exported: enable_recalc
@@ -109,11 +108,10 @@ get_neighbours(Oa) ->
 enable_recalc() ->
     serv:call(?MODULE, enable_recalc).
 
--spec enable_recalc(oa()) -> 'ok' |
-                             {'error', jsonrpc:error_reason() | 'unknown_oa'}.
+-spec enable_recalc(na()) -> 'ok' | {'error', jsonrpc:error_reason()}.
 
-enable_recalc(Oa) ->
-    serv:call(?MODULE, {enable_recalc, Oa}).
+enable_recalc(Na) ->
+    serv:call(?MODULE, {enable_recalc, Na}).
 
 %%%
 %%% exported: disable_recalc
@@ -124,11 +122,10 @@ enable_recalc(Oa) ->
 disable_recalc() ->
     serv:call(?MODULE, disable_recalc).
 
--spec disable_recalc(oa()) -> 'ok' |
-                              {'error', jsonrpc:error_reason() | 'unknown_oa'}.
+-spec disable_recalc(na()) -> 'ok' | {'error', jsonrpc:error_reason()}.
 
-disable_recalc(Oa) ->
-    serv:call(?MODULE, {disable_recalc, Oa}).
+disable_recalc(Na) ->
+    serv:call(?MODULE, {disable_recalc, Na}).
 
 %%%
 %%% exported: recalc
@@ -139,11 +136,10 @@ disable_recalc(Oa) ->
 recalc() ->
     serv:call(?MODULE, recalc).
 
--spec recalc(oa()) -> 'ok' |
-                      {'error', jsonrpc:error_reason() | 'unknown_oa'}.
+-spec recalc(na()) -> 'ok' | {'error', jsonrpc:error_reason()}.
 
-recalc(Oa) ->
-    serv:call(?MODULE, {recalc, Oa}).
+recalc(Na) ->
+    serv:call(?MODULE, {recalc, Na}).
 
 %%%
 %%% server loop
@@ -164,69 +160,56 @@ init(Parent) ->
 
 loop(#state{parent = Parent, nodes = Nodes} = S) ->
     receive
+        config_updated ->
+            loop(read_config(S));
         get_all_published_nodes ->
             UpdatedNodes = get_all_published_nodes(),
             loop(S#state{nodes = UpdatedNodes});
-        config_updated ->
-            loop(read_config(S));
 	{From, stop} ->
 	    From ! {self(), ok};
 	{From, get_global_route_table} ->
 	    From ! {self(), get_global_route_table(Nodes)},
 	    loop(S);
-	{From, {get_route_table, Oa}} ->
-            case lookup_na(Nodes, Oa) of
-                unknown_oa ->
-                    From ! {self(), {error, unknown_oa}},
+	{From, {get_route_table, Na}} ->
+            case node_route_jsonrpc:get_route_entries(undefined, Na) of
+                {ok, Res} ->
+                    RouteTable =
+                        [{ReOa, Pc, Hops} ||
+                            #route_entry{oa = ReOa,
+                                         path_cost = Pc,
+                                         hops = Hops} <- Res],
+                    From ! {self(), {ok, RouteTable}},
                     loop(S);
-                Na ->
-                    case node_route_jsonrpc:get_route_entries(undefined, Na) of
-                        {ok, Res} ->
-                            RouteTable =
-                                [{ReOa, Pc, lookup_oa(Nodes, Hops)} ||
-                                    #route_entry{oa = ReOa,
-                                                 path_cost = Pc,
-                                                 hops = Hops} <- Res],
-                            From ! {self(), {ok, RouteTable}},
-                            loop(S);
-                        {error, Reason} ->
-                            From ! {self(), {error, Reason}},
-                            loop(S)
-                    end
+                {error, Reason} ->
+                    From ! {self(), {error, Reason}},
+                    loop(S)
             end;
-	{From, get_neighbours} ->
+    	{From, get_neighbours} ->
             AllNeighbours =
                 lists:map(
-                  fun({Oa, Na}) ->
+                  fun({_Oa, Na}) ->
                           case node_route_jsonrpc:get_nodes(undefined, Na) of
                               {ok, ActualNodes} ->
-                                  {Oa, [{lookup_oa(Nodes, ActualNode#node.na),
+                                  {Na, [{ActualNode#node.na,
                                          ActualNode#node.path_cost} ||
                                            ActualNode <- ActualNodes]};
                               {error, Reason} ->
-                                  {Oa, {not_available, Reason}}
+                                  {Na, {not_available, Reason}}
                           end
                   end, Nodes),
             From ! {self(), {ok, AllNeighbours}},
             loop(S);
-	{From, {get_neighbours, Oa}} ->
-            case lookup_na(Nodes, Oa) of
-                unknown_oa ->
-                    From ! {self(), {error, unknown_oa}},
+	{From, {get_neighbours, Na}} ->
+            case node_route_jsonrpc:get_nodes(undefined, Na) of
+                {ok, ActualNodes} ->
+                    Neighbours =
+                        [{ActualNode#node.na, ActualNode#node.path_cost} ||
+                            ActualNode <- ActualNodes],
+                    From ! {self(), {ok, Neighbours}},
                     loop(S);
-                Na ->
-                    case node_route_jsonrpc:get_nodes(undefined, Na) of
-                        {ok, ActualNodes} ->
-                            Neighbours =
-                                [{lookup_oa(Nodes, ActualNode#node.na),
-                                  ActualNode#node.path_cost} ||
-                                    ActualNode <- ActualNodes],
-                            From ! {self(), {ok, Neighbours}},
-                            loop(S);
-                        {error, Reason} ->
-                            From ! {self(), {error, Reason}},
-                            loop(S)
-                    end
+                {error, Reason} ->
+                    From ! {self(), {error, Reason}},
+                    loop(S)
             end;
 	{From, enable_recalc} ->
             lists:foreach(
@@ -235,16 +218,9 @@ loop(#state{parent = Parent, nodes = Nodes} = S) ->
               end, Nodes),
             From ! {self(), ok},
             loop(S);
-        {From, {enable_recalc, Oa}} ->
-            case lookup_na(Nodes, Oa) of
-                unknown_oa ->
-                    From ! {self(), {error, unknown_oa}},
-                    loop(S);
-                Na ->
-                    From ! {self(),
-                            node_route_jsonrpc:enable_recalc(undefined, Na)},
-                    loop(S)
-            end;
+        {From, {enable_recalc, Na}} ->
+            From ! {self(), node_route_jsonrpc:enable_recalc(undefined, Na)},
+            loop(S);
 	{From, disable_recalc} ->
             lists:foreach(
               fun({_Oa, Na}) ->
@@ -252,31 +228,18 @@ loop(#state{parent = Parent, nodes = Nodes} = S) ->
               end, Nodes),
             From ! {self(), ok},
             loop(S);
-        {From, {disable_recalc, Oa}} ->
-            case lookup_na(Nodes, Oa) of
-                unknown_oa ->
-                    From ! {self(), {error, unknown_oa}},
-                    loop(S);
-                Na ->
-                    From ! {self(),
-                            node_route_jsonrpc:disable_recalc(undefined, Na)},
-                    loop(S)
-            end;
+        {From, {disable_recalc, Na}} ->
+            From ! {self(), node_route_jsonrpc:disable_recalc(undefined, Na)},
+            loop(S);
 	{From, recalc} ->
             lists:foreach(fun({_Oa, Na}) ->
                                   _ = node_route_jsonrpc:recalc(undefined, Na)
                           end, Nodes),
             From ! {self(), ok},
             loop(S);
-        {From, {recalc, Oa}} ->
-            case lookup_na(Nodes, Oa) of
-                unknown_oa ->
-                    From ! {self(), {error, unknown_oa}},
-                    loop(S);
-                Na ->
-                    From ! {self(), node_route_jsonrpc:recalc(undefined, Na)},
-                    loop(S)
-            end;
+        {From, {recalc, Na}} ->
+            From ! {self(), node_route_jsonrpc:recalc(undefined, Na)},
+            loop(S);
         {'EXIT', Parent, Reason} ->
             exit(Reason);
 	UnknownMessage ->
@@ -331,7 +294,7 @@ traverse_each_destination(Oa, [#route_entry{oa = Oa}|Rest],
                           AllRouteEntries) ->
     traverse_each_destination(Oa, Rest, AllRouteEntries);
 traverse_each_destination(FromOa, [#route_entry{oa = ToOa, na = Na,
-                                                  path_cost = Pc}|Rest],
+                                                path_cost = Pc}|Rest],
                           AllRouteEntries) ->
     OaTrail = walk_to_destination(ToOa, Na, AllRouteEntries, []),
     [{FromOa, ToOa, Pc, OaTrail}|
@@ -352,25 +315,3 @@ walk_to_destination(ToOa, Na, AllRouteEntries, Acc) ->
                     []
             end
     end.
-
-%%%
-%%% node lookup functions
-%%%
-
-lookup_oa(_Nodes, []) ->
-    [];
-lookup_oa(Nodes, [Na|Rest]) ->
-    [lookup_oa(Nodes, Na)|lookup_oa(Nodes, Rest)];
-lookup_oa([], Na) ->
-    Na;
-lookup_oa([{Oa, Na}|_Rest], Na) ->
-    Oa;
-lookup_oa([_Node|Rest], Na) ->
-    lookup_oa(Rest, Na).
-
-lookup_na([], _Oa) ->
-    unknown_oa;
-lookup_na([{Oa, Na}|_Rest], Oa) ->
-    Na;
-lookup_na([_Node|Rest], Oa) ->
-    lookup_na(Rest, Oa).

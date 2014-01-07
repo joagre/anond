@@ -154,8 +154,13 @@ loop(#state{parent = Parent,
                 simulation ->
                     {_NaIpAddress, NaPort} = Na,
                     {_PeerNaIpAddress, PeerNaPort} = PeerNa,
-                    {value, {_, StoredPc}} =
-                        lists:keysearch({NaPort, PeerNaPort}, 1, Pcs),
+                    case lists:keysearch({NaPort, PeerNaPort}, 1, Pcs) of
+                        {value, {_, StoredPc}} ->
+                            ok;
+                        false ->
+                            ?dbg_log({{NaPort, PeerNaPort}, 1, Pcs}),
+                            StoredPc = 4711
+                    end,
                     Pc = nudge_path_cost(StoredPc, ?PERCENT_NUDGE),
                     ok = node_route_serv:update_path_cost(
                            NodeRouteServ, PeerNa, Pc),
@@ -243,7 +248,7 @@ wait_for_echo_replies(UniqueId, EchoReplyTimeout, EchoReplyLatencies) ->
 nudge_path_cost(-1, _Percent) ->
     -1;
 nudge_path_cost(Pc, Percent) ->
-    random:uniform(Percent)/100*Pc+Pc.
+    trunc(random:uniform(Percent)/100*Pc+Pc).
 
 %%%
 %%% init

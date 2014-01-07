@@ -1,7 +1,7 @@
 -module(net_tools).
 
 %%% external exports
--export([string_address/1, tcp_sockets/0]).
+-export([string_addresses/1, string_address/1, tcp_sockets/0]).
 
 %%% internal exports
 
@@ -15,11 +15,29 @@
 %%% types
 
 %%%
+%%% exported: string_addresses
+%%%
+
+-spec string_addresses([{inet:ip4_address(), inet:port_number()}] |
+                       [inet:ip_address()]) -> string().
+
+string_addresses([]) ->
+    "<no addresses>";
+string_addresses([Address]) ->
+    string_address(Address);
+string_addresses([Address|Rest]) ->
+    [string_address(Address), ", "|string_addresses(Rest)].
+
+%%%
 %%% exported: string_address
 %%%
 
--spec string_address(inet:ip_address()) -> string().
+-spec string_address({inet:ip4_address(), inet:port_number()} |
+                     inet:ip_address()) -> string().
 
+string_address({{A, B, C, D}, Port}) ->
+    lists:flatten([?i2l(A), ".", ?i2l(B), ".", ?i2l(C), ".", ?i2l(D), ":",
+                   ?i2l(Port)]);
 string_address({A, B, C, D}) ->
     lists:flatten([?i2l(A), ".", ?i2l(B), ".", ?i2l(C), ".", ?i2l(D)]);
 string_address({A, B, C, D, E, F, G, H}) ->

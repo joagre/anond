@@ -34,6 +34,26 @@ ds_handler(<<"enforce-peer-ttl">>, undefined) ->
     {ok, true};
 ds_handler(<<"get-number-of-peers">>, undefined) ->
     ds_serv:get_number_of_peers();
+ds_handler(<<"get-peer">>, [{<<"na">>, Na}]) ->
+    case node_jsonrpc:decode_na(Na) of
+        {ok, DecodedNa} ->
+            case ds_serv:get_peer(DecodedNa) of
+                {ok, Peer} ->
+                    {ok, ds_jsonrpc:encode_peer(Peer)};
+                {error, no_such_peer} ->
+                    JsonError = #json_error{
+                      code = ?DS_JSONRPC_UNKNOWN_PEER,
+                      message = <<"Unknown peer">>,
+                      data = Na},
+                    {error, JsonError}
+            end;
+        {error, Reason} ->
+            JsonError = #json_error{
+              code = ?JSONRPC_INVALID_PARAMS,
+              message = ?l2b(ds_jsonrpc:format_error(Reason)),
+              data = <<"na">>},
+            {error, JsonError}
+    end;
 ds_handler(<<"get-all-peers">>, undefined) ->
     {ok, Peers} = ds_serv:get_all_peers(),
     {ok, ds_jsonrpc:encode_peers(Peers)};

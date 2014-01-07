@@ -147,9 +147,9 @@ receiver(#receiver_state{na = {NaIpAddress, NaPort},
     case gen_udp:recv(Socket, 0) of
         {ok, {NaIpAddress, NaPort, <<?MESSAGE_ARRIVED:8>>}} ->
             receive
-                {node_path_cost_serv, NodePathCostServ} ->
+                {node_path_cost_serv, NewNodePathCostServ} ->
                     receiver(S#receiver_state{
-                               node_path_cost_serv = NodePathCostServ})
+                               node_path_cost_serv = NewNodePathCostServ})
             end;
         %% send ip packet to tun device
         {ok, {_PeerIpAddress, _PeerPort,

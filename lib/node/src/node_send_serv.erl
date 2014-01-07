@@ -47,7 +47,7 @@ start_link(Na, PeerNa, NodeRouteServ, NodeRecvServ) ->
 %%% exported: send
 %%%
 
--spec send(pid(),
+-spec send(pid() | 'undefined',
            binary() | {'ip_packet', oa(), binary()} |
            #route_entry{} | #echo_request{}) ->
                   'ok'.

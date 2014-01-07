@@ -34,7 +34,8 @@ start_link({IpAddress, Port}, NodeInstanceSup) ->
                             {?MODULE, node_handler, [NodeInstanceSup]}).
 
 node_handler(<<"get-route-entries">>, undefined, NodeInstanceSup) ->
-    {ok, Res} = node_route_serv:get_route_entries(node_route_serv(NodeInstanceSup)),
+    {ok, Res} =
+        node_route_serv:get_route_entries(node_route_serv(NodeInstanceSup)),
     {ok, node_route_jsonrpc:encode_route_entries(Res)};
 node_handler(<<"get-nodes">>, undefined, NodeInstanceSup) ->
     {ok, Nodes} = node_route_serv:get_nodes(node_route_serv(NodeInstanceSup)),
@@ -56,7 +57,9 @@ node_handler(Method, Params, _NodeInstanceSup) ->
 node_route_serv(NodeInstanceSup) ->
     case get(node_route_serv) of
         undefined ->
-            {ok, NodeRouteServ} = node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
+            {ok, NodeRouteServ} =
+                node_instance_sup:lookup_child(NodeInstanceSup,
+                                               node_route_serv),
             put(node_route_serv, NodeRouteServ),
             NodeRouteServ;
         NodeRouteServ ->

@@ -204,11 +204,13 @@ loop(#state{parent = Parent,
                    NaIpAddress, DsIpAddressPort,
                    #peer{na = Na, public_key = PublicKey}) of
                 {ok, UpdatedTTL} ->
-                    ?daemon_log("Published node address ~w", [Na]),
+                    ?daemon_log("Published node address ~s",
+                                [net_tools:string_address(Na)]),
                     case ds_jsonrpc:reserve_oa(
                            NaIpAddress, DsIpAddressPort, Oa, Na) of
                         ok ->
-                            ?daemon_log("Reserved overlay address ~w", [Oa]),
+                            ?daemon_log("Reserved overlay address ~s",
+                                        [net_tools:string_address(Oa)]),
                             %% patrik: init psp
                             Re =
                                 #route_entry{oa = Oa, na = Na, path_cost = 0,
@@ -228,20 +230,19 @@ loop(#state{parent = Parent,
                                 true ->
                                     loop(S#state{ttl = UpdatedTTL})
                             end;
-                        {error, Reason} ->
-                            ?dbg_log(Reason),
+                        {error, _Reason} ->
                             ?daemon_log(
-                               "Could not reserve overlay address ~w. Retrying "
-                               "in five seconds...", [Oa]),
+                               "Could not reserve overlay address ~s. Retrying "
+                               "in five seconds...",
+                               [net_tools:string_address(Oa)]),
                             timelib:start_timer(
                               ?FIVE_SECONDS_TIMEOUT, bootstrap),
                             loop(S)
                     end;
-                {error, Reason}->
-                    ?dbg_log(Reason),
+                {error, _Reason}->
                     ?daemon_log(
-                       "Could not publish node address ~w. Retrying in five "
-                       "seconds...", [Na]),
+                       "Could not publish node address ~s. Retrying in five "
+                       "seconds...", [net_tools:string_address(Na)]),
                     timelib:start_timer(?FIVE_SECONDS_TIMEOUT, bootstrap),
                     loop(S)
             end;
@@ -250,14 +251,14 @@ loop(#state{parent = Parent,
                    NaIpAddress, DsIpAddressPort,
                    #peer{na = Na, public_key = PublicKey}) of
                 {ok, UpdatedTTL} ->
-                    ?daemon_log("Republished node address ~w", [Na]),
+                    ?daemon_log("Republished node address ~s",
+                                [net_tools:string_address(Na)]),
                     timelib:start_timer(trunc(UpdatedTTL/2), republish_self),
                     loop(S#state{ttl = UpdatedTTL});
-                {error, Reason}->
-                    ?dbg_log(Reason),
+                {error, _Reason}->
                     ?daemon_log(
-                       "Could not publish node address ~w. Retrying in five "
-                       "seconds...", [Na]),
+                       "Could not publish node address ~s. Retrying in five "
+                       "seconds...", [net_tools:string_address(Na)]),
                     timelib:start_timer(?FIVE_SECONDS_TIMEOUT, republish_self),
                     loop(S)
             end;
@@ -271,8 +272,7 @@ loop(#state{parent = Parent,
                     ok = node_path_cost_serv:updated_peer_nas(
                            NodePathCostServ, UpdatedPeerNas),
                     loop(S#state{peer_nas = UpdatedPeerNas});
-                {error, Reason} ->
-                    ?dbg_log(Reason),
+                {error, _Reason} ->
                     ?daemon_log(
                        "Could not refresh peers. Retrying in five seconds...",
                        []),
@@ -298,71 +298,16 @@ loop(#state{parent = Parent,
 	    loop(S);
 	#route_entry{oa = Oa} ->
 	    loop(S);
-        #route_entry{oa = DestOa, na = ViaNa, path_cost = Pc,
-                     hops = Hops} = Re ->
-            case node_route:is_member_node(NodeDb, ViaNa) of
-                true ->
-                    UpdatedPeerNas = PeerNas;
-                false ->
-                    ?daemon_log("~w added incoming peer ~w.", [Oa, ViaNa]),
-                    Node = #node{na = ViaNa, path_cost = Pc,
-                                 flags = ?F_NODE_UPDATED},
-                    UpdatedPeerNas = [ViaNa|PeerNas],
-                    ok = node_path_cost_serv:updated_peer_nas(
-                           NodePathCostServ, UpdatedPeerNas),
-                    {ok, _NodeSendServ} =
-                        node_send_sup:start_node_send_serv(
-                          Na, ViaNa, NodeInstanceSup),
-                    ok = node_route:add_node(NodeDb, Node)
-            end,
-            %% patrik: lists:member/2 should return the same result as you
-            %% when you look into #route_entry.psp, see node_route.hrl
-            case lists:member(Na, Hops) of
-                true ->
-                    ?dbg_log({loop_rejected, Na, Hops}),
-                    ?daemon_log(
-                       "~w rejected looping route entry: ~w -> ~w (~w)",
-                       [Oa, DestOa, ViaNa, Pc]),
+        #route_entry{na = ViaNa} = Re ->
+            case handle_route_entry(
+                   NodeDb, RouteDb, PeerNas, NodeInstanceSup, NodePathCostServ,
+                   DsIpAddressPort, Na, Oa, Re) of
+                {ok, UpdatedPeerNas} ->
                     loop(S#state{peer_nas = UpdatedPeerNas});
-                false ->
-                    case node_route:update_route_entry(RouteDb, Re) of
-                        {updated, #route_entry{path_cost = CurrentPc}} ->
-                            ?daemon_log(
-                               "~w updated existing route: ~w -> ~w (~w, ~w) "
-                               "with new path cost ~w",
-                               [Oa, DestOa, ViaNa, CurrentPc, Hops, Pc]),
-                            loop(S#state{peer_nas = UpdatedPeerNas});
-                        {kept, _CurrentRe} ->
-                            ?daemon_log(
-                               "~w kept existing route: ~w -> ~w (~w, ~w)",
-                               [Oa, DestOa, ViaNa, Pc, Hops]),
-                            loop(S#state{peer_nas = UpdatedPeerNas});
-                        got_new ->
-                            ?daemon_log(
-                               "~w got new route: ~w -> ~w (~w, ~w)",
-                               [Oa, DestOa, ViaNa, Pc, Hops]),
-                            loop(S#state{peer_nas = UpdatedPeerNas});
-                        {got_better,
-                         #route_entry{
-                           na = CurrentViaNa, path_cost = CurrentPc,
-                           hops = CurrentHops}} ->
-                            ?daemon_log(
-                               "~w got better route: ~w -> ~w (~w, ~w) "
-                               "replacing ~w -> ~w (~w, ~w)",
-                               [Oa, DestOa, ViaNa, Pc, Hops,
-                                DestOa, CurrentViaNa, CurrentPc, CurrentHops]),
-                            loop(S#state{peer_nas = UpdatedPeerNas});
-                        {got_worse,
-                         #route_entry{
-                           na = CurrentViaNa, path_cost = CurrentPc,
-                           hops = CurrentHops}} ->
-                            ?daemon_log(
-                               "~w got worse route: ~w -> ~w (~w, ~w) "
-                               "not replacing ~w -> ~w (~w, ~w)",
-                               [Oa, DestOa, ViaNa, Pc, Hops,
-                                DestOa, CurrentViaNa, CurrentPc, CurrentHops]),
-                            loop(S#state{peer_nas = UpdatedPeerNas})
-                    end
+                {error, unknown_peer} ->
+                    ?daemon_log("Discard route entry from ~s",
+                                [net_tools:string_address(ViaNa)]),
+                    loop(S)
             end;
 	{From, get_nodes} ->
 	    {ok, Nodes} = node_route:get_nodes(NodeDb),
@@ -374,7 +319,8 @@ loop(#state{parent = Parent,
 	disable_recalc ->
             loop(S#state{auto_recalc = false});
 	recalc ->
-	    ?daemon_log("** ~w recalculates its route table.", [Oa]),
+	    ?daemon_log("** ~s recalculates its route table.",
+                        [net_tools:string_address(Na)]),
             ok = node_route:recalc(Na, NodeDb, RouteDb),
             if
                 AutoRecalc ->
@@ -433,16 +379,18 @@ read_config(S, [{'path-cost', _}|Rest]) ->
 
 refresh_peers(NodeDb, RouteDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
               {NaIpAddress, _NaPort} = Na, NumberOfPeers, AutoRecalc) ->
-    ?daemon_log("Known peers: ~w", [PeerNas]),
+    ?daemon_log("Known peers: ~s", [net_tools:string_addresses(PeerNas)]),
     case ds_jsonrpc:published_peers(NaIpAddress, DsIpAddressPort, PeerNas) of
         {ok, PublishedPeerNas} ->
-            ?daemon_log("Still published peers: ~w", [PublishedPeerNas]),
+            ?daemon_log("Still published peers: ~s",
+                        [net_tools:string_addresses(PublishedPeerNas)]),
             UnreachableNodes = node_route:unreachable_nodes(NodeDb),
             UnreachablePeerNas = [Node#node.na || Node <- UnreachableNodes],
-            ?daemon_log("Unreachable peers: ~w", [UnreachablePeerNas]),
+            ?daemon_log("Unreachable peers: ~s",
+                        [net_tools:string_addresses(UnreachablePeerNas)]),
             RemainingPeerNas = PublishedPeerNas--UnreachablePeerNas,
-            ?daemon_log("Remaining published and reachable peers: ~w",
-                        [RemainingPeerNas]),
+            ?daemon_log("Remaining published and reachable peers: ~s",
+                        [net_tools:string_addresses(RemainingPeerNas)]),
             case NumberOfPeers-length(RemainingPeerNas) of
                 NumberOfMissingPeers when NumberOfMissingPeers > 0 ->
                     ?daemon_log("Need ~w additional peers...",
@@ -464,19 +412,21 @@ get_more_peers(NodeDb, RouteDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
            NaIpAddress, DsIpAddressPort, Na, NumberOfMissingPeers) of
         {ok, NewPeers} ->
             NewPeerNas = [NewPeer#peer.na || NewPeer <- NewPeers],
-            ?daemon_log("Found ~w new peers: ~w",
-                        [NumberOfMissingPeers, NewPeerNas]),
+            ?daemon_log("Found ~w new peers: ~s",
+                        [NumberOfMissingPeers,
+                         net_tools:string_addresses(NewPeerNas)]),
             purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
                         PeerNas),
             lists:foreach(
               fun(#peer{na = PeerNa, public_key = PeerPublicKey}) ->
+                      {ok, NodeSendServ} =
+                          node_send_sup:start_node_send_serv(
+                            Na, PeerNa, NodeInstanceSup),
                       Node = #node{
                         na = PeerNa,
                         public_key = PeerPublicKey,
-                        flags = ?F_NODE_UPDATED bor ?F_NODE_IS_INCOMING_PEER},
-                      {ok, _NodeSendServ} =
-                          node_send_sup:start_node_send_serv(
-                            Na, PeerNa, NodeInstanceSup),
+                        flags = ?F_NODE_UPDATED bor ?F_NODE_IS_INCOMING_PEER,
+                        node_send_serv = NodeSendServ},
                       ok = node_route:add_node(NodeDb, Node)
               end, NewPeers),
             if
@@ -504,4 +454,104 @@ purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
         true ->
             purge_peers(NodeDb, RouteDb, NodeInstanceSup,
                         lists:delete(PeerNa, RemainingPeerNas), Rest)
+    end.
+
+%%%
+%%% handle incoming #route_entry{}
+%%%
+
+handle_route_entry(NodeDb, RouteDb, PeerNas, NodeInstanceSup, NodePathCostServ,
+                   DsIpAddressPort, {NaIpAddress, _NaPort} = Na, Oa,
+                   #route_entry{na = ViaNa, path_cost = Pc} = Re) ->
+    case node_route:is_member_node(NodeDb, ViaNa) of
+        true ->
+            update_route_entry(RouteDb, PeerNas, Na, Oa, Re);
+        false ->
+            case ds_jsonrpc:get_peer(NaIpAddress, DsIpAddressPort, ViaNa) of
+                {ok, #peer{public_key = PublicKey}} ->
+                    ?daemon_log("~s adding peer ~s",
+                                [net_tools:string_address(Oa),
+                                 net_tools:string_address(ViaNa)]),
+                    UpdatedPeerNas = [ViaNa|PeerNas],
+                    ok = node_path_cost_serv:updated_peer_nas(
+                           NodePathCostServ, UpdatedPeerNas),
+                    {ok, NodeSendServ} =
+                        node_send_sup:start_node_send_serv(
+                          Na, ViaNa, NodeInstanceSup),
+                    Node = #node{na = ViaNa, public_key = PublicKey,
+                                 path_cost = Pc, flags = ?F_NODE_UPDATED,
+                                 node_send_serv = NodeSendServ},
+                    ok = node_route:add_node(NodeDb, Node),
+                    update_route_entry(RouteDb, UpdatedPeerNas, Na, Oa, Re);
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+update_route_entry(RouteDb, UpdatedPeerNas, Na, Oa, 
+                   #route_entry{oa = DestOa, na = ViaNa, path_cost = Pc,
+                                hops = Hops} = Re) ->
+    %% patrik: lists:member/2 should return the same result as you
+    %% when you look into #route_entry.psp, see node_route.hrl
+    case lists:member(Na, Hops) of
+        true ->
+            ?dbg_log({loop_rejected, Na, Hops}),
+            ?daemon_log(
+               "~s rejected looping route entry: ~s -> ~s (~w)",
+               [net_tools:string_address(Oa), net_tools:string_address(DestOa),
+                net_tools:string_address(ViaNa), Pc]),
+            {ok, UpdatedPeerNas};
+        false ->
+            case node_route:update_route_entry(RouteDb, Re) of
+                {updated, #route_entry{path_cost = CurrentPc}} ->
+                    ?daemon_log(
+                       "~s updated existing route: ~s -> ~s (~w, ~w) with new "
+                       "path cost ~w",
+                       [net_tools:string_address(Oa),
+                        net_tools:string_address(DestOa),
+                        net_tools:string_address(ViaNa), CurrentPc, Hops, Pc]),
+                    {ok, UpdatedPeerNas};
+                {kept, _CurrentRe} ->
+                    ?daemon_log(
+                       "~s kept existing route: ~s -> ~s (~w, ~w)",
+                       [net_tools:string_address(Oa),
+                        net_tools:string_address(DestOa),
+                        net_tools:string_address(ViaNa), Pc, Hops]),
+                    {ok, UpdatedPeerNas};
+                got_new ->
+                    ?daemon_log(
+                       "~s got new route: ~s -> ~s (~w, ~w)",
+                       [net_tools:string_address(Oa),
+                        net_tools:string_address(DestOa),
+                        net_tools:string_address(ViaNa), Pc, Hops]),
+                    {ok, UpdatedPeerNas};
+                {got_better,
+                 #route_entry{
+                   na = CurrentViaNa, path_cost = CurrentPc,
+                   hops = CurrentHops}} ->
+                    ?daemon_log(
+                       "~s got better route: ~s -> ~s (~w, ~w) "
+                       "replacing ~s -> ~s (~w, ~w)",
+                       [net_tools:string_address(Oa),
+                        net_tools:string_address(DestOa),
+                        net_tools:string_address(ViaNa), Pc, Hops,
+                        net_tools:string_address(DestOa),
+                        net_tools:string_address(CurrentViaNa),
+                        CurrentPc, CurrentHops]),
+                    {ok, UpdatedPeerNas};
+                {got_worse,
+                 #route_entry{
+                   na = CurrentViaNa, path_cost = CurrentPc,
+                   hops = CurrentHops}} ->
+                    ?daemon_log(
+                       "~s got worse route: ~s -> ~s (~w, ~w) "
+                       "not replacing ~s -> ~s (~w, ~w)",
+                       [net_tools:string_address(Oa),
+                        net_tools:string_address(DestOa),
+                        net_tools:string_address(ViaNa), Pc, Hops,
+                        net_tools:string_address(DestOa),
+                        net_tools:string_address(CurrentViaNa), CurrentPc,
+                        CurrentHops]),
+                    {ok, UpdatedPeerNas}
+            end
     end.

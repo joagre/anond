@@ -71,7 +71,7 @@ get_nodes(NicIpAddress, {IpAddress, Port}) ->
                            'ok' | {'error', error_reason()}.
 
 enable_recalc(NicIpAddress, {IpAddress, Port}) ->
-    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"enable-ecalc">>) of
+    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"enable-recalc">>) of
         {ok, true} ->
             ok;
         {error, Reason} ->

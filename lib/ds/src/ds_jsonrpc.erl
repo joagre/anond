@@ -14,7 +14,8 @@
 %%% external exports
 -export([format_error/1]).
 -export([enforce_peer_ttl/2]).
--export([get_number_of_peers/2, get_all_peers/2, get_random_peers/4]).
+-export([get_number_of_peers/2, get_peer/3, get_all_peers/2,
+         get_random_peers/4]).
 -export([publish_peer/3, unpublish_peer/3, published_peers/3]).
 -export([reserve_oa/4, reserved_oas/3]).
 -export([encode_peers/1, encode_peer/1, decode_peers/1, decode_peer/1]).
@@ -66,6 +67,22 @@ enforce_peer_ttl(NicIpAddress, {IpAddress, Port}) ->
 
 get_number_of_peers(NicIpAddress, {IpAddress, Port}) ->
     jsonrpc:call(NicIpAddress, IpAddress, Port, <<"get-number-of-peers">>).
+
+%%%
+%%% exported: get_peer
+%%%
+
+-spec get_peer(inet:ip_address(), na(), na()) ->
+                      {'ok', #peer{}} | {'error', error_reason()}.
+
+get_peer(NicIpAddress, {IpAddress, Port}, Na) ->
+    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"get-peer">>,
+                      [{<<"na">>, node_jsonrpc:encode_na(Na)}]) of
+        {ok, Peer}->
+            decode_peer(Peer);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %%%
 %%% exported: get_all_peers
