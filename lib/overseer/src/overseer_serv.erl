@@ -2,6 +2,7 @@
 
 %%% external exports
 -export([start_link/0, stop/0, stop/1]).
+-export([refresh/0]).
 -export([get_global_route_table/0, get_route_table/1]).
 -export([get_neighbours/0, get_neighbours/1]).
 -export([enable_recalc/0, enable_recalc/1, disable_recalc/0, disable_recalc/1]).
@@ -19,12 +20,13 @@
 -include_lib("ds/include/ds.hrl").
 
 %%% constants
--define(BOOTSTRAP_TIMEOUT, 3*1000).
+-define(REFRESH_TIMEOUT, 3*1000).
 
 %%% records
 -record(state, {
-	  parent          :: pid(),
-	  nodes = []      :: [{oa(), na()}]
+	  parent           :: pid(),
+	  nodes = []       :: [{oa(), na()}],
+          directory_server :: {inet:ip4_address(), inet:port_number()}
 	 }).
 
 %%% types
@@ -63,6 +65,16 @@ stop() ->
 
 stop(Timeout) ->
     serv:call(?MODULE, stop, Timeout).
+
+%%%
+%%% exported: refresh
+%%%
+
+-spec refresh() -> 'ok'.
+
+refresh() ->
+    ?MODULE ! refresh,
+    ok.
 
 %%%
 %%% exported: get_global_route_table
@@ -151,22 +163,29 @@ init(Parent) ->
         true ->
             S = read_config(#state{}),
             ok = config_json_serv:subscribe(),
-            timelib:start_timer(?BOOTSTRAP_TIMEOUT, get_all_published_nodes),
+            timelib:start_timer(?REFRESH_TIMEOUT, refresh),
 	    Parent ! {self(), started},
 	    loop(S#state{parent = Parent});
         _ ->
             Parent ! {self(), already_started}
     end.
 
-loop(#state{parent = Parent, nodes = Nodes} = S) ->
+loop(#state{parent = Parent,
+            nodes = Nodes,
+            directory_server = DsIpAddressPort} = S) ->
     receive
         config_updated ->
             loop(read_config(S));
-        get_all_published_nodes ->
-            UpdatedNodes = get_all_published_nodes(),
-            loop(S#state{nodes = UpdatedNodes});
 	{From, stop} ->
 	    From ! {self(), ok};
+        refresh ->
+            case get_all_published_nodes(DsIpAddressPort) of
+                {ok, UpdatedNodes} ->
+                    loop(S#state{nodes = UpdatedNodes});
+                {error, Reason} ->
+                    ?error_log(Reason),
+                    loop(S)
+            end;
 	{From, get_global_route_table} ->
 	    From ! {self(), get_global_route_table(Nodes)},
 	    loop(S);
@@ -252,17 +271,29 @@ loop(#state{parent = Parent, nodes = Nodes} = S) ->
 %%%
 
 read_config(S) ->
-    S.
+    DsIpAddressPort = ?config(['directory-server', listen]),
+    S#state{directory_server = DsIpAddressPort}.
 
-get_all_published_nodes() ->
-    {ok, Peers} = ds_serv:get_all_peers(),
-    get_all_published_nodes(Peers).
+get_all_published_nodes(DsIpAddressPort) ->
+    case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
+        {ok, Peers} ->
+            get_all_published_nodes(DsIpAddressPort, Peers);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
-get_all_published_nodes([]) ->
-    [];
-get_all_published_nodes([#peer{na = Na}|Rest]) ->
-    {ok, [Oa]} = ds_serv:reserved_oas(Na),
-    [{Oa, Na}|get_all_published_nodes(Rest)].
+get_all_published_nodes(_DsIpAddressPort, Peers) ->
+    get_all_published_nodes(_DsIpAddressPort, Peers, []).
+
+get_all_published_nodes(_DsIpAddressPort, [], Acc) ->
+    {ok, lists:reverse(Acc)};
+get_all_published_nodes(DsIpAddressPort, [#peer{na = Na}|Rest], Acc) ->
+    case ds_jsonrp:reserved_oas(DsIpAddressPort, Na) of
+        {ok, [Oa]} ->
+            get_all_published_nodes(DsIpAddressPort, Rest, [{Oa, Na}|Acc]);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %%%
 %%% get_global_route_table

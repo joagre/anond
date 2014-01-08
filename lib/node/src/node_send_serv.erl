@@ -118,8 +118,9 @@ loop(#state{parent = Parent, peer_na = PeerNa, socket = Socket} = S) ->
             udp_send(PeerNa, Socket, Cell),
             loop(S);
         %% send echo request from node_path_cost_serv
-        #echo_request{sequence_number = SeqNumber, timestamp = Timestamp} ->
-            Cell = <<?ECHO_REQUEST:4, SeqNumber:12, Timestamp:32>>,
+        #echo_request{sequence_number = SeqNumber, unique_id = UniqueId,
+                      timestamp = Timestamp} ->
+            Cell = <<?ECHO_REQUEST:4, SeqNumber:12, UniqueId:16, Timestamp:32>>,
             udp_send(PeerNa, Socket, Cell),
             loop(S);
 	{From, stop} ->

@@ -61,7 +61,7 @@ enforce_peer_ttl(NicIpAddress, {IpAddress, Port}) ->
 %%% exported: get_number_of_peers
 %%%
 
--spec get_number_of_peers(inet:ip_address(), na()) ->
+-spec get_number_of_peers(inet:ip_address() | 'undefined', na()) ->
                                  {'ok', non_neg_integer()} |
                                  {'error', error_reason()}.
 
@@ -72,7 +72,7 @@ get_number_of_peers(NicIpAddress, {IpAddress, Port}) ->
 %%% exported: get_peer
 %%%
 
--spec get_peer(inet:ip_address(), na(), na()) ->
+-spec get_peer(inet:ip_address() | 'undefined', na(), na()) ->
                       {'ok', #peer{}} | {'error', error_reason()}.
 
 get_peer(NicIpAddress, {IpAddress, Port}, Na) ->
@@ -88,7 +88,7 @@ get_peer(NicIpAddress, {IpAddress, Port}, Na) ->
 %%% exported: get_all_peers
 %%%
 
--spec get_all_peers(inet:ip_address(), na()) ->
+-spec get_all_peers(inet:ip_address() | 'undefined', na()) ->
                            {'ok', [#peer{}]} | {'error', error_reason()}.
 
 get_all_peers(NicIpAddress, {IpAddress, Port}) ->
@@ -103,7 +103,8 @@ get_all_peers(NicIpAddress, {IpAddress, Port}) ->
 %%% exported: get_random_peers
 %%%
 
--spec get_random_peers(inet:ip_address(), na(), na(), non_neg_integer()) ->
+-spec get_random_peers(inet:ip_address() | 'undefined', na(), na(),
+                       non_neg_integer()) ->
                               {'ok', [#peer{}]} | {'error', error_reason()}.
 
 get_random_peers(NicIpAddress, {IpAddress, Port}, MyNa, N) ->
@@ -132,7 +133,7 @@ publish_peer(NicIpAddress, {IpAddress, Port}, Peer) ->
 %%% exported: unpublish_peer
 %%%
 
--spec unpublish_peer(inet:ip_address(), na(), na()) ->
+-spec unpublish_peer(inet:ip_address() | 'undefined', na(), na()) ->
                             'ok' | {'error', error_reason()}.
 
 unpublish_peer(NicIpAddress, {IpAddress, Port}, Na) ->
@@ -148,7 +149,7 @@ unpublish_peer(NicIpAddress, {IpAddress, Port}, Na) ->
 %%% exported: published_peers
 %%%
 
--spec published_peers(inet:ip_address(), na(), [na()]) ->
+-spec published_peers(inet:ip_address() | 'undefined', na(), [na()]) ->
                              {'ok', [na()]} | {'error', error_reason()}.
 
 published_peers(NicIpAddress, {IpAddress, Port}, Nas) ->
@@ -164,7 +165,7 @@ published_peers(NicIpAddress, {IpAddress, Port}, Nas) ->
 %%% exported: reserve_oa
 %%%
 
--spec reserve_oa(inet:ip_address(), na(), oa(), na()) ->
+-spec reserve_oa(inet:ip_address() | 'undefined', na(), oa(), na()) ->
                         'ok' | {'error', error_reason()}.
 
 reserve_oa(NicIpAddress, {IpAddress, Port}, Oa, Na) ->
@@ -181,7 +182,7 @@ reserve_oa(NicIpAddress, {IpAddress, Port}, Oa, Na) ->
 %%% exported: reserved_oas
 %%%
 
--spec reserved_oas(inet:ip_address(), na(), na()) ->
+-spec reserved_oas(inet:ip_address() | 'undefined', na(), na()) ->
                           {'ok', [oa()]} | {'error', error_reason()}.
 
 reserved_oas(NicIpAddress, {IpAddress, Port}, Na) ->

@@ -154,13 +154,8 @@ loop(#state{parent = Parent,
                 simulation ->
                     {_NaIpAddress, NaPort} = Na,
                     {_PeerNaIpAddress, PeerNaPort} = PeerNa,
-                    case lists:keysearch({NaPort, PeerNaPort}, 1, Pcs) of
-                        {value, {_, StoredPc}} ->
-                            ok;
-                        false ->
-                            ?dbg_log({{NaPort, PeerNaPort}, 1, Pcs}),
-                            StoredPc = 4711
-                    end,
+                    {value, {_, StoredPc}} =
+                        lists:keysearch({NaPort, PeerNaPort}, 1, Pcs),
                     Pc = nudge_path_cost(StoredPc, ?PERCENT_NUDGE),
                     ok = node_route_serv:update_path_cost(
                            NodeRouteServ, PeerNa, Pc),
@@ -171,6 +166,9 @@ loop(#state{parent = Parent,
 	    From ! {self(), ok};
         {'EXIT', Parent, Reason} ->
             exit(Reason);
+        %% ignore stale echo replies
+        #echo_reply{} ->
+            loop(S);
 	UnknownMessage ->
 	    ?error_log({unknown_message, UnknownMessage}),
 	    loop(S)
@@ -184,10 +182,9 @@ measure_path_cost(NodeDb, RouteDb, UniqueId, Na, NumberOfEchoRequests,
                   EchoReplyTimeout, PeerNa) ->
     {ok, NodeSendServ} =
         node_route:lookup_node_send_serv(NodeDb, RouteDb, PeerNa),
-    proc_lib:spawn_link(
-      ?MODULE, send_echo_requests,
-      [UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests, PeerNa,
-       NodeSendServ]),
+    proc_lib:spawn(?MODULE, send_echo_requests,
+                   [UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
+                    PeerNa, NodeSendServ]),
     EchoReplyLatencies = wait_for_echo_replies(UniqueId, EchoReplyTimeout),
     case length(EchoReplyLatencies) of
         NumberOfEchoReplies
@@ -228,17 +225,14 @@ wait_for_echo_replies(UniqueId, EchoReplyTimeout) ->
 
 wait_for_echo_replies(UniqueId, EchoReplyTimeout, EchoReplyLatencies) ->
     receive
-        #echo_reply{unique_id = UniqueId, sequence_number = _SeqNumber,
+        #echo_reply{sequence_number = _SeqNumber, unique_id = UniqueId,
                     timestamp = Timestamp} ->
             NewEchoReplyLatency = timelib:mk_timestamp()-Timestamp,
             wait_for_echo_replies(UniqueId, EchoReplyTimeout,
                                   [NewEchoReplyLatency|EchoReplyLatencies]);
-        #echo_reply{unique_id = _AnotherUniqueId, sequence_number = _SeqNumber,
+        %% ignore echo replies with old id
+        #echo_reply{sequence_number = _SeqNumber, unique_id = _AnotherUniqueId,
                     timestamp = _Timestamp} ->
-            wait_for_echo_replies(UniqueId, EchoReplyTimeout,
-                                  EchoReplyLatencies);
-	UnknownMessage ->
-	    ?error_log({unknown_message, UnknownMessage}),
             wait_for_echo_replies(UniqueId, EchoReplyTimeout,
                                   EchoReplyLatencies)
     after EchoReplyTimeout ->

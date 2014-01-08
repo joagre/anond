@@ -230,7 +230,8 @@ loop(#state{parent = Parent,
                                 true ->
                                     loop(S#state{ttl = UpdatedTTL})
                             end;
-                        {error, _Reason} ->
+                        {error, Reason} ->
+                            ?dbg_log(Reason),
                             ?daemon_log(
                                "Could not reserve overlay address ~s. Retrying "
                                "in five seconds...",
@@ -239,7 +240,8 @@ loop(#state{parent = Parent,
                               ?FIVE_SECONDS_TIMEOUT, bootstrap),
                             loop(S)
                     end;
-                {error, _Reason}->
+                {error, Reason}->
+                    ?dbg_log(Reason),
                     ?daemon_log(
                        "Could not publish node address ~s. Retrying in five "
                        "seconds...", [net_tools:string_address(Na)]),
@@ -255,7 +257,8 @@ loop(#state{parent = Parent,
                                 [net_tools:string_address(Na)]),
                     timelib:start_timer(trunc(UpdatedTTL/2), republish_self),
                     loop(S#state{ttl = UpdatedTTL});
-                {error, _Reason}->
+                {error, Reason}->
+                    ?dbg_log(Reason),
                     ?daemon_log(
                        "Could not publish node address ~s. Retrying in five "
                        "seconds...", [net_tools:string_address(Na)]),
@@ -272,7 +275,8 @@ loop(#state{parent = Parent,
                     ok = node_path_cost_serv:updated_peer_nas(
                            NodePathCostServ, UpdatedPeerNas),
                     loop(S#state{peer_nas = UpdatedPeerNas});
-                {error, _Reason} ->
+                {error, Reason} ->
+                    ?dbg_log(Reason),
                     ?daemon_log(
                        "Could not refresh peers. Retrying in five seconds...",
                        []),
@@ -429,13 +433,14 @@ get_more_peers(NodeDb, RouteDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
                         node_send_serv = NodeSendServ},
                       ok = node_route:add_node(NodeDb, Node)
               end, NewPeers),
+            UpdatedPeerNas = NewPeerNas++RemainingPeerNas,
             if
                 AutoRecalc ->
-                    ok = node_route:recalc(Na, NodeDb, RouteDb);
+                    ok = node_route:recalc(Na, NodeDb, RouteDb),
+                    {ok, UpdatedPeerNas};
                 true ->
-                    ok
-            end,
-            {ok, NewPeerNas++RemainingPeerNas};
+                    {ok, UpdatedPeerNas}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.

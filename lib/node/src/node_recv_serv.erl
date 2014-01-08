@@ -194,15 +194,15 @@ receiver(#receiver_state{na = {NaIpAddress, NaPort},
             end;
         %% reply to echo request
         {ok, {PeerIpAddress, PeerPort,
-              <<?ECHO_REQUEST:4, UniqueId:16, SeqNumber:12, Timestamp:32>>}} ->
-            Cell = <<?ECHO_REPLY:4, UniqueId:16, SeqNumber:12, Timestamp:32>>,
+              <<?ECHO_REQUEST:4, SeqNumber:12, UniqueId:16, Timestamp:32>>}} ->
+            Cell = <<?ECHO_REPLY:4, SeqNumber:12, UniqueId:16, Timestamp:32>>,
             send({PeerIpAddress, PeerPort}, NodeDb, RouteDb, Cell),
             receiver(S);
         %% send echo reply to path cost server
         {ok, {_PeerIpAddress, _PeerPort,
-              <<?ECHO_REPLY:4, UniqueId:16, SeqNumber:12, Timestamp:32>>}} ->
+              <<?ECHO_REPLY:4, SeqNumber:12, UniqueId:16, Timestamp:32>>}} ->
             EchoReply =
-                #echo_reply{unique_id = UniqueId, sequence_number = SeqNumber,
+                #echo_reply{sequence_number = SeqNumber, unique_id = UniqueId,
                             timestamp = Timestamp},
             ok = node_path_cost_serv:echo_reply(NodePathCostServ, EchoReply),
             receiver(S);
@@ -217,12 +217,12 @@ receiver(#receiver_state{na = {NaIpAddress, NaPort},
             receiver(S)
     end.
 
-send(OaOrNa, NodeDb, RouteDb, Cell) ->
-    case node_route:lookup_node_send_serv(NodeDb, RouteDb, OaOrNa) of
+send(PeerOaOrNa, NodeDb, RouteDb, Cell) ->
+    case node_route:lookup_node_send_serv(NodeDb, RouteDb, PeerOaOrNa) of
         {ok, NodeSendServ} ->
             ok = node_send_serv:send(NodeSendServ, Cell);
         {error, Reason} ->
-            ?error_log({lookup_node_send_serv, OaOrNa, Reason})
+            ?dbg_log(Reason)
     end.
 
 parse_hops(Rest, NumberOfHops) ->
