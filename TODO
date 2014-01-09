@@ -1,68 +1,61 @@
 node_route_serv.erl
 -------------------
-* Switch over from ip() to na() types.
-* Integrate with Patrik's loop detection and path cost library.
+* Integrate Patrik's psp code and authentication of path costs code
+* Use many overlay addresses and pick new ones now and then
+* Pick new peers now and then
 
 node_route_jsonrpc_serv.erl
 ---------------------------
-* Continously choose new neighbours, discard old.
-* Continously choose new overlay addresses, discard old.
+* Add an experimental anond.conf configurable to cloak experimental
+  jsonrpc functions.
+
+ssl_serv.erl
+------------
+* Implement it
+* Should be a plugin replacement for lib/util/src/tcp_serv.erl and let
+  ds_jsonrpc_serv.erl and node_route_jsonrpc_serv.erl use it
 
 node_tun_serv.erl
 -----------------
-* Implement it.
+* Implement it
 * Intercept DNS traffic. Forward DNS lookups to other overlay
   nodes. Forward lookups for the "anond" domain to the anond directory
-  server.
+  server (see below).
 
-node_path_cost_serv.erl
------------------------
-* Implement it.
+node_{recv,send}_serv.erl
+-------------------------
+* Add encrytion using NaCl
+* Accumulate and send everything in 1024 bytes UDP packets. Send cells
+  anyway after a configurable amount of time (pad to 1024 bytes).
 
-node_tunnel_{recv,send}_serv.erl
---------------------------------
-* Make all UDP traffic encrypted. How do we generate key pairs? OpenSSL?
-* Send everything in 512 byte cells.
-* Add support for optional steady-state-byte-streams.
+ds_jsonrpc_serv.erl
+-------------------
+* Add an experimental anond.cond configurable to cloak experimental
+  jsonrpc functions.
 
 ds_serv.erl
 -----------
-* Switch over from ip() to na() types.
-* Add experimneltal flag for ds in anond.conf. cloak experimental functions.
 * http://www.h-online.com/security/features/How-Skype-Co-get-round-firewalls-747197.html
-* Use OA as public key?
-* Add ip-address and port to anond.conf.
-* Use dets instead of ets.
-* Add anond.conf parameter to set directory for dets file.
-* Add anond.conf parameter to clear the dets file on each restart.
+* Use OA as public key (should we?)
+* Use dets instead of ets (should we?)
+  - Add anond.conf parameter to set directory for dets file.
+  - Add anond.conf parameter to clear the dets file on each restart.
 * Make publish_peer/1, unpublish_peer/1 and published_peers/1 spoof
   proof. Signatures?
-* Make sure that it works with many overlay addresses per node address.
 * Add DNS functionality for overlay addresses. Make it spoof
   proof. Signatures? 
-* Maybe use the streaming features of jsx.
-
-jsonrpc_serv.erl
-----------------
-* Switch over to SSL ( How do we generate key pairs? OpenSSL?)
-
-common_config_json_serv.erl
-----------------------------
-
-overseer_serv.erl
------------------
 
 generic stuff
 -------------
 * Write documentation (Use LyX)
-  - Design document
-  - End-user
+  - White paper
+  - End-user (client and server users)
 * Ask Per to contribute the delayed start patch to the Erlang distro.
-* Make it build and adhere to the package management system for:
+* Add package management support for:
   - Ubuntu
   - Mac
   - Windows
-* Setup a nice anond site.
+* Setup a nice anond site
 * Implement anond control panels for:
   - GTK
   - Mac
