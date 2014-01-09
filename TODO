@@ -1,6 +1,8 @@
+A = Next thing to do
+
 node_route_serv.erl
 -------------------
-* Integrate Patrik's psp code and authentication of path costs code
+A Integrate Patrik's psp code and authentication of path costs code
 * Use many overlay addresses and pick new ones now and then
 * Pick new peers now and then
 
@@ -17,15 +19,19 @@ ssl_serv.erl
 
 node_tun_serv.erl
 -----------------
-* Implement it
+A Think and implement it
+A Setup a test setup on trashgrid.net, i.e. nine overlay nodes without
+  tun device and one with a tun device. Setup
+  http://media.pragprog.com/titles/jaerlang/code/shout.erl on the tun
+  device.
 * Intercept DNS traffic. Forward DNS lookups to other overlay
   nodes. Forward lookups for the "anond" domain to the anond directory
   server (see below).
 
 node_{recv,send}_serv.erl
 -------------------------
-* Add encrytion using NaCl
-* Accumulate and send everything in 1024 bytes UDP packets. Send cells
+A Add encrytion using NaCl
+A Accumulate and send everything in 1024 bytes UDP packets. Send cells
   anyway after a configurable amount of time (pad to 1024 bytes).
 
 ds_jsonrpc_serv.erl
