@@ -19,7 +19,7 @@ ssl_serv.erl
 
 node_tun_serv.erl
 -----------------
-A Think and implement it
+A Think and implement it (quick and dirty)
 A Setup a test setup on trashgrid.net, i.e. nine overlay nodes without
   tun device and one with a tun device. Setup
   http://media.pragprog.com/titles/jaerlang/code/shout.erl on the tun
@@ -30,8 +30,8 @@ A Setup a test setup on trashgrid.net, i.e. nine overlay nodes without
 
 node_{recv,send}_serv.erl
 -------------------------
-A Add encrytion using NaCl
-A Accumulate and send everything in 1024 bytes UDP packets. Send cells
+A Add encryption using NaCl
+* Accumulate and send everything in 1024 bytes UDP packets. Send cells
   anyway after a configurable amount of time (pad to 1024 bytes).
 
 ds_jsonrpc_serv.erl
@@ -54,7 +54,7 @@ ds_serv.erl
 generic stuff
 -------------
 * Write documentation (Use LyX)
-  - White paper
+  A White paper
   - End-user (client and server users)
 * Ask Per to contribute the delayed start patch to the Erlang distro.
 * Add package management support for:
