@@ -12,7 +12,7 @@
 %%% include files
 
 %%% constants
--type gsecs() :: integer().
+-type gsecs() :: non_neg_integer().
 -type delta_op() :: 'plus' | 'minus'.
 -type delta_unit() :: 'seconds' | 'minutes' | 'hours' | 'days'.
 -type timer_ref() :: reference().
@@ -29,7 +29,7 @@
 
 mk_timestamp() ->
     {MegaSecs, Secs, MicroSecs} = os:timestamp(),
-    (MegaSecs*1000000+Secs)*1000000+MicroSecs.
+    trunc((MegaSecs*1000000+Secs)*1000000+MicroSecs).
 
 %%%
 %%% exported: ugnow

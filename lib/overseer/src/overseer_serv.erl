@@ -2,9 +2,8 @@
 
 %%% external exports
 -export([start_link/0, stop/0, stop/1]).
--export([refresh/0]).
--export([get_global_route_table/0, get_route_table/1]).
--export([get_neighbours/0, get_neighbours/1]).
+-export([get_nodes/0, get_nodes/1]).
+-export([get_route_entries/0, get_route_entries/1]).
 -export([enable_recalc/0, enable_recalc/1, disable_recalc/0, disable_recalc/1]).
 -export([recalc/0, recalc/1]).
 
@@ -20,21 +19,14 @@
 -include_lib("ds/include/ds.hrl").
 
 %%% constants
--define(REFRESH_TIMEOUT, 3*1000).
 
 %%% records
 -record(state, {
 	  parent           :: pid(),
-	  nodes = []       :: [{oa(), na()}],
           directory_server :: {inet:ip4_address(), inet:port_number()}
 	 }).
 
 %%% types
--type global_route_table() ::
-        [{oa(), {oa(), path_cost(),
-                 [na()] | {'not_available', jsonrpc:error_reason()}}}].
--type route_table() :: [{oa(), path_cost(), [na()]}].
--type neighbours() :: [{na(), path_cost()}].
 
 %%%
 %%% exported: start_link
@@ -67,49 +59,48 @@ stop(Timeout) ->
     serv:call(?MODULE, stop, Timeout).
 
 %%%
-%%% exported: refresh
+%%% exported: get_nodes
 %%%
 
--spec refresh() -> 'ok'.
+-spec get_nodes() -> {'ok',
+                      [{na(),
+                        [#node{}] |
+                        {'not_available', jsonrpc:error_reason()}}]} |
+                     {'error', jsonrpc:error_reason()}.
 
-refresh() ->
-    ?MODULE ! refresh,
-    ok.
+get_nodes() ->
+    serv:call(?MODULE, get_nodes).
 
-%%%
-%%% exported: get_global_route_table
-%%%
+-spec get_nodes(na()) -> {'ok',
+                      [{na(),
+                        [#node{}] |
+                        {'not_available', jsonrpc:error_reason()}}]} |
+                     {'error', jsonrpc:error_reason()}.
 
--spec get_global_route_table() -> global_route_table().
-
-get_global_route_table() ->
-    serv:call(?MODULE, get_global_route_table).
-
-%%%
-%%% exported: get_route_table
-%%%
-
--spec get_route_table(na()) -> {'ok', route_table()} |
-                               {'error', jsonrpc:error_reason()}.
-
-get_route_table(Na) ->
-    serv:call(?MODULE, {get_route_table, Na}).
+get_nodes(Na) ->
+    serv:call(?MODULE, {get_nodes, Na}).
 
 %%%
-%%% exported: get_neighbours
+%%% exported: get_route_entries
 %%%
 
--spec get_neighbours() -> {'ok', [{na(), neighbours() |
-                                   {'not_available', jsonrpc:error_reason()}}]}.
+-spec get_route_entries() -> {'ok',
+                              [{na(),
+                                [#route_entry{} |
+                                 {'not_available', jsonrpc:error_reason()}]}]} |
+                             {'error', jsonrpc:error_reason()}.
 
-get_neighbours() ->
-    serv:call(?MODULE, get_neighbours).
+get_route_entries() ->
+    serv:call(?MODULE, get_route_entries).
 
--spec get_neighbours(na()) -> {'ok', neighbours()} |
-                              {'error', jsonrpc:error_reason()}.
+-spec get_route_entries(na()) -> {'ok', [{na(),
+                                          [#route_entry{} |
+                                           {'not_available',
+                                            jsonrpc:error_reason()}]}]} |
+                                 {'error', jsonrpc:error_reason()}.
 
-get_neighbours(Na) ->
-    serv:call(?MODULE, {get_neighbours, Na}).
+get_route_entries(Na) ->
+    serv:call(?MODULE, {get_route_entries, Na}).
 
 %%%
 %%% exported: enable_recalc
@@ -163,99 +154,121 @@ init(Parent) ->
         true ->
             S = read_config(#state{}),
             ok = config_json_serv:subscribe(),
-            timelib:start_timer(?REFRESH_TIMEOUT, refresh),
 	    Parent ! {self(), started},
 	    loop(S#state{parent = Parent});
         _ ->
             Parent ! {self(), already_started}
     end.
 
-loop(#state{parent = Parent,
-            nodes = Nodes,
-            directory_server = DsIpAddressPort} = S) ->
+loop(#state{parent = Parent, directory_server = DsIpAddressPort} = S) ->
     receive
         config_updated ->
             loop(read_config(S));
 	{From, stop} ->
 	    From ! {self(), ok};
-        refresh ->
-            case get_all_published_nodes(DsIpAddressPort) of
-                {ok, UpdatedNodes} ->
-                    loop(S#state{nodes = UpdatedNodes});
-                {error, Reason} ->
-                    ?error_log(Reason),
-                    loop(S)
-            end;
-	{From, get_global_route_table} ->
-	    From ! {self(), get_global_route_table(Nodes)},
-	    loop(S);
-	{From, {get_route_table, Na}} ->
-            case node_route_jsonrpc:get_route_entries(undefined, Na) of
-                {ok, Res} ->
-                    RouteTable =
-                        [{ReOa, Pc, Hops} ||
-                            #route_entry{oa = ReOa,
-                                         path_cost = Pc,
-                                         hops = Hops} <- Res],
-                    From ! {self(), {ok, RouteTable}},
+    	{From, get_nodes} ->
+            case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
+                {ok, Peers} ->
+                    AllNodes =
+                        lists:map(
+                          fun(#peer{na = Na}) ->
+                                  case node_route_jsonrpc:get_nodes(undefined,
+                                                                    Na) of
+                                      {ok, Nodes} ->
+                                          {Na, Nodes};
+                                      {error, Reason} ->
+                                          {Na, {not_available, Reason}}
+                                  end
+                          end, Peers),
+                    From ! {self(), {ok, AllNodes}},
                     loop(S);
                 {error, Reason} ->
                     From ! {self(), {error, Reason}},
                     loop(S)
             end;
-    	{From, get_neighbours} ->
-            AllNeighbours =
-                lists:map(
-                  fun({_Oa, Na}) ->
-                          case node_route_jsonrpc:get_nodes(undefined, Na) of
-                              {ok, ActualNodes} ->
-                                  {Na, [{ActualNode#node.na,
-                                         ActualNode#node.path_cost} ||
-                                           ActualNode <- ActualNodes]};
-                              {error, Reason} ->
-                                  {Na, {not_available, Reason}}
-                          end
-                  end, Nodes),
-            From ! {self(), {ok, AllNeighbours}},
-            loop(S);
-	{From, {get_neighbours, Na}} ->
+	{From, {get_nodes, Na}} ->
             case node_route_jsonrpc:get_nodes(undefined, Na) of
-                {ok, ActualNodes} ->
-                    Neighbours =
-                        [{ActualNode#node.na, ActualNode#node.path_cost} ||
-                            ActualNode <- ActualNodes],
-                    From ! {self(), {ok, Neighbours}},
+                {ok, Nodes} ->
+                    From ! {self(), {ok, Nodes}},
+                    loop(S);
+                {error, Reason} ->
+                    From ! {self(), {error, Reason}},
+                    loop(S)
+            end;
+	{From, get_route_entries} ->
+            case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
+                {ok, Peers} ->
+                    AllRouteTables =
+                        lists:map(
+                          fun(#peer{na = Na}) ->
+                                  case node_route_jsonrpc:get_route_entries(
+                                         undefined, Na) of
+                                      {ok, Res} ->
+                                          {Na, Res};
+                                      {error, Reason} ->
+                                          {Na, {not_available, Reason}}
+                                  end
+                          end, Peers),
+                    From ! {self(), {ok, AllRouteTables}},
+                    loop(S);
+                {error, Reason} ->
+                    From ! {self(), {error, Reason}},
+                    loop(S)
+            end;
+	{From, {get_route_entries, Na}} ->
+            case node_route_jsonrpc:get_route_entries(undefined, Na) of
+                {ok, Res} ->
+                    From ! {self(), {ok, Res}},
                     loop(S);
                 {error, Reason} ->
                     From ! {self(), {error, Reason}},
                     loop(S)
             end;
 	{From, enable_recalc} ->
-            lists:foreach(
-              fun({_Oa, Na}) ->
-                      _ =  node_route_jsonrpc:enable_recalc(undefined, Na)
-              end, Nodes),
-            From ! {self(), ok},
-            loop(S);
+            case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
+                {ok, Peers} ->
+                    lists:foreach(
+                      fun(#peer{na = Na}) ->
+                              node_route_jsonrpc:enable_recalc(undefined, Na)
+                      end, Peers),
+                    From ! {self(), ok},
+                    loop(S);
+                {error, Reason} ->
+                    From ! {self(), {error, Reason}},
+                    loop(S)
+            end;
         {From, {enable_recalc, Na}} ->
             From ! {self(), node_route_jsonrpc:enable_recalc(undefined, Na)},
             loop(S);
 	{From, disable_recalc} ->
-            lists:foreach(
-              fun({_Oa, Na}) ->
-                      _ = node_route_jsonrpc:disable_recalc(undefined, Na)
-              end, Nodes),
-            From ! {self(), ok},
-            loop(S);
+            case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
+                {ok, Peers} ->
+                    lists:foreach(
+                      fun(#peer{na = Na}) ->
+                              node_route_jsonrpc:disable_recalc(undefined, Na)
+                      end, Peers),
+                    From ! {self(), ok},
+                    loop(S);
+                {error, Reason} ->
+                    From ! {self(), {error, Reason}},
+                    loop(S)
+            end;
         {From, {disable_recalc, Na}} ->
             From ! {self(), node_route_jsonrpc:disable_recalc(undefined, Na)},
             loop(S);
 	{From, recalc} ->
-            lists:foreach(fun({_Oa, Na}) ->
-                                  _ = node_route_jsonrpc:recalc(undefined, Na)
-                          end, Nodes),
-            From ! {self(), ok},
-            loop(S);
+            case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
+                {ok, Peers} ->
+                    lists:foreach(
+                      fun(#peer{na = Na}) ->
+                              node_route_jsonrpc:recalc(undefined, Na)
+                      end, Peers),
+                    From ! {self(), ok},
+                    loop(S);
+                {error, Reason} ->
+                    From ! {self(), {error, Reason}},
+                    loop(S)
+            end;
         {From, {recalc, Na}} ->
             From ! {self(), node_route_jsonrpc:recalc(undefined, Na)},
             loop(S);
@@ -273,76 +286,3 @@ loop(#state{parent = Parent,
 read_config(S) ->
     DsIpAddressPort = ?config(['directory-server', listen]),
     S#state{directory_server = DsIpAddressPort}.
-
-get_all_published_nodes(DsIpAddressPort) ->
-    case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
-        {ok, Peers} ->
-            get_all_published_nodes(DsIpAddressPort, Peers);
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-get_all_published_nodes(_DsIpAddressPort, Peers) ->
-    get_all_published_nodes(_DsIpAddressPort, Peers, []).
-
-get_all_published_nodes(_DsIpAddressPort, [], Acc) ->
-    {ok, lists:reverse(Acc)};
-get_all_published_nodes(DsIpAddressPort, [#peer{na = Na}|Rest], Acc) ->
-    case ds_jsonrp:reserved_oas(DsIpAddressPort, Na) of
-        {ok, [Oa]} ->
-            get_all_published_nodes(DsIpAddressPort, Rest, [{Oa, Na}|Acc]);
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-%%%
-%%% get_global_route_table
-%%%
-
-get_global_route_table(Nodes) ->
-    AllRouteEntries = get_all_route_entries(Nodes),
-    merge_route_entries(AllRouteEntries, AllRouteEntries).
-
-get_all_route_entries([]) ->
-    [];
-get_all_route_entries([{Oa, Na}|Rest]) ->
-    case node_route_jsonrpc:get_route_entries(undefined, Na) of
-        {ok, RouteEntries} ->
-            [{Oa, Na, RouteEntries}|get_all_route_entries(Rest)];
-        {error, Reason} ->
-            [{Oa, Na, {not_available, Reason}}|get_all_route_entries(Rest)]
-    end.
-
-merge_route_entries([], _AllRouteEntries) ->
-    [];
-merge_route_entries([{Oa, _Na, RouteEntries}|Rest], AllRouteEntries) ->
-    [traverse_each_destination(Oa, RouteEntries, AllRouteEntries)|
-     merge_route_entries(Rest, AllRouteEntries)].
-
-traverse_each_destination(_FromOa, [], _AllRouteEntries) ->
-    [];
-traverse_each_destination(Oa, [#route_entry{oa = Oa}|Rest],
-                          AllRouteEntries) ->
-    traverse_each_destination(Oa, Rest, AllRouteEntries);
-traverse_each_destination(FromOa, [#route_entry{oa = ToOa, na = Na,
-                                                path_cost = Pc}|Rest],
-                          AllRouteEntries) ->
-    OaTrail = walk_to_destination(ToOa, Na, AllRouteEntries, []),
-    [{FromOa, ToOa, Pc, OaTrail}|
-     traverse_each_destination(FromOa, Rest, AllRouteEntries)].
-
-walk_to_destination(ToOa, Na, AllRouteEntries, Acc) ->
-    case lists:keysearch(Na, 2, AllRouteEntries) of
-        false ->
-            [];
-        {value, {NextOa, Na, RouteEntries}} ->
-            case lists:keysearch(ToOa, 2, RouteEntries) of
-                {value, #route_entry{oa = ToOa, path_cost = 0}} ->
-                    lists:reverse([NextOa|Acc]);
-                {value, #route_entry{oa = ToOa, na = NextNa}} ->
-                    walk_to_destination(ToOa, NextNa, AllRouteEntries,
-                                        [NextOa|Acc]);
-                false ->
-                    []
-            end
-    end.

@@ -7,7 +7,7 @@
 
 %%% internal exports
 -export([init/3]).
--export([send_echo_requests/5]).
+-export([send_echo_requests/6]).
 
 %%% include files
 -include_lib("node/include/node.hrl").
@@ -15,6 +15,7 @@
 -include_lib("node/include/node_route.hrl").
 -include_lib("util/include/config.hrl").
 -include_lib("util/include/log.hrl").
+-include_lib("util/include/shorthand.hrl").
 
 %%% constants
 -define(PERCENT_NUDGE, 5).
@@ -182,10 +183,12 @@ measure_path_cost(NodeDb, RouteDb, UniqueId, Na, NumberOfEchoRequests,
                   EchoReplyTimeout, PeerNa) ->
     {ok, NodeSendServ} =
         node_route:lookup_node_send_serv(NodeDb, RouteDb, PeerNa),
+    StartTimestamp = timelib:mk_timestamp(),
     proc_lib:spawn(?MODULE, send_echo_requests,
                    [UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
-                    PeerNa, NodeSendServ]),
-    EchoReplyLatencies = wait_for_echo_replies(UniqueId, EchoReplyTimeout),
+                    PeerNa, NodeSendServ, StartTimestamp]),
+    EchoReplyLatencies =
+        wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp),
     case length(EchoReplyLatencies) of
         NumberOfEchoReplies
           when NumberOfEchoReplies > AcceptableNumberOfEchoReplies ->
@@ -207,33 +210,36 @@ measure_path_cost(NodeDb, RouteDb, UniqueId, Na, NumberOfEchoRequests,
     end.
 
 send_echo_requests(_UniqueId, 0, _DelayBetweenEchoRequests, _PeerNa,
-                   _NodeSendServ) ->
+                   _NodeSendServ, _StartTimestamp) ->
     ok;
 send_echo_requests(UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
-                   PeerNa, NodeSendServ) ->
+                   PeerNa, NodeSendServ, StartTimestamp) ->
     EchoRequest = #echo_request{
       sequence_number = NumberOfEchoRequests,
       unique_id = UniqueId,
-      timestamp = timelib:mk_timestamp()},
+      timestamp = timelib:mk_timestamp()-StartTimestamp},
     ok = node_send_serv:send(NodeSendServ, EchoRequest),
     timer:sleep(DelayBetweenEchoRequests),
     send_echo_requests(UniqueId, NumberOfEchoRequests-1,
-                       DelayBetweenEchoRequests, PeerNa, NodeSendServ).
+                       DelayBetweenEchoRequests, PeerNa, NodeSendServ,
+                       StartTimestamp).
 
-wait_for_echo_replies(UniqueId, EchoReplyTimeout) ->
-    wait_for_echo_replies(UniqueId, EchoReplyTimeout, []).
+wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp) ->
+    wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp, []).
 
-wait_for_echo_replies(UniqueId, EchoReplyTimeout, EchoReplyLatencies) ->
+wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp,
+                      EchoReplyLatencies) ->
     receive
         #echo_reply{sequence_number = _SeqNumber, unique_id = UniqueId,
                     timestamp = Timestamp} ->
-            NewEchoReplyLatency = timelib:mk_timestamp()-Timestamp,
-            wait_for_echo_replies(UniqueId, EchoReplyTimeout,
+            NewEchoReplyLatency =
+                timelib:mk_timestamp()-(StartTimestamp+Timestamp),
+            wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp,
                                   [NewEchoReplyLatency|EchoReplyLatencies]);
         %% ignore echo replies with old id
         #echo_reply{sequence_number = _SeqNumber, unique_id = _AnotherUniqueId,
                     timestamp = _Timestamp} ->
-            wait_for_echo_replies(UniqueId, EchoReplyTimeout,
+            wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp,
                                   EchoReplyLatencies)
     after EchoReplyTimeout ->
             EchoReplyLatencies
