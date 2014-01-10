@@ -1,5 +1,12 @@
 -module(node_route_jsonrpc_serv).
 
+%% example use:
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-route-entries", "id": 1}' http://127.0.0.1:50010/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-nodes", "id": 1}' http://127.0.0.1:50010/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "enable-recalc", "id": 1}' http://127.0.0.1:50010/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "disable-recalc", "id": 1}' http://127.0.0.1:50010/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "recalc", "id": 1}' http://127.0.0.1:50010/jsonrpc
+
 %%% external exports
 -export([start_link/2]).
 

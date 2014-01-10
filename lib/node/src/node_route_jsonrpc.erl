@@ -1,7 +1,11 @@
 -module(node_route_jsonrpc).
 
 %% example use:
-%% ???
+%% node_route_jsonrpc:get_route_entries(undefined, {{127,0,0,1}, 50010}).
+%% node_route_jsonrpc:get_nodes(undefined, {{127,0,0,1}, 50010}).
+%% node_route_jsonrpc:enable_recalc(undefined, {{127,0,0,1}, 50010}).
+%% node_route_jsonrpc:disable_recalc(undefined, {{127,0,0,1}, 50010}).
+%% node_route_jsonrpc:recalc(undefined, {{127,0,0,1}, 50010}).
 
 %%% external exports
 -export([format_error/1]).

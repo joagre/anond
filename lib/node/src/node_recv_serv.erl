@@ -222,7 +222,8 @@ send(PeerOaOrNa, NodeDb, RouteDb, Cell) ->
         {ok, NodeSendServ} ->
             ok = node_send_serv:send(NodeSendServ, Cell);
         {error, Reason} ->
-            ?dbg_log(Reason)
+            %%?dbg_log(Reason),
+            ok
     end.
 
 parse_hops(Rest, NumberOfHops) ->

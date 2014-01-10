@@ -29,7 +29,6 @@ init_tunnel(TunDevice, TunIp, RemoteTunIp, SrcIp, SrcPort, DestIp, DestPort) ->
     %% initialize tun
     {ok, TunPid} = tuncer:create(TunDevice, [tun, no_pi, {active, true}]),
     ok = tuncer:up(TunPid, TunIp),
-%%    ok = setup_routing(TunDevice, TunIp, {255,255,255,0}),
     %% intialize udp tunnel
     {ok, Socket} = gen_udp:open(SrcPort, [binary, {ip, SrcIp}, {active, true}]),
     pingpong:start(TunIp, 9000, RemoteTunIp, 9000),
@@ -57,21 +56,3 @@ tunnel(TunDevice, TunIp, SrcIp, SrcPort, DestIp, DestPort, TunPid, Socket) ->
             io:format(
               "~w got an unknown message: ~p~n", [self(), UnknownMessage])
     end.
-
-setup_routing(TunDevice, TunIp, Netmask) ->
-    ok = eval_cmd("ifconfig ~s ~s netmask ~s",
-                  [binary_to_list(TunDevice), addr(TunIp), addr(Netmask)]).
-
-eval_cmd(Format, Args) ->
-    Cmd = lists:flatten(io_lib:format(Format++" 2>&1", Args)),
-    io:format("~s~n", [Cmd]),
-    case os:cmd(Cmd) of
-        "" ->
-            ok;
-        Reason ->
-            {error, Reason}
-    end.
-
-addr({A, B, C, D}) ->
-    [integer_to_list(A), ".", integer_to_list(B), ".", integer_to_list(C), ".",
-     integer_to_list(D)].

@@ -1,15 +1,15 @@
 -module(ds_jsonrpc).
 
 %% example use:
-%% ds_jsonrpc:enforce_peer_ttl({192,168,1,80}, {{192,168,1,80}, 6700}).
-%% ds_jsonrpc:get_number_peers({192,168,1,80}, {{192,168,1,80}, 6700}).
-%% ds_jsonrpc:get_all_peers({192,168,1,80}, {{192,168,1,80}, 6700}).
-%% ds_jsonrpc:get_random_peers({192,168,1,80}, {{192,168,1,80}, 6700}, {{192,168,1,80}, 9001}, 1).
-%% ds_jsonrpc:publish_peer({192,168,1,80}, {{192,168,1,80}, 6700}, #peer{na = {{192,168,1,80}, 9001}, public_key = <<"foo1">>}).
-%% ds_jsonrpc:unpublish_peer({192,168,1,80}, {{192,168,1,80}, 6700}, {{192,168,1,80}, 9001}).
-%% ds_jsonrpc:published_peers({192,168,1,80}, {{192,168,1,80}, 6700}, [{{192,168,1,80}, 9001}, {{192,168,1,80}, 9002}, {{192,168,1,80}, 9003}]).
-%% ds_jsonrpc:reserve_oa({192,168,1,80}, {{192,168,1,80}, 6700}, {65152,0,0,0,50821,2303,65094,10}, {{192,168,1,80}, 9001}).
-%% ds_jsonrpc:reserved_oas({192,168,1,80}, {{192,168,1,80}, 6700}, {{192,168,1,80}, 9001}).
+%% ds_jsonrpc:enforce_peer_ttl(undefined, {{192,168,1,80}, 6700}).
+%% ds_jsonrpc:get_number_of_peers(undefined, {{192,168,1,80}, 6700}).
+%% ds_jsonrpc:get_all_peers(undefined, {{192,168,1,80}, 6700}).
+%% ds_jsonrpc:get_random_peers(undefined, {{192,168,1,80}, 6700}, {{192,168,1,80}, 9001}, 1).
+%% ds_jsonrpc:publish_peer(undefined, {{192,168,1,80}, 6700}, #peer{na = {{192,168,1,80}, 9001}, public_key = <<"foo1">>}).
+%% ds_jsonrpc:unpublish_peer(undefined, {{192,168,1,80}, 6700}, {{192,168,1,80}, 9001}).
+%% ds_jsonrpc:published_peers(undefined, {{192,168,1,80}, 6700}, [{{192,168,1,80}, 9001}, {{192,168,1,80}, 9002}, {{192,168,1,80}, 9003}]).
+%% ds_jsonrpc:reserve_oa(undefined, {{192,168,1,80}, 6700}, {65152,0,0,0,50821,2303,65094,10}, {{192,168,1,80}, 9001}).
+%% ds_jsonrpc:reserved_oas(undefined, {{192,168,1,80}, 6700}, {{192,168,1,80}, 9001}).
 
 %%% external exports
 -export([format_error/1]).
