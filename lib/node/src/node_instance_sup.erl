@@ -73,7 +73,7 @@ init([Na]) ->
     NodePathCostServChildSpec =
         {node_path_cost_serv,
          {node_path_cost_serv, start_link, [Na, self()]},
-         permanent, 10000, worker, [node_path_cost_serv]},
+         permanent, brutal_kill, worker, [node_path_cost_serv]},
     {ok, {{rest_for_one, 3, 10},
           [NodeRouteServChildSpec, NodeRouteJsonrpcServChildSpec,
            NodeRecvServChildSpec, NodeSendSupChildSpec,

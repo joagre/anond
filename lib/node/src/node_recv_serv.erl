@@ -221,8 +221,7 @@ send(PeerOaOrNa, NodeDb, RouteDb, Cell) ->
     case node_route:lookup_node_send_serv(NodeDb, RouteDb, PeerOaOrNa) of
         {ok, NodeSendServ} ->
             ok = node_send_serv:send(NodeSendServ, Cell);
-        {error, Reason} ->
-            %%?dbg_log(Reason),
+        {error, _Reason} ->
             ok
     end.
 

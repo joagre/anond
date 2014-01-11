@@ -6,7 +6,7 @@
          add_node_send_serv/3, lookup_node_send_serv/3]).
 -export([create_route_db/0, delete_route_db/1, get_route_entries/1,
          foreach_route_entry/2, update_route_entry/2]).
--export([recalc/3]).
+-export([recalc/5]).
 -export([update_path_cost/3, update_path_costs/3]).
 
 %%% internal exports
@@ -233,11 +233,12 @@ update_route_entry(RouteDb,
 %%% exported: recalc
 %%%
 
--spec recalc(na(), node_db(), route_db()) -> 'ok'.
+-spec recalc(na(), node_db(), route_db(), node_psp:psp_db(),
+             public_key:rsa_private_key()) -> 'ok'.
 
-recalc(Na, NodeDb, RouteDb) ->
+recalc(Na, NodeDb, RouteDb, PspDb, PrivateKey) ->
     touch_route_entries(NodeDb, RouteDb),
-    propagate_route_entries(Na, NodeDb, RouteDb),
+    propagate_route_entries(Na, NodeDb, RouteDb, PspDb, PrivateKey),
     clear_node_flags(NodeDb),
     clear_route_entry_flags(RouteDb),
     true = ets:match_delete(RouteDb, #route_entry{path_cost = -1, _ = '_'}),
@@ -261,45 +262,87 @@ touch_route_entries(NodeDb, RouteDb) ->
               ok
       end, NodeDb).
 
-propagate_route_entries(Na, NodeDb, RouteDb) ->
+propagate_route_entries(Na, NodeDb, RouteDb, PspDb, PrivateKey) ->
     foreach_node(
       fun(Node) ->
-              send_route_entries(Na, RouteDb, Node)
+              send_route_entries(Na, RouteDb, PspDb, PrivateKey, Node)
       end, NodeDb).
 
-send_route_entries(Na, RouteDb, #node{na = PeerNa,
-                                      path_cost = PeerPc,
-                                      flags = PeerFlags,
-                                      node_send_serv = NodeSendServ}) ->
+send_route_entries(Na, RouteDb, PspDb, PrivateKey,
+                   #node{na = PeerNa,
+                         public_key = PeerPublicKey,
+                         path_cost = PeerPc,
+                         flags = PeerFlags,
+                         node_send_serv = NodeSendServ}) ->
     foreach_route_entry(
-      fun(#route_entry{na = ReNa,
-                       path_cost = RePc,
-                       flags = ReFlags,
-                       hops = Hops} = Re) ->
+      fun(#route_entry{na = ReNa, flags = ReFlags} = Re) ->
               if
                   PeerNa /= ReNa andalso
                   PeerPc /= undefined andalso
                   (?bit_is_set(PeerFlags, ?F_NODE_UPDATED) orelse
                    ?bit_is_set(ReFlags, ?F_RE_UPDATED)) ->
-                      if
-                          PeerPc == -1 orelse RePc == -1 ->
-                              UpdatedPc = -1;
-                          true ->
-                              UpdatedPc = RePc+PeerPc
-                      end,
-                      UpdatedRe =
-                          Re#route_entry{
-                            na = Na,
-                            path_cost = UpdatedPc,
-                            hops = [Na|Hops]
-                            %% patrik: increment psp?
-                            %%psp = ...
-                           },
-                      ok = node_send_serv:send(NodeSendServ, UpdatedRe);
+                      send_route_entry(Na, PspDb, PeerPc, NodeSendServ, Re,
+                                       PeerPublicKey, PrivateKey);
                   true ->
                       ok
               end
       end, RouteDb).
+
+send_route_entry(Na, PspDb, PeerPc, NodeSendServ,
+                 #route_entry{na = ReNa, path_cost = RePc,
+                              path_cost_auth = PcAuth, hops = Hops,
+                              psp = Psp} = Re,
+                 PeerPublicKey, PrivateKey) ->
+% patrik: like this perhaps?
+%    if
+%        ReNa == Na ->
+%            %% See include/node_route.hrl, i.e. #route:entry.path_cost_auth is
+%            %% of type node_path_cost_auth:auth(). It could perhaps be:
+%            %% auth() :: {costs(), signature(), r0_hash()}
+%            {ok, NewPcAuth} =
+%                node_path_cost_auth:new(PeerPublicKey, PrivateKey);
+%            NewPcAuth = PcAuth;
+%        true ->
+%            %% Verify r0
+%            case node_path_cost_auth:verify_r0(PcAuth) of
+%                true ->
+%                    NewPcAuth = PcAuth;
+%                false ->
+%                    NewPcAuth = invalid_path_cost
+%            end
+%    end,
+    NewPcAuth = PcAuth,
+    if
+        NewPcAuth == invalid_path_cost ->
+            ?daemon_log("The route entry pointing to ~s has an invalid path "
+                        "cost and will be ignored",
+                        [net_tools:string_address(ReNa)]);
+        true ->
+            if
+                PeerPc == -1 orelse RePc == -1 ->
+                    UpdatedPc = -1,
+% patrik: and like this
+%                    {ok, UpdatedPcAuth} =
+%                        node_path_cost:add_cost(NewPcAuth, 256),
+                    UpdatedPcAuth = PcAuth;
+                true ->
+                    UpdatedPc = RePc+PeerPc,
+% patrik: and like this
+%                    {ok, UpdatedPcAuth} =
+%                        node_path_cost:add_cost(NewPcAuth, PeerPc div 10)
+                    UpdatedPcAuth = PcAuth
+            end,
+            {ok, UpdatedPsp} = node_psp:add_me(PspDb, Psp),
+            UpdatedRe =
+                Re#route_entry{
+                  na = Na,
+                  path_cost = UpdatedPc,
+                  path_cost_auth = UpdatedPcAuth,
+                  hops = [Na|Hops],
+                  psp = UpdatedPsp
+                 },
+            ok = node_send_serv:send(NodeSendServ, UpdatedRe)
+    end.
 
 clear_node_flags(NodeDb) ->
     foreach_node(

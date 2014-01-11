@@ -132,7 +132,7 @@ encode_route_entry(Re) ->
      {<<"na">>, node_jsonrpc:encode_na(Re#route_entry.na)},
      {<<"path-cost">>, Re#route_entry.path_cost},
      {<<"hops">>, node_jsonrpc:encode_nas(Re#route_entry.hops)},
-     {<<"psp">>, Re#route_entry.psp}].
+     {<<"psp">>, base64:encode(Re#route_entry.psp)}].
 
 %%%
 %%% exported: decode_route_entries
@@ -144,7 +144,6 @@ encode_route_entry(Re) ->
 
 decode_route_entries(Res) ->
     node_jsonrpc:decode(Res, fun decode_route_entry/1).
-
 
 %%%
 %%% exported: decode_route_entry
@@ -168,7 +167,7 @@ decode_route_entry([{<<"oa">>, Oa},
                                               na = DecodedNa,
                                               path_cost = Pc,
                                               hops = DecodedHops,
-                                              psp = Psp}};
+                                              psp = base64:decode(Psp)}};
                         {error, Reason} ->
                             {error, Reason}
                     end;

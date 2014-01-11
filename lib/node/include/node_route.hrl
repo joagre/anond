@@ -6,12 +6,15 @@
 -type route_db() :: ets:tid().
 
 -record(route_entry, {
-	  oa        :: oa() | '_',
-          na        :: na() | '_',
-	  path_cost :: path_cost() | '_',
-	  flags = 0 :: integer() | '_',
-          hops = [] :: [na()] | '_', %% remove when psp is working
-          psp       :: binary() | '_' % patrik: should be binary?
+	  oa             :: oa() | '_',
+          na             :: na() | '_',
+	  path_cost      :: path_cost() | '_',
+% patrik
+%          path_cost_auth :: node_path_cost:auth() | '_',
+          path_cost_auth :: any(),
+	  flags = 0      :: integer() | '_',
+          hops = []      :: [na()] | '_',
+          psp            :: binary() | '_'
 	 }).
 
 -define(F_RE_UPDATED, (1 bsl 0)).
