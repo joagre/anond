@@ -301,7 +301,6 @@ send_route_entry(Na, PspDb, PeerPc, NodeSendServ,
 %            %% auth() :: {costs(), signature(), r0_hash()}
 %            {ok, NewPcAuth} =
 %                node_path_cost_auth:new(PeerPublicKey, PrivateKey);
-%            NewPcAuth = PcAuth;
 %        true ->
 %            %% Verify r0
 %            case node_path_cost_auth:verify_r0(PcAuth) of
