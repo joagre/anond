@@ -2,7 +2,7 @@
 {sys,[{lib_dirs, ["../lib"]},
       {boot_rel, "start"},
       {rel, "start","1.0",
-       [sasl, jsx, procket, tunctl, common, ds, node, overseer]},
+       [sasl, salt, jsx, procket, tunctl, common, ds, node, overseer]},
       {rel, "start_clean", "1.0", []},
       {incl_cond, exclude},
       {profile, standalone},
@@ -19,6 +19,7 @@
       {app, overseer, [{incl_cond, include}]},
       {app, procket, [{incl_cond, include}]},
       {app, sasl, [{incl_cond, include}]},
+      {app, salt, [{incl_cond, include}]},
       {app, stdlib, [{incl_cond, include}]},
       {app, tunctl, [{incl_cond, include}]},
       {app, util, [{incl_cond, include}]}]}.

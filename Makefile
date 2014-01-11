@@ -1,6 +1,6 @@
 include support/erl.mk
 
-LIBS=common ds jsx node overseer procket test tunctl util
+LIBS=common ds jsx node overseer procket salt test tunctl util
 
 all:
 	(cd bin; $(MAKE) all)
@@ -33,4 +33,4 @@ release:
 ###
 
 debug:
-	$(ERL) -pa lib/common/ebin -pa lib/ds/ebin -pa lib/jsx/ebin -pa lib/node/ebin -pa lib/overseer/ebin -pa lib/procket/ebin -pa lib/test/ebin -pa lib/tunctl/ebin -pa lib/util/ebin
+	$(ERL) -pa lib/common/ebin -pa lib/ds/ebin -pa lib/jsx/ebin -pa lib/node/ebin -pa lib/overseer/ebin -pa lib/procket/ebin -pa lib/salt/ebin -pa lib/test/ebin -pa lib/tunctl/ebin -pa lib/util/ebin
