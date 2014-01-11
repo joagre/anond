@@ -45,7 +45,8 @@
 %%%
 
 load() ->
-    Path = filename:join([code:priv_dir(salt), erlang:system_info(system_architecture), "salt_nif"]),
+%%    Path = filename:join([code:priv_dir(salt), erlang:system_info(system_architecture), "salt_nif"]),
+    Path = filename:join([code:priv_dir(salt), "salt_nif"]),
     erlang:load_nif(Path, 0).
 
 %%% Exported from salt_nif.c.
