@@ -1,9 +1,0 @@
-{application, salt,
-  [{description, "Erlang bindings for NaCl library."},
-   {vsn, "1.0.0"},
-   {modules, []},
-   {registered, []},
-   {applications, [kernel, stdlib]},
-   {mod, {salt_app, []}},
-   {env, []}
-  ]}.
