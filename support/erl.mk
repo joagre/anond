@@ -1,4 +1,4 @@
-ERL_TOP:=/usr
+ERL_TOP:=/opt/local
 ERL:=erl
 ERLC:=erlc
 ifeq ($(RELEASE), true)
