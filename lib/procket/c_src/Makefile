@@ -1,5 +1,5 @@
 include ../../../support/erl.mk
-include ../../../support/c_src.mk
+include ../../../support/c.mk
 
 ifeq ($(OS),Darwin)
     LDFLAGS=-bundle -flat_namespace -undefined suppress
@@ -15,3 +15,4 @@ all:
 
 clean:
 	rm -f *.a *.o ../priv/procket ../priv/procket.so
+	rm -fr ../priv/procket.dSYM

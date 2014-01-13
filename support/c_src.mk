@@ -1,1 +1,0 @@
-OS:=$(shell uname -s)
