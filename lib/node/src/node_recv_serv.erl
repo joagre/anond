@@ -159,12 +159,9 @@ receiver(#receiver_state{na = {NaIpAddress, NaPort},
             receive
                 {node_path_cost_serv, NewNodePathCostServ} ->
                     receiver(S#receiver_state{
-                               node_path_cost_serv = NewNodePathCostServ})
-            end;
-        {ok, {NaIpAddress, NaPort, <<?MESSAGE_ARRIVED:8>>}} ->
-            receive
-                {node_tun_serv, TunFd} ->
-                    receiver(S#receiver_state{tun_fd = TunFd})
+                               node_path_cost_serv = NewNodePathCostServ});
+                {node_tun_serv, NewTunFd} ->
+                    receiver(S#receiver_state{tun_fd = NewTunFd})
             end;
         %% send ip packet to tun device
         {ok, {_PeerIpAddress, _PeerPort,
