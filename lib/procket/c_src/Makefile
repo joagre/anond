@@ -10,8 +10,8 @@ endif
 all:
 	$(MAKE) -f Makefile.ancillary
 	$(MAKE) -f Makefile.cmd
-	$(CC) -c -Wall -fPIC -I$(wildcard $(ERL_TOP)/lib/erlang/erts-*/include) procket.c -o procket.o
-	$(CC) procket.o -L. -lancillary $(LDFLAGS) -L$(wildcard $(ERL_TOP)/lib/erlang/lib/erl_interface-*/lib) -lerl_interface -lei -o ../priv/procket.so
+	$(CC) $(CFLAGS) -c -Wall -Werror -fPIC procket.c -o procket.o
+	$(CC) $(LDFLAGS) procket.o ./libancillary.a $(ERL_TOP)/lib/erlang/usr/lib/liberl_interface.a $(ERL_TOP)/lib/erlang/usr/lib/libei.a -o ../priv/procket.so
 
 clean:
 	rm -f *.a *.o ../priv/procket ../priv/procket.so
