@@ -38,6 +38,8 @@
                         typical = {{192,168,1,80}, 6700}}},
             {'node-address',
              #json_type{name = 'ipv4address:port'}},
+            {'create-tun-device',
+             #json_type{name = bool, typical = false}},
             {'overlay-addresses',
              [#json_type{name = ipv6address}]},
             {'public-key',

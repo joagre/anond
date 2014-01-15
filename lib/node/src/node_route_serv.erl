@@ -84,7 +84,8 @@ stop(Pid, Timeout) ->
 -spec handshake(pid(),
                 {'node_send_serv', na(), pid()} |
                 'node_recv_serv' |
-                {'node_path_cost_serv', pid()}) ->
+                {'node_path_cost_serv', pid()} |
+                'node_tun_serv') ->
                        'ok' | {'ok', node_db(), route_db()}.
 
 handshake(Pid, node_recv_serv) ->
@@ -93,7 +94,9 @@ handshake(Pid, {node_path_cost_serv, NodePathCostServ}) ->
     serv:call(Pid, {handshake, {node_path_cost_serv, NodePathCostServ}});
 handshake(Pid, {node_send_serv, Na, NodeSendServ}) ->
     Pid ! {handshake, {node_send_serv, Na, NodeSendServ}},
-    ok.
+    ok;
+handshake(Pid, node_tun_serv) ->
+    serv:call(Pid, {handshake, node_tun_serv}).
 
 %%%
 %%% exported: get_route_entries
@@ -299,6 +302,9 @@ loop(#state{parent = Parent,
         {From, {handshake, {node_path_cost_serv, NewNodePathCostServ}}} ->
 	    From ! {self(), {ok, NodeDb, RouteDb}},
             loop(S#state{node_path_cost_serv = NewNodePathCostServ});
+        {From, {handshake, node_tun_serv}} ->
+	    From ! {self(), {ok, NodeDb, RouteDb}},
+            loop(S);
 	{From, get_route_entries} ->
 	    {ok, Res} = node_route:get_route_entries(RouteDb),
 	    From ! {self(), {ok, Res}},
@@ -365,6 +371,8 @@ read_config(S, [{'node-address', Value}|Rest]) ->
     read_config(S#state{na = Value}, Rest);
 read_config(S, [{'overlay-addresses', [Oa]}|Rest]) ->
     read_config(S#state{oa = Oa}, Rest);
+read_config(_S, [{'overlay-addresses', _Oa}|_Rest]) ->
+    throw(nyi);
 read_config(S, [{'public-key', Value}|Rest]) ->
     read_config(S#state{public_key = Value}, Rest);
 read_config(S, [{'private-key', Value}|Rest]) ->
@@ -378,6 +386,8 @@ read_config(S, [{'recalc-timeout', Value}|Rest]) ->
 read_config(S, [{'auto-recalc', Value}|Rest]) ->
     read_config(S#state{auto_recalc = Value}, Rest);
 read_config(S, [{'path-cost', _}|Rest]) ->
+    read_config(S, Rest);
+read_config(S, [_|Rest]) ->
     read_config(S, Rest).
 
 %%%

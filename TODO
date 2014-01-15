@@ -14,8 +14,7 @@ node_route_jsonrpc_serv.erl
 ssl_serv.erl
 ------------
 * Implement it
-* Should be a plugin replacement for lib/util/src/tcp_serv.erl and let
-  ds_jsonrpc_serv.erl and node_route_jsonrpc_serv.erl use it
+* Should be a plugin replacement for lib/util/src/tcp_serv.erl
 
 node_tun_serv.erl
 -----------------
@@ -50,6 +49,12 @@ ds_serv.erl
   proof. Signatures?
 * Add DNS functionality for overlay addresses. Make it spoof
   proof. Signatures? 
+
+tuncer
+------
+* Add tyåe specifications
+* Add support for blocking reads
+* Make it run on Windows
 
 generic stuff
 -------------

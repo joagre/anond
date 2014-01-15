@@ -66,15 +66,15 @@ init([Na]) ->
         {node_send_sup,
          {node_send_sup, start_link, []},
          permanent, infinity, supervisor, [node_send_sup]},
-%    NodeTunServChildSpec =
-%        {node_tun_serv,
-%         {node_tun_serv, start_link, []},
-%         permanent, 10000, worker, [node_tun_serv]},
+    NodeTunServChildSpec =
+        {node_tun_serv,
+         {node_tun_serv, start_link, [Na, self()]},
+         permanent, 10000, worker, [node_tun_serv]},
     NodePathCostServChildSpec =
         {node_path_cost_serv,
          {node_path_cost_serv, start_link, [Na, self()]},
          permanent, brutal_kill, worker, [node_path_cost_serv]},
     {ok, {{rest_for_one, 3, 10},
           [NodeRouteServChildSpec, NodeRouteJsonrpcServChildSpec,
-           NodeRecvServChildSpec, NodeSendSupChildSpec,
+           NodeRecvServChildSpec, NodeSendSupChildSpec, NodeTunServChildSpec,
            NodePathCostServChildSpec]}}.

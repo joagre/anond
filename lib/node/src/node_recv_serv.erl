@@ -33,7 +33,7 @@
           route_db            :: route_db(),
           node_route_serv     :: pid(),
           node_path_cost_serv :: pid(),
-          tun_device          :: pid(),
+          tun_fd              :: node_tun_serv:tun_fd(),
           socket              :: gen_udp:socket()
 	 }).
 
@@ -75,11 +75,17 @@ stop(Pid, Timeout) ->
 %%% exported: handshake
 %%%
 
--spec handshake(pid(), 'node_send_serv' | {'node_path_cost_serv', pid()}) ->
+-spec handshake(pid(),
+                'node_send_serv' |
+                {'node_path_cost_serv', pid()} |
+                {'node_tun_serv', node_tun_serv:tun_fd()}) ->
                        {'ok', gen_udp:socket()} | 'ok'.
 
 handshake(NodeRecvServ, node_send_serv) ->
     serv:call(NodeRecvServ, {handshake, node_send_serv});
+handshake(NodeRecvServ, {node_tun_serv, TunFd}) ->
+    NodeRecvServ ! {handshake, {node_tun_serv, TunFd}},
+    ok;
 handshake(NodeRecvServ, {node_path_cost_serv, NodePathCostServ}) ->
     NodeRecvServ ! {handshake, {node_path_cost_serv, NodePathCostServ}},
     ok.
@@ -103,7 +109,6 @@ init(Parent, Na, NodeInstanceSup) ->
             S = read_config(#receiver_state{
                                na = Na, node_db = NodeDb, route_db = RouteDb,
                                node_route_serv = NodeRouteServ,
-                               tun_device = self(),
                                socket = Socket}),
             Receiver = proc_lib:spawn_link(?MODULE, receiver, [S]),
             loop(#serv_state{parent = Parent, na = Na, receiver = Receiver,
@@ -119,6 +124,11 @@ loop(#serv_state{parent = Parent,
     receive
         {From, {handshake, node_send_serv}} ->
             From ! {self(), {ok, Socket}},
+            loop(S);
+        {handshake, {node_tun_serv, TunFd}} ->
+            Receiver ! {node_tun_serv, TunFd},
+            ok = gen_udp:send(Socket, NaIpAddress, NaPort,
+                              <<?MESSAGE_ARRIVED:8>>),
             loop(S);
         {handshake, {node_path_cost_serv, NodePathCostServ}} ->
             Receiver ! {node_path_cost_serv, NodePathCostServ},
@@ -142,7 +152,7 @@ receiver(#receiver_state{na = {NaIpAddress, NaPort},
                          route_db = RouteDb,
                          node_route_serv = NodeRouteServ,
                          node_path_cost_serv = NodePathCostServ,
-                         tun_device = TunDevice,
+                         tun_fd = TunFd,
                          socket = Socket} = S) ->
     case gen_udp:recv(Socket, 0) of
         {ok, {NaIpAddress, NaPort, <<?MESSAGE_ARRIVED:8>>}} ->
@@ -151,14 +161,30 @@ receiver(#receiver_state{na = {NaIpAddress, NaPort},
                     receiver(S#receiver_state{
                                node_path_cost_serv = NewNodePathCostServ})
             end;
+        {ok, {NaIpAddress, NaPort, <<?MESSAGE_ARRIVED:8>>}} ->
+            receive
+                {node_tun_serv, TunFd} ->
+                    receiver(S#receiver_state{tun_fd = TunFd})
+            end;
         %% send ip packet to tun device
         {ok, {_PeerIpAddress, _PeerPort,
               <<?IP_PACKET:4,
                 Oa0:16, Oa1:16, Oa2:16, Oa3:16, Oa4:16, Oa5:16, Oa6:16, Oa7:16,
                 Length:12,
                 IpPacket/binary>>}} when size(IpPacket) == Length ->
-            ok = tuncer:send(TunDevice, IpPacket),
-            receiver(S);
+            case TunFd of
+                undefined ->
+                    receiver(S);
+                _ ->
+                    case tuncer:write(TunFd, IpPacket) of
+                        ok ->
+                            receiver(S);
+                        {error, Reason} ->
+                            ?daemon_log("Can not write to tun device: ~s",
+                                        [inet:format_error(Reason)]),
+                            receiver(S)
+                    end
+            end;
         %% forward ip packet to appropriate peer node 
         {ok, {_PeerIpAddress, _PeerPort,
               <<?IP_PACKET:4,
