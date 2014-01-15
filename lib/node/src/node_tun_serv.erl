@@ -93,8 +93,7 @@ loop(#state{parent = Parent,
             UpdatedS = read_config(S),
             {UpdatedTunFd, UpdatedTunPid} =
                 manage_tun_device(UpdatedS#state.create_tun_device,
-                                  UpdatedS#state.oa, 
-                                  S#state.oa, S#state.tun_fd),
+                                  UpdatedS#state.oa, Oa, TunPid),
             ok = node_recv_serv:handshake(NodeRecvServ,
                                           {?MODULE, UpdatedTunFd}),
             loop(UpdatedS#state{tun_fd = UpdatedTunFd,
@@ -103,20 +102,27 @@ loop(#state{parent = Parent,
          <<_:128,
            Oa0:16, Oa1:16, Oa2:16, Oa3:16, Oa4:16, Oa5:16, Oa6:16, Oa7:16,
            _/binary>>  = Ipv6Packet} ->
-            Oa = {Oa0, Oa1, Oa2, Oa3, Oa4, Oa5, Oa6, Oa7},
-            send(Oa, NodeDb, RouteDb, Ipv6Packet),
+            PeerOa = {Oa0, Oa1, Oa2, Oa3, Oa4, Oa5, Oa6, Oa7},
+            send(PeerOa, NodeDb, RouteDb, Ipv6Packet),
+            loop(S);
+        {tuntap_error, TunPid, Reason} ->
+            ?daemon_log("Tun device error: ~s", [inet:format_error(Reason)]),
             loop(S);
 	{From, stop} ->
 	    From ! {self(), ok};
         {'EXIT', Parent, Reason} ->
             exit(Reason);
+        %% tunctl is a bit broken
+        {'EXIT', _, {{badmatch, {error, Reason}}, _}} ->
+            ?daemon_log("Tun device error: ~s", [inet:format_error(Reason)]),
+            loop(S#state{tun_fd = undefined, tun_pid = undefined});
 	UnknownMessage ->
 	    ?error_log({unknown_message, UnknownMessage}),
 	    loop(S)
     end.
 
-send(Oa, NodeDb, RouteDb, Packet) ->
-    case node_route:lookup_node_send_serv(NodeDb, RouteDb, Oa) of
+send(PeerOa, NodeDb, RouteDb, Packet) ->
+    case node_route:lookup_node_send_serv(NodeDb, RouteDb, PeerOa) of
         {ok, NodeSendServ} ->
             ok = node_send_serv:send(NodeSendServ, {ip_packet, Packet});
         {error, _Reason} ->
@@ -188,13 +194,14 @@ create_tun_device(Oa) ->
     end.
 
 remove_tun_device(Oa, TunPid) ->
-    tuncer:down(TunPid),
-    case tuncer:destroy(TunPid) of
+    case tuncer:down(TunPid) of
         ok ->
+            tuncer:destroy(TunPid),
             undefined;
         {error, Reason} ->
-            ?daemon_log("Could not remove tun device: ~s: ~s",
+            ?daemon_log("Could not delete ip address ~s: ~s",
                         [net_tools:string_address(Oa),
                          inet:format_error(Reason)]),
+            tuncer:destroy(TunPid),
             undefined
     end.
