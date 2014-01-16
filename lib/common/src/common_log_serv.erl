@@ -42,10 +42,14 @@ read_config() ->
 daemon_log_info() ->
     Enabled = ?config([logs, daemon, enabled]),
     Tty = ?config([logs, daemon, tty]),
+    ShowModuleFilters = ?config([logs, daemon, filter, show]),
+    HideModuleFilters = ?config([logs, daemon, filter, hide]),
     FileEnabled = ?config([logs, daemon, file, enabled]),
     FilePath = ?config([logs, daemon, file, path]),
     #daemon_log_info{enabled = Enabled,
                      tty = Tty,
+                     show_module_filters = ShowModuleFilters,
+                     hide_module_filters = HideModuleFilters,
                      file = {FileEnabled, FilePath}}.
 
 dbg_log_info() ->

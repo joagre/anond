@@ -52,9 +52,11 @@ ds_serv.erl
 
 tuncer
 ------
-* Add tyåe specifications
+* ioctl calls (it shpuld be enough to have the right permission on
+  beam.smp in order to setup tun and ip addresses)
 * Add support for blocking reads
 * Make it run on Windows
+* Add type specifications
 
 generic stuff
 -------------

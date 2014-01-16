@@ -4,7 +4,9 @@
 -record(daemon_log_info, {
           enabled :: boolean(),
           tty     :: boolean(),
-          file    :: {Enabled :: boolean(), Filename :: binary()}
+          file    :: {Enabled :: boolean(), Filename :: binary()},
+          show_module_filters :: [binary()],
+          hide_module_filters :: [binary()]
         }).
 
 -record(dbg_log_info, {

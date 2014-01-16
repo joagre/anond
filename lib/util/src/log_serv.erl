@@ -201,24 +201,35 @@ close_log(Log) -> disk_log:close(Log).
 
 %%% daemon log
 
-write_to_daemon_log(true, #daemon_log_info{enabled = true,
-                                           tty = Tty,
-                                           file = {FileEnabled, _Path}},
+write_to_daemon_log(true, #daemon_log_info{
+                      enabled = true,
+                      tty = Tty,
+                      file = {FileEnabled, _Path},
+                      show_module_filters = ShowModuleFilters,
+                      hide_module_filters = HideModuleFilters},
                     DaemonDiskLog, Pid, Module, Format, Args)
   when Tty == true; FileEnabled == true ->
-    %% this is too costly
-    case erlang:process_info(Pid, registered_name) of
-        [] ->
-            String = io_lib:format("~w: ~w: "++Format, [Module, Pid|Args]);
-        undefined ->
-            String = io_lib:format("~w: ~w: "++Format, [Module, Pid|Args]);
-        {registered_name, Module} ->
-            String = io_lib:format("~w: "++Format, [Module|Args]);
-        {registered_name, Name} ->
-            String = io_lib:format("~w: ~w"++Format, [Module, Name|Args])
-    end,
-    write_to_daemon_log(DaemonDiskLog, String),
-    write_to_daemon_tty(Tty, String);
+    case show_modules(?a2b(Module), ShowModuleFilters, HideModuleFilters) of
+        true ->
+            %% this is too costly
+            case erlang:process_info(Pid, registered_name) of
+                [] ->
+                    String =
+                        io_lib:format("~w: ~w: "++Format, [Module, Pid|Args]);
+                undefined ->
+                    String =
+                        io_lib:format("~w: ~w: "++Format, [Module, Pid|Args]);
+                {registered_name, Module} ->
+                    String = io_lib:format("~w: "++Format, [Module|Args]);
+                {registered_name, Name} ->
+                    String =
+                        io_lib:format("~w: ~w"++Format, [Module, Name|Args])
+            end,
+            write_to_daemon_log(DaemonDiskLog, String),
+            write_to_daemon_tty(Tty, String);
+        false ->
+            skip
+    end;
 write_to_daemon_log(_TtyAvailable, _DaemonLogInfo, _DaemonDiskLog, _Pid,
                     _Module, _Format, _Args) ->
     skip.
@@ -258,11 +269,11 @@ write_to_dbg_log(_TtyAvailable, _DbgLogInfo, _DbgDiskLog, _Module, _Line,
 show_modules(Module, ShowModuleFilters, HideModuleFilters) ->
     case lists:member(<<"*">>, ShowModuleFilters) of
         true ->
-            true;
+            not(lists:member(Module, HideModuleFilters));
         false ->
             case lists:member(<<"*">>, HideModuleFilters) of
                 true ->
-                    false;
+                    not(lists:member(Module, ShowModuleFilters));
                 false ->
                     case lists:member(Module, ShowModuleFilters) of
                         true ->
