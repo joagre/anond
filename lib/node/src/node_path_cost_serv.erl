@@ -34,7 +34,7 @@
           unique_id = 0                     :: non_neg_integer(),
           %% anond.conf parameters
           mode                              :: common_config_json_serv:mode(),
-          na                                :: na(),
+          my_na                             :: na(),
           number_of_echo_requests           :: non_neg_integer(),
           acceptable_number_of_echo_replies :: non_neg_integer(),
           delay_between_echo_requests       :: timeout(),
@@ -49,8 +49,8 @@
 
 -spec start_link(na(), supervisor:sup_ref()) -> {'ok', pid()}.
 
-start_link(Na, NodeInstanceSup) ->
-    Args = [self(), Na, NodeInstanceSup],
+start_link(MyNa, NodeInstanceSup) ->
+    Args = [self(), MyNa, NodeInstanceSup],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
@@ -97,11 +97,11 @@ echo_reply(NodePathCostServ, EchoReply) ->
 %%% server loop
 %%%
 
-init(Parent, Na, NodeInstanceSup) ->
+init(Parent, MyNa, NodeInstanceSup) ->
     process_flag(trap_exit, true),
     ok = config_json_serv:subscribe(),
     S = read_config(#state{parent = Parent, path_costs = ?NON_RANDOM_PATH_COSTS,
-                           na = Na}),
+                           my_na = MyNa}),
     Parent ! {self(), started},
     {ok, NodeRouteServ} =
         node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
@@ -120,9 +120,9 @@ loop(#state{parent = Parent,
             node_route_serv = NodeRouteServ,
             peer_nas = PeerNas,
             path_costs = Pcs,
-            unique_id = UniqueId,            
+            unique_id = UniqueId,
             mode = Mode,
-            na = Na,
+            my_na = MyNa,
             number_of_echo_requests = NumberOfEchoRequests,
             acceptable_number_of_echo_replies = AcceptableNumberOfEchoReplies,
             delay_between_echo_requests = DelayBetweenEchoRequests,
@@ -142,9 +142,10 @@ loop(#state{parent = Parent,
             RotatedPeerNas = rotate_peer_nas(PeerNas),
             case Mode of
                 normal ->
+                    ?dbg_log(normal_measure),
                     Pc = measure_path_cost(
-                           NodeDb, RouteDb, UniqueId, Na, NumberOfEchoRequests,
-                           AcceptableNumberOfEchoReplies,
+                           NodeDb, RouteDb, UniqueId, MyNa,
+                           NumberOfEchoRequests, AcceptableNumberOfEchoReplies,
                            DelayBetweenEchoRequests, EchoReplyTimeout, PeerNa),
                     ok = node_route_serv:update_path_cost(
                            NodeRouteServ, PeerNa, Pc),
@@ -153,7 +154,8 @@ loop(#state{parent = Parent,
                                  unique_id = UniqueId+1});
                 %% see doc/small_simulation.jpg
                 simulation ->
-                    {_NaIpAddress, NaPort} = Na,
+                    ?dbg_log(simulation_measure),
+                    {_NaIpAddress, NaPort} = MyNa,
                     {_PeerNaIpAddress, PeerNaPort} = PeerNa,
                     {value, {_, StoredPc}} =
                         lists:keysearch({NaPort, PeerNaPort}, 1, Pcs),
@@ -178,7 +180,7 @@ loop(#state{parent = Parent,
 rotate_peer_nas([PeerNa|Rest]) ->
     lists:reverse([PeerNa|lists:reverse(Rest)]).
 
-measure_path_cost(NodeDb, RouteDb, UniqueId, Na, NumberOfEchoRequests,
+measure_path_cost(NodeDb, RouteDb, UniqueId, MyNa, NumberOfEchoRequests,
                   AcceptableNumberOfEchoReplies, DelayBetweenEchoRequests,
                   EchoReplyTimeout, PeerNa) ->
     {ok, NodeSendServ} =
@@ -198,7 +200,7 @@ measure_path_cost(NodeDb, RouteDb, UniqueId, Na, NumberOfEchoRequests,
                             0, EchoReplyLatencies)/NumberOfEchoReplies,
             trunc(AverageEchoReplyLatency);
         NumberOfEchoReplies ->
-            {NaIpAddress, _NaPort} = Na,
+            {NaIpAddress, _NaPort} = MyNa,
             {PeerNaIpAddress, _PeerNaPort} = PeerNa,
             PacketLoss = trunc(NumberOfEchoReplies/NumberOfEchoRequests*100),
             ?daemon_log("Echo requests sent from ~s to ~s resulted in more "
@@ -218,7 +220,7 @@ send_echo_requests(UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
       sequence_number = NumberOfEchoRequests,
       unique_id = UniqueId,
       timestamp = timelib:mk_timestamp()-StartTimestamp},
-    ok = node_send_serv:send(NodeSendServ, EchoRequest),
+    ok = node_send_serv:send(NodeSendServ, {?MODULE, EchoRequest}),
     timer:sleep(DelayBetweenEchoRequests),
     send_echo_requests(UniqueId, NumberOfEchoRequests-1,
                        DelayBetweenEchoRequests, PeerNa, NodeSendServ,
@@ -256,7 +258,7 @@ nudge_path_cost(Pc, Percent) ->
 
 read_config(S) ->
     Mode = ?config([mode]),
-    NodeInstance = ?config([nodes, {'node-address', S#state.na}]),
+    NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
     {value, {'path-cost', PathCost}} =
         lists:keysearch('path-cost', 1, NodeInstance),
     read_config(S#state{mode = Mode}, PathCost).

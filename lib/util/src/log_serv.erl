@@ -267,22 +267,17 @@ write_to_dbg_log(_TtyAvailable, _DbgLogInfo, _DbgDiskLog, _Module, _Line,
     skip.
 
 show_modules(Module, ShowModuleFilters, HideModuleFilters) ->
-    case lists:member(<<"*">>, ShowModuleFilters) of
-        true ->
-            not(lists:member(Module, HideModuleFilters));
-        false ->
-            case lists:member(<<"*">>, HideModuleFilters) of
-                true ->
-                    not(lists:member(Module, ShowModuleFilters));
-                false ->
-                    case lists:member(Module, ShowModuleFilters) of
-                        true ->
-                            true;
-                        false ->
-                            not(lists:member(Module, HideModuleFilters))
-                    end
-            end
-    end.
+    module_member(Module, ShowModuleFilters) and
+        not(module_member(Module, HideModuleFilters)).
+
+module_member(_Module, []) ->
+    false;
+module_member(_Module, [<<"*">>|_]) ->
+    true;
+module_member(Module, [Module|_]) ->
+    true;
+module_member(Module, [_|Rest]) ->
+    module_member(Module, Rest).
 
 write_to_dbg_log(undefined, _String) ->
     ok;

@@ -236,9 +236,9 @@ update_route_entry(RouteDb,
 -spec recalc(na(), node_db(), route_db(), node_psp:psp_db(),
              public_key:rsa_private_key()) -> 'ok'.
 
-recalc(Na, NodeDb, RouteDb, PspDb, PrivateKey) ->
+recalc(MyNa, NodeDb, RouteDb, PspDb, PrivateKey) ->
     touch_route_entries(NodeDb, RouteDb),
-    propagate_route_entries(Na, NodeDb, RouteDb, PspDb, PrivateKey),
+    propagate_route_entries(MyNa, NodeDb, RouteDb, PspDb, PrivateKey),
     clear_node_flags(NodeDb),
     clear_route_entry_flags(RouteDb),
     true = ets:match_delete(RouteDb, #route_entry{path_cost = -1, _ = '_'}),
@@ -262,13 +262,13 @@ touch_route_entries(NodeDb, RouteDb) ->
               ok
       end, NodeDb).
 
-propagate_route_entries(Na, NodeDb, RouteDb, PspDb, PrivateKey) ->
+propagate_route_entries(MyNa, NodeDb, RouteDb, PspDb, PrivateKey) ->
     foreach_node(
       fun(Node) ->
-              send_route_entries(Na, RouteDb, PspDb, PrivateKey, Node)
+              send_route_entries(MyNa, RouteDb, PspDb, PrivateKey, Node)
       end, NodeDb).
 
-send_route_entries(Na, RouteDb, PspDb, PrivateKey,
+send_route_entries(MyNa, RouteDb, PspDb, PrivateKey,
                    #node{na = PeerNa,
                          public_key = PeerPublicKey,
                          path_cost = PeerPc,
@@ -281,21 +281,21 @@ send_route_entries(Na, RouteDb, PspDb, PrivateKey,
                   PeerPc /= undefined andalso
                   (?bit_is_set(PeerFlags, ?F_NODE_UPDATED) orelse
                    ?bit_is_set(ReFlags, ?F_RE_UPDATED)) ->
-                      send_route_entry(Na, PspDb, PeerPc, NodeSendServ, Re,
+                      send_route_entry(MyNa, PspDb, PeerPc, NodeSendServ, Re,
                                        PeerPublicKey, PrivateKey);
                   true ->
                       ok
               end
       end, RouteDb).
 
-send_route_entry(Na, PspDb, PeerPc, NodeSendServ,
+send_route_entry(MyNa, PspDb, PeerPc, NodeSendServ,
                  #route_entry{na = ReNa, path_cost = RePc,
                               path_cost_auth = PcAuth, hops = Hops,
                               psp = Psp} = Re,
                  PeerPublicKey, PrivateKey) ->
 % patrik: like this perhaps?
 %    if
-%        ReNa == Na ->
+%        ReNa == MyNa ->
 %            %% See include/node_route.hrl, i.e. #route:entry.path_cost_auth is
 %            %% of type node_path_cost_auth:auth(). It could perhaps be:
 %            %% auth() :: {costs(), signature(), r0_hash()}
@@ -334,13 +334,13 @@ send_route_entry(Na, PspDb, PeerPc, NodeSendServ,
             {ok, UpdatedPsp} = node_psp:add_me(PspDb, Psp),
             UpdatedRe =
                 Re#route_entry{
-                  na = Na,
+                  na = MyNa,
                   path_cost = UpdatedPc,
                   path_cost_auth = UpdatedPcAuth,
-                  hops = [Na|Hops],
+                  hops = [MyNa|Hops],
                   psp = UpdatedPsp
                  },
-            ok = node_send_serv:send(NodeSendServ, UpdatedRe)
+            ok = node_send_serv:send(NodeSendServ, {node_route_serv, UpdatedRe})
     end.
 
 clear_node_flags(NodeDb) ->

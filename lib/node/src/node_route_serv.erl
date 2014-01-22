@@ -35,11 +35,11 @@
           node_path_cost_serv   :: pid(),
           %% anond.conf parameters
           directory_server      :: {inet:ip4_address(), inet:port_number()},
-          na                    :: na(),
-          oa                    :: oa(),
+          my_na                 :: na(),
+          my_oa                 :: oa(),
 	  public_key            :: public_key:rsa_public_key(),
 	  private_key           :: public_key:rsa_private_key(),
-          number_of_peers       :: non_neg_integer(),          
+          number_of_peers       :: non_neg_integer(),
           refresh_peers_timeout :: non_neg_integer(),
           recalc_timeout        :: non_neg_integer(),
           auto_recalc           :: boolean()
@@ -53,8 +53,8 @@
 
 -spec start_link(na(), supervisor:sup_ref()) -> {'ok', pid()}.
 
-start_link(Na, NodeInstanceSup) ->
-    Args = [self(), Na, NodeInstanceSup],
+start_link(MyNa, NodeInstanceSup) ->
+    Args = [self(), MyNa, NodeInstanceSup],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
@@ -69,7 +69,7 @@ start_link(Na, NodeInstanceSup) ->
 
 -spec stop(pid()) -> 'ok'.
 
-stop(Pid) -> 
+stop(Pid) ->
     stop(Pid, 15000).
 
 -spec stop(pid(), timeout()) -> 'ok'.
@@ -170,11 +170,11 @@ update_path_cost(Pid, Na, Pc) ->
 %%% server loop
 %%%
 
-init(Parent, Na, NodeInstanceSup) ->
+init(Parent, MyNa, NodeInstanceSup) ->
     process_flag(trap_exit, true),
     {A1, A2, A3} = erlang:now(),
     random:seed({A1, A2, A3}),
-    S = read_config(#state{na = Na}),
+    S = read_config(#state{my_na = MyNa}),
     ok = config_json_serv:subscribe(),
     {ok, NodeDb} = node_route:create_node_db(),
     {ok, RouteDb} = node_route:create_route_db(),
@@ -193,8 +193,8 @@ loop(#state{parent = Parent,
             node_instance_sup = NodeInstanceSup,
             node_path_cost_serv = NodePathCostServ,
             directory_server = DsIpAddressPort,
-            na = {NaIpAddress, _NaPort} = Na,
-	    oa = Oa,
+            my_na = {MyNaIpAddress, _MyNaPort} = MyNa,
+	    my_oa = MyOa,
 	    public_key = PublicKey,
 	    private_key = PrivateKey,
             number_of_peers = NumberOfPeers,
@@ -207,20 +207,20 @@ loop(#state{parent = Parent,
             loop(read_config(S));
         bootstrap ->
             case ds_jsonrpc:publish_peer(
-                   NaIpAddress, DsIpAddressPort,
-                   #peer{na = Na, public_key = PublicKey}) of
+                   MyNaIpAddress, DsIpAddressPort,
+                   #peer{na = MyNa, public_key = PublicKey}) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Published node address ~s",
-                                [net_tools:string_address(Na)]),
+                                [net_tools:string_address(MyNa)]),
                     case ds_jsonrpc:reserve_oa(
-                           NaIpAddress, DsIpAddressPort, Oa, Na) of
+                           MyNaIpAddress, DsIpAddressPort, MyOa, MyNa) of
                         ok ->
                             ?daemon_log("Reserved overlay address ~s",
-                                        [net_tools:string_address(Oa)]),
+                                        [net_tools:string_address(MyOa)]),
                             {ok, Psp} = node_psp:new(PspDb),
                             Re =
-                                #route_entry{oa = Oa, na = Na, path_cost = 0,
-                                             psp = Psp},
+                                #route_entry{oa = MyOa, na = MyNa,
+                                             path_cost = 0, psp = Psp},
                             got_new =
                                 node_route:update_route_entry(RouteDb, Re),
                             self() ! refresh_peers,
@@ -241,7 +241,7 @@ loop(#state{parent = Parent,
                             ?daemon_log(
                                "Could not reserve overlay address ~s. Retrying "
                                "in five seconds...",
-                               [net_tools:string_address(Oa)]),
+                               [net_tools:string_address(MyOa)]),
                             timelib:start_timer(
                               ?FIVE_SECONDS_TIMEOUT, bootstrap),
                             loop(S)
@@ -250,31 +250,31 @@ loop(#state{parent = Parent,
                     ?dbg_log(Reason),
                     ?daemon_log(
                        "Could not publish node address ~s. Retrying in five "
-                       "seconds...", [net_tools:string_address(Na)]),
+                       "seconds...", [net_tools:string_address(MyNa)]),
                     timelib:start_timer(?FIVE_SECONDS_TIMEOUT, bootstrap),
                     loop(S)
             end;
         republish_self ->
             case ds_jsonrpc:publish_peer(
-                   NaIpAddress, DsIpAddressPort,
-                   #peer{na = Na, public_key = PublicKey}) of
+                   MyNaIpAddress, DsIpAddressPort,
+                   #peer{na = MyNa, public_key = PublicKey}) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Republished node address ~s",
-                                [net_tools:string_address(Na)]),
+                                [net_tools:string_address(MyNa)]),
                     timelib:start_timer(trunc(UpdatedTTL/2), republish_self),
                     loop(S#state{ttl = UpdatedTTL});
                 {error, Reason}->
                     ?dbg_log(Reason),
                     ?daemon_log(
                        "Could not publish node address ~s. Retrying in five "
-                       "seconds...", [net_tools:string_address(Na)]),
+                       "seconds...", [net_tools:string_address(MyNa)]),
                     timelib:start_timer(?FIVE_SECONDS_TIMEOUT, republish_self),
                     loop(S)
             end;
         refresh_peers ->
             ?daemon_log("Peer refresh started", []),
             case refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
-                               DsIpAddressPort, Na, PrivateKey, NumberOfPeers,
+                               DsIpAddressPort, MyNa, PrivateKey, NumberOfPeers,
                                AutoRecalc) of
                 {ok, UpdatedPeerNas} ->
                     timelib:start_timer(RefreshPeersTimeout, refresh_peers),
@@ -309,15 +309,16 @@ loop(#state{parent = Parent,
 	    {ok, Res} = node_route:get_route_entries(RouteDb),
 	    From ! {self(), {ok, Res}},
 	    loop(S);
-	#route_entry{oa = Oa} ->
+	#route_entry{oa = MyOa} ->
 	    loop(S);
         #route_entry{na = ViaNa} = Re ->
             case handle_route_entry(
                    NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
-                   NodePathCostServ, DsIpAddressPort, Na, Oa, Re) of
+                   NodePathCostServ, DsIpAddressPort, MyNa, MyOa, Re) of
                 {ok, UpdatedPeerNas} ->
                     loop(S#state{peer_nas = UpdatedPeerNas});
-                {error, unknown_peer} ->
+                {error, Reason} ->
+                    ?dbg_log(Reason),
                     ?daemon_log("Discard route entry from ~s",
                                 [net_tools:string_address(ViaNa)]),
                     loop(S)
@@ -333,8 +334,8 @@ loop(#state{parent = Parent,
             loop(S#state{auto_recalc = false});
 	recalc ->
 	    ?daemon_log("** ~s recalculates its route table.",
-                        [net_tools:string_address(Na)]),
-            ok = node_route:recalc(Na, NodeDb, RouteDb, PspDb, PrivateKey),
+                        [net_tools:string_address(MyNa)]),
+            ok = node_route:recalc(MyNa, NodeDb, RouteDb, PspDb, PrivateKey),
             if
                 AutoRecalc ->
                     RandomRecalcTimeout = random:uniform(RecalcTimeout),
@@ -360,18 +361,16 @@ loop(#state{parent = Parent,
 %%%
 
 read_config(S) ->
-    NodeInstance = ?config([nodes, {'node-address', S#state.na}]),
+    NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
     read_config(S, NodeInstance).
 
 read_config(S, []) ->
     S;
 read_config(S, [{'directory-server', Value}|Rest]) ->
     read_config(S#state{directory_server = Value}, Rest);
-read_config(S, [{'node-address', Value}|Rest]) ->
-    read_config(S#state{na = Value}, Rest);
-read_config(S, [{'overlay-addresses', [Oa]}|Rest]) ->
-    read_config(S#state{oa = Oa}, Rest);
-read_config(_S, [{'overlay-addresses', _Oa}|_Rest]) ->
+read_config(S, [{'overlay-addresses', [MyOa]}|Rest]) ->
+    read_config(S#state{my_oa = MyOa}, Rest);
+read_config(_S, [{'overlay-addresses', _MyOas}|_Rest]) ->
     throw(nyi);
 read_config(S, [{'public-key', Value}|Rest]) ->
     read_config(S#state{public_key = Value}, Rest);
@@ -395,10 +394,10 @@ read_config(S, [_|Rest]) ->
 %%%
 
 refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
-              {NaIpAddress, _NaPort} = Na, PrivateKey, NumberOfPeers,
+              {MyNaIpAddress, _NaPort} = MyNa, PrivateKey, NumberOfPeers,
               AutoRecalc) ->
     ?daemon_log("Known peers: ~s", [net_tools:string_addresses(PeerNas)]),
-    case ds_jsonrpc:published_peers(NaIpAddress, DsIpAddressPort, PeerNas) of
+    case ds_jsonrpc:published_peers(MyNaIpAddress, DsIpAddressPort, PeerNas) of
         {ok, PublishedPeerNas} ->
             ?daemon_log("Still published peers: ~s",
                         [net_tools:string_addresses(PublishedPeerNas)]),
@@ -414,7 +413,7 @@ refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
                     ?daemon_log("Need ~w additional peers...",
                                 [NumberOfMissingPeers]),
                     get_more_peers(NodeDb, RouteDb, PspDb, PeerNas,
-                                   NodeInstanceSup, DsIpAddressPort, Na,
+                                   NodeInstanceSup, DsIpAddressPort, MyNa,
                                    PrivateKey, AutoRecalc, RemainingPeerNas,
                                    NumberOfMissingPeers);
                 _ ->
@@ -425,10 +424,10 @@ refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
     end.
 
 get_more_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
-               DsIpAddressPort, {NaIpAddress, _NaPort} = Na, PrivateKey,
+               DsIpAddressPort, {MyNaIpAddress, _NaPort} = MyNa, PrivateKey,
                AutoRecalc, RemainingPeerNas, NumberOfMissingPeers) ->
     case ds_jsonrpc:get_random_peers(
-           NaIpAddress, DsIpAddressPort, Na, NumberOfMissingPeers) of
+           MyNaIpAddress, DsIpAddressPort, MyNa, NumberOfMissingPeers) of
         {ok, NewPeers} ->
             NewPeerNas = [NewPeer#peer.na || NewPeer <- NewPeers],
             ?daemon_log("Found ~w new peers: ~s",
@@ -440,7 +439,7 @@ get_more_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
               fun(#peer{na = PeerNa, public_key = PeerPublicKey}) ->
                       {ok, NodeSendServ} =
                           node_send_sup:start_node_send_serv(
-                            Na, PeerNa, NodeInstanceSup),
+                            MyNa, PeerNa, NodeInstanceSup),
                       Node = #node{
                         na = PeerNa,
                         public_key = PeerPublicKey,
@@ -451,7 +450,7 @@ get_more_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
             UpdatedPeerNas = NewPeerNas++RemainingPeerNas,
             if
                 AutoRecalc ->
-                    ok = node_route:recalc(Na, NodeDb, RouteDb, PspDb,
+                    ok = node_route:recalc(MyNa, NodeDb, RouteDb, PspDb,
                                            PrivateKey),
                     {ok, UpdatedPeerNas};
                 true ->
@@ -483,51 +482,52 @@ purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
 
 handle_route_entry(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
                    NodePathCostServ, DsIpAddressPort,
-                   {NaIpAddress, _NaPort} = Na, Oa,
+                   {MyNaIpAddress, _NaPort} = MyNa, MyOa,
                    #route_entry{na = ViaNa, path_cost = Pc} = Re) ->
     case node_route:is_member_node(NodeDb, ViaNa) of
         true ->
-            update_route_entry(RouteDb, PspDb, PeerNas, Na, Oa, Re);
+            update_route_entry(RouteDb, PspDb, PeerNas, MyNa, MyOa, Re);
         false ->
-            case ds_jsonrpc:get_peer(NaIpAddress, DsIpAddressPort, ViaNa) of
+            case ds_jsonrpc:get_peer(MyNaIpAddress, DsIpAddressPort, ViaNa) of
                 {ok, #peer{public_key = PublicKey}} ->
                     ?daemon_log("~s adding peer ~s",
-                                [net_tools:string_address(Oa),
+                                [net_tools:string_address(MyOa),
                                  net_tools:string_address(ViaNa)]),
                     UpdatedPeerNas = [ViaNa|PeerNas],
                     ok = node_path_cost_serv:updated_peer_nas(
                            NodePathCostServ, UpdatedPeerNas),
                     {ok, NodeSendServ} =
                         node_send_sup:start_node_send_serv(
-                          Na, ViaNa, NodeInstanceSup),
+                          MyNa, ViaNa, NodeInstanceSup),
                     Node = #node{na = ViaNa, public_key = PublicKey,
                                  path_cost = Pc, flags = ?F_NODE_UPDATED,
                                  node_send_serv = NodeSendServ},
                     ok = node_route:add_node(NodeDb, Node),
-                    update_route_entry(RouteDb, PspDb, UpdatedPeerNas, Na, Oa,
-                                       Re);
+                    update_route_entry(RouteDb, PspDb, UpdatedPeerNas, MyNa,
+                                       MyOa, Re);
                 {error, Reason} ->
                     {error, Reason}
             end
     end.
 
-update_route_entry(RouteDb, PspDb, UpdatedPeerNas, Na, Oa, 
+update_route_entry(RouteDb, PspDb, UpdatedPeerNas, MyNa, MyOa,
                    #route_entry{oa = DestOa, na = ViaNa, path_cost = Pc,
                                 hops = Hops, psp = Psp} = Re) ->
     PspLoop = node_psp:is_loop(PspDb, Psp),
-    HopsLoop = lists:member(Na, Hops),
+    HopsLoop = lists:member(MyNa, Hops),
     if
         PspLoop == HopsLoop ->
             ok;
         true ->
-            ?dbg_log({psp_loop_mismatch, Na, PspLoop, HopsLoop, Hops})
+            ?dbg_log({psp_loop_mismatch, MyNa, PspLoop, HopsLoop, Hops})
     end,
     case HopsLoop of
         true ->
-            ?dbg_log({loop_rejected, Na, Hops}),
+            ?dbg_log({loop_rejected, MyNa, Hops}),
             ?daemon_log(
                "~s rejected looping route entry: ~s -> ~s (~w)",
-               [net_tools:string_address(Oa), net_tools:string_address(DestOa),
+               [net_tools:string_address(MyOa),
+                net_tools:string_address(DestOa),
                 net_tools:string_address(ViaNa), Pc]),
             {ok, UpdatedPeerNas};
         false ->
@@ -536,21 +536,21 @@ update_route_entry(RouteDb, PspDb, UpdatedPeerNas, Na, Oa,
                     ?daemon_log(
                        "~s updated existing route: ~s -> ~s (~w, ~w) with new "
                        "path cost ~w",
-                       [net_tools:string_address(Oa),
+                       [net_tools:string_address(MyOa),
                         net_tools:string_address(DestOa),
                         net_tools:string_address(ViaNa), CurrentPc, Hops, Pc]),
                     {ok, UpdatedPeerNas};
                 {kept, _CurrentRe} ->
                     ?daemon_log(
                        "~s kept existing route: ~s -> ~s (~w, ~w)",
-                       [net_tools:string_address(Oa),
+                       [net_tools:string_address(MyOa),
                         net_tools:string_address(DestOa),
                         net_tools:string_address(ViaNa), Pc, Hops]),
                     {ok, UpdatedPeerNas};
                 got_new ->
                     ?daemon_log(
                        "~s got new route: ~s -> ~s (~w, ~w)",
-                       [net_tools:string_address(Oa),
+                       [net_tools:string_address(MyOa),
                         net_tools:string_address(DestOa),
                         net_tools:string_address(ViaNa), Pc, Hops]),
                     {ok, UpdatedPeerNas};
@@ -561,7 +561,7 @@ update_route_entry(RouteDb, PspDb, UpdatedPeerNas, Na, Oa,
                     ?daemon_log(
                        "~s got better route: ~s -> ~s (~w, ~w) "
                        "replacing ~s -> ~s (~w, ~w)",
-                       [net_tools:string_address(Oa),
+                       [net_tools:string_address(MyOa),
                         net_tools:string_address(DestOa),
                         net_tools:string_address(ViaNa), Pc, Hops,
                         net_tools:string_address(DestOa),
@@ -575,7 +575,7 @@ update_route_entry(RouteDb, PspDb, UpdatedPeerNas, Na, Oa,
                     ?daemon_log(
                        "~s got worse route: ~s -> ~s (~w, ~w) "
                        "not replacing ~s -> ~s (~w, ~w)",
-                       [net_tools:string_address(Oa),
+                       [net_tools:string_address(MyOa),
                         net_tools:string_address(DestOa),
                         net_tools:string_address(ViaNa), Pc, Hops,
                         net_tools:string_address(DestOa),

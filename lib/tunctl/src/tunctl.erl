@@ -38,7 +38,7 @@
         create/0, create/1, create/2,
         persist/2,
         owner/2, group/2,
-        up/2, up/3, down/1,
+        up/2, up/3, up/4, down/1,
 
         header/1
     ]).
@@ -82,18 +82,24 @@ group(FD, Group) when is_integer(FD), is_integer(Group) ->
 %% with fewer features and no error checking
 %%
 up(Dev, {A,B,C,D}) ->
-    up(Dev, {A,B,C,D}, 24);
+    up(Dev, {A,B,C,D}, 24, undefined);
 up(Dev, {A,B,C,D,E,F,G,H}) ->
-    up(Dev, {A,B,C,D,E,F,G,H}, 64).
+    up(Dev, {A,B,C,D,E,F,G,H}, 64, undefined).
 
-up(Dev, {A,B,C,D}, Mask) when byte_size(Dev) < ?IFNAMSIZ, is_integer(Mask) ->
+up(Dev, {A,B,C,D}, Mask) ->
+    up(Dev, {A,B,C,D}, Mask, undefined);
+up(Dev, {A,B,C,D,E,F,G,H}, Mask) ->
+    up(Dev, {A,B,C,D,E,F,G,H}, Mask, undefined).
+
+up(Dev, {A,B,C,D}, Mask, MTU) when byte_size(Dev) < ?IFNAMSIZ, is_integer(Mask) ->
     Module = os(),
     case Module of
         tunctl_linux -> tunctl_linux:up(Dev, {A,B,C,D}, Mask);
-        _ -> os_up(Dev, {A,B,C,D}, Mask)
+        _ -> os_up(Dev, {A,B,C,D}, Mask, MTU)
     end;
-up(Dev, {A,B,C,D,E,F,G,H}, Mask) when byte_size(Dev) < ?IFNAMSIZ, is_integer(Mask) ->
-    os_up(Dev, {A,B,C,D,E,F,G,H}, Mask).
+up(Dev, {A,B,C,D,E,F,G,H}, Mask, MTU)
+  when byte_size(Dev) < ?IFNAMSIZ, is_integer(Mask) ->
+    os_up(Dev, {A,B,C,D,E,F,G,H}, Mask, MTU).
 
 down(Dev) when byte_size(Dev) < ?IFNAMSIZ ->
     Module = os(),
@@ -138,15 +144,27 @@ os() ->
 
 %% Shell out to ifconfig on systems where ioctl requires
 %% root privs (or native code hasn't been written yet).
-os_up(Dev, {A,B,C,D}, Mask) ->
+os_up(Dev, {A,B,C,D}, Mask, undefined) ->
     Cmd = "sudo ifconfig " ++ binary_to_list(Dev) ++ " " ++
     inet_parse:ntoa({A,B,C,D}) ++
     "/" ++ integer_to_list(Mask) ++ " up",
     cmd(Cmd);
-os_up(Dev, {A,B,C,D,E,F,G,H}, Mask) ->
+os_up(Dev, {A,B,C,D,E,F,G,H}, Mask, undefined) ->
     Cmd = "sudo ifconfig " ++ binary_to_list(Dev) ++ " inet6 add " ++
     inet_parse:ntoa({A,B,C,D,E,F,G,H}) ++
     "/" ++ integer_to_list(Mask) ++ " up",
+    cmd(Cmd);
+os_up(Dev, {A,B,C,D}, Mask, MTU) ->
+    Cmd = "sudo ifconfig " ++ binary_to_list(Dev) ++
+        " mtu " ++ integer_to_list(MTU) ++ " " ++
+        inet_parse:ntoa({A,B,C,D}) ++
+        "/" ++ integer_to_list(Mask) ++ " up",
+    cmd(Cmd);
+os_up(Dev, {A,B,C,D,E,F,G,H}, Mask, MTU) ->
+    Cmd = "sudo ifconfig " ++ binary_to_list(Dev) ++
+        " mtu " ++ integer_to_list(MTU) ++
+        " inet6 add " ++ inet_parse:ntoa({A,B,C,D,E,F,G,H}) ++
+        "/" ++ integer_to_list(Mask) ++ " up",
     cmd(Cmd).
 
 os_down(Dev) ->
