@@ -18,7 +18,6 @@ ssl_serv.erl
 
 node_tun_serv.erl
 -----------------
-A Think and implement it (quick and dirty)
 A Setup a test setup on trashgrid.net, i.e. nine overlay nodes without
   tun device and one with a tun device. Setup
   http://media.pragprog.com/titles/jaerlang/code/shout.erl on the tun
@@ -32,6 +31,7 @@ node_{recv,send}_serv.erl
 A Add encryption using NaCl
 * Accumulate and send everything in 1024 bytes UDP packets. Send cells
   anyway after a configurable amount of time (pad to 1024 bytes).
+* Add a configurable to limit download and upload rate in B/s
 
 ds_jsonrpc_serv.erl
 -------------------
@@ -48,7 +48,7 @@ ds_serv.erl
 * Make publish_peer/1, unpublish_peer/1 and published_peers/1 spoof
   proof. Signatures?
 * Add DNS functionality for overlay addresses. Make it spoof
-  proof. Signatures? 
+  proof. Signatures?
 
 tuncer
 ------
