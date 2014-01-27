@@ -40,19 +40,24 @@ start_link({IpAddress, Port}, NodeInstanceSup) ->
     jsonrpc_serv:start_link(IpAddress, Port, [],
                             {?MODULE, node_handler, [NodeInstanceSup]}).
 
+%% experimental api (must be restricted)
 node_handler(<<"get-route-entries">>, undefined, NodeInstanceSup) ->
     {ok, Res} =
         node_route_serv:get_route_entries(node_route_serv(NodeInstanceSup)),
     {ok, node_route_jsonrpc:encode_route_entries(Res)};
+%% experimental api (must be restricted)
 node_handler(<<"get-nodes">>, undefined, NodeInstanceSup) ->
     {ok, Nodes} = node_route_serv:get_nodes(node_route_serv(NodeInstanceSup)),
     {ok, node_route_jsonrpc:encode_nodes(Nodes)};
+%% experimental api (must be restricted)
 node_handler(<<"enable-recalc">>, undefined, NodeInstanceSup) ->
     ok = node_route_serv:enable_recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
+%% experimental api (must be restricted)
 node_handler(<<"disable-recalc">>, undefined, NodeInstanceSup) ->
     ok = node_route_serv:disable_recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
+%% experimental api (must be restricted)
 node_handler(<<"recalc">>, undefined, NodeInstanceSup) ->
     ok = node_route_serv:recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};

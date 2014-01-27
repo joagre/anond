@@ -443,7 +443,7 @@ get_more_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
                       Node = #node{
                         na = PeerNa,
                         public_key = PeerPublicKey,
-                        flags = ?F_NODE_UPDATED bor ?F_NODE_IS_INCOMING_PEER,
+                        flags = ?F_NODE_UPDATED,
                         node_send_serv = NodeSendServ},
                       ok = node_route:add_node(NodeDb, Node)
               end, NewPeers),
@@ -500,7 +500,9 @@ handle_route_entry(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
                         node_send_sup:start_node_send_serv(
                           MyNa, ViaNa, NodeInstanceSup),
                     Node = #node{na = ViaNa, public_key = PublicKey,
-                                 path_cost = Pc, flags = ?F_NODE_UPDATED,
+                                 path_cost = Pc,
+                                 flags = ?F_NODE_UPDATED bor
+                                     ?F_NODE_IS_INCOMING_PEER,
                                  node_send_serv = NodeSendServ},
                     ok = node_route:add_node(NodeDb, Node),
                     update_route_entry(RouteDb, PspDb, UpdatedPeerNas, MyNa,

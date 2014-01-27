@@ -5,10 +5,11 @@
 %% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-number-of-peers", "id": 1}' http://192.168.1.80:6700/jsonrpc
 %% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-all-peers", "id": 1}' http://192.168.1.80:6700/jsonrpc
 %% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-random-peers", "params": {"my-na": "127.0.0.1:50010", "n": 4}, "id": 1}' http://192.168.1.80:6700/jsonrpc
-%% curl -X POST -d '{"jsonrpc": "2.0", "method": "pubish-peer", "params": {"peer": {"na": "127.0.0.1:50011", "public-key": "aa", "flags": 4}}, "id": 1}' http://192.168.1.80:6700/jsonrpc
+%% curl -X POST -d '{"jsonrpc": "2.0", "method": "publish-peer", "params": {"na": "127.0.0.1:50011", "public-key": "aa", "flags": 4}, "id": 1}' http://192.168.1.80:6700/jsonrpc
 %% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "unpublish-peer", "params": {"na": "127.0.0.1:50011"}, "id": 1}' http://192.168.1.80:6700/jsonrpc
 %% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "published-peers", "params": {"nas": ["127.0.0.1:50010"]}, "id": 1}' http://192.168.1.80:6700/jsonrpc
 %% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "reserve-oa", "params": {"oa": "fe80::c685:8ff:fe46:d502", "na": "127.0.0.1:50011"}, "id": 1}' http://192.168.1.80:6700/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-network-topology", "id": 1}' http://192.168.1.80:6700/jsonrpc
 
 %%% external exports
 -export([start_link/0]).
@@ -18,6 +19,8 @@
 
 %%% include files
 -include_lib("ds/include/ds.hrl").
+-include_lib("node/include/node_route.hrl").
+-include_lib("util/include/bits.hrl").
 -include_lib("util/include/config.hrl").
 -include_lib("util/include/jsonrpc_serv.hrl").
 -include_lib("util/include/log.hrl").
@@ -37,7 +40,9 @@
 
 start_link() ->
     {IpAddress, Port} = ?config(['directory-server', listen]),
-    jsonrpc_serv:start_link(IpAddress, Port, [], {?MODULE, ds_handler, []}).
+    Docroot = filename:join(code:priv_dir(ds), "docroot"),
+    jsonrpc_serv:start_link(IpAddress, Port, [],
+                            {?MODULE, ds_handler, []}, Docroot).
 
 ds_handler(<<"enforce-peer-ttl">>, undefined) ->
     ok = ds_serv:enforce_peer_ttl(),
@@ -92,9 +97,9 @@ ds_handler(<<"get-random-peers">>, [{<<"my-na">>, MyNa}, {<<"n">>, N}]) ->
               data = <<"my-na">>},
             {error, JsonError}
     end;
-ds_handler(<<"publish-peer">>, [{<<"peer">>, [{<<"na">>, Na},
-                                              {<<"public-key">>, PublicKey},
-                                              {<<"flags">>, Flags}]}]) ->
+ds_handler(<<"publish-peer">>, [{<<"na">>, Na},
+                                {<<"public-key">>, PublicKey},
+                                {<<"flags">>, Flags}]) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
             Peer = #peer{na = DecodedNa, public_key = PublicKey, flags = Flags},
@@ -164,6 +169,7 @@ ds_handler(<<"reserve-oa">>, [{<<"oa">>, Oa}, {<<"na">>, Na}]) ->
               data = <<"na">>},
             {error, JsonError}
     end;
+%% experimental api (must be restricted)
 ds_handler(<<"reserved-oas">>, [{<<"na">>, Na}]) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
@@ -184,7 +190,58 @@ ds_handler(<<"reserved-oas">>, [{<<"na">>, Na}]) ->
               data = <<"na">>},
             {error, JsonError}
     end;
+%% experimental api (must be restricted)
+ds_handler(<<"get-network-topology">>, undefined) ->
+    {ok, Peers} = ds_serv:get_all_peers(),
+    {ok, get_network_topology(Peers)};
 ds_handler(Method, Params) ->
     ?error_log({invalid_request, Method, Params}),
     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
     {error, JsonError}.
+
+%%%
+%%% get-network-topology
+%%%
+
+get_network_topology([]) ->
+    [];
+get_network_topology([#peer{na = Na}|Rest]) ->
+    case node_route_jsonrpc:get_nodes(undefined, Na) of
+        {ok, Nodes} ->
+            case node_route_jsonrpc:get_route_entries(undefined, Na) of
+                {ok, Res} ->
+                    [[{<<"na">>, node_jsonrpc:encode_na(Na)},
+                      {<<"nodes">>, encode_topology_nodes(Nodes)},
+                      {<<"route-entries">>,
+                       encode_topology_route_entries(Res)}]|
+                     get_network_topology(Rest)];
+                {error, _Reason} ->
+                    [[{<<"na">>, node_jsonrpc:encode_na(Na)},
+                      {<<"nodes">>, encode_topology_nodes(Nodes)},
+                      {<<"route-entries">>, null}]|
+                     get_network_topology(Rest)]
+            end;
+        {error, _Reason} ->
+            [[{<<"na">>, node_jsonrpc:encode_na(Na)},
+              {<<"nodes">>, null},
+              {<<"route-entries">>, null}]|
+             get_network_topology(Rest)]
+    end.
+
+encode_topology_nodes(Nodes) ->
+    [encode_topology_node(Node) || Node <- Nodes].
+
+encode_topology_node(Node) ->
+    [{<<"na">>, node_jsonrpc:encode_na(Node#node.na)},
+     {<<"path-cost">>, Node#node.path_cost}]++
+        if
+            ?bit_is_set(Node#node.flags, ?F_NODE_IS_INCOMING_PEER) ->
+                [{<<"incoming-node">>, true}];
+            true ->
+                []
+        end.
+
+encode_topology_route_entries(Res) ->
+    [node_jsonrpc:encode_nas(Hops) ||
+        #route_entry{hops = Hops} <- Res,
+        Hops /= []].

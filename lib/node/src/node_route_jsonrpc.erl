@@ -14,7 +14,7 @@
 -export([encode_route_entries/1, encode_route_entry/1, decode_route_entries/1,
          decode_route_entry/1]).
 -export([encode_nodes/1, encode_node/1, decode_nodes/1, decode_node/1]).
- 
+
 %%% internal exports
 
 %%% include files
@@ -198,7 +198,8 @@ encode_nodes(Nodes) ->
 encode_node(Node) ->
     [{<<"na">>, node_jsonrpc:encode_na(Node#node.na)},
      {<<"public-key">>, Node#node.public_key},
-     {<<"path-cost">>, Node#node.path_cost}].
+     {<<"path-cost">>, Node#node.path_cost},
+     {<<"flags">>, Node#node.flags}].
 
 %%%
 %%% exported: decode_nodes
@@ -217,13 +218,15 @@ decode_nodes(Nodes) ->
 
 decode_node([{<<"na">>, Na},
              {<<"public-key">>, PublicKey},
-             {<<"path-cost">>, Pc}])
-  when is_binary(PublicKey), is_integer(Pc) ->
+             {<<"path-cost">>, Pc},
+             {<<"flags">>, Flags}])
+  when is_binary(PublicKey), is_integer(Pc), is_integer(Flags) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
             {ok, #node{na = DecodedNa,
                        public_key = PublicKey,
-                       path_cost = Pc}};
+                       path_cost = Pc,
+                       flags = Flags}};
         {error, Reason} ->
             {error, Reason}
     end;

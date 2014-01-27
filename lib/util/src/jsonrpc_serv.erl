@@ -1,19 +1,20 @@
 -module(jsonrpc_serv).
 
 %%% external exports
--export([start_link/4]).
+-export([start_link/4, start_link/5]).
 
 %%% internal exports
--export([jsonrpc_handler/2]).
+-export([jsonrpc_handler/3]).
 
 %%% include files
+-include_lib("kernel/include/file.hrl").
 -include_lib("util/include/jsonrpc_serv.hrl").
 -include_lib("util/include/log.hrl").
 -include_lib("util/include/shorthand.hrl").
 
 %%% constants
 -define(MAX_SESSIONS, 1024).
--define(MAX_CONTENT_LENGTH, 65*1024).
+-define(MAX_REQUEST_SIZE, 65*1024).
 
 %%% records
 
@@ -28,14 +29,22 @@
                         {ok, pid()}.
 
 start_link(IpAddress, Port, Options, Handler) ->
+    start_link(IpAddress, Port, Options, Handler, _Docroot = undefined).
+
+-spec start_link(inet:ip_address(), inet:port_number(), tcp_serv:options(),
+                 tcp_serv:handler(), binary() | 'undefined') ->
+                        {ok, pid()}.
+
+start_link(IpAddress, Port, Options, Handler, Docroot) ->
     SocketOptions =
         [{packet, http_bin}, {active, false}, {ip, IpAddress},
          {reuseaddr, true}],
     tcp_serv:start_link(Port, ?MAX_SESSIONS, Options, SocketOptions,
-                        {?MODULE, jsonrpc_handler, [Handler]}).
+                        {?MODULE, jsonrpc_handler, [Handler, Docroot]}).
 
-jsonrpc_handler(Socket, Handler) ->
+jsonrpc_handler(Socket, Handler, Docroot) ->
     case gen_tcp:recv(Socket, 0) of
+        %% a jsonrpc request
         {ok, {http_request, 'POST', {abs_path, <<"/jsonrpc">>}, {1, 1}}} ->
             ok = inet:setopts(Socket, [{packet, httph_bin}]),
             {ok, HeaderValues} =
@@ -45,11 +54,19 @@ jsonrpc_handler(Socket, Handler) ->
                 httplib:lookup_header_value('content-length', HeaderValues),
             case catch ?b2i(BinaryContentLength) of
                 ContentLength when is_integer(ContentLength) ->
-                    jsonrpc_handler(Socket, Handler, ContentLength);
+                    handle_jsonrpc_request(Socket, Handler, ContentLength);
                 _ ->
                     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
                     send(Socket, null, JsonError)
             end;
+        %% a request for a file
+        {ok, {http_request, 'GET', {abs_path, Path}, {1, 1}}}
+          when Docroot /= undefined ->
+            ok = inet:setopts(Socket, [{packet, httph_bin}]),
+            %% just throw away header values for now
+            {ok, _HeaderValues} = httplib:get_headers(Socket, []),
+            ok = inet:setopts(Socket, [binary, {packet, 0}]),
+            send_file(Socket, Docroot, Path);
         {ok, _} ->
             JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
             send(Socket, null, JsonError);
@@ -57,13 +74,13 @@ jsonrpc_handler(Socket, Handler) ->
             {error, Reason}
     end.
 
-jsonrpc_handler(Socket, _Handler, -1) ->
+handle_jsonrpc_request(Socket, _Handler, -1) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content length not specified">>},
-    send(Socket, null, JsonError);    
-jsonrpc_handler(Socket, {M, F, A}, ContentLength)
-  when ContentLength < ?MAX_CONTENT_LENGTH ->
+    send(Socket, null, JsonError);
+handle_jsonrpc_request(Socket, {M, F, A}, ContentLength)
+  when ContentLength < ?MAX_REQUEST_SIZE ->
     case recv(Socket, ContentLength) of
         {ok, Method, Params, Id} ->
             case apply(M, F, [Method, Params|A]) of
@@ -81,7 +98,7 @@ jsonrpc_handler(Socket, {M, F, A}, ContentLength)
               message = ?l2b(inet:format_error(Reason))},
             send(Socket, null, JsonError)
     end;
-jsonrpc_handler(Socket, _Handler, ContentLength) ->
+handle_jsonrpc_request(Socket, _Handler, ContentLength) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content is too large">>,
@@ -177,3 +194,35 @@ send_to_client(Socket, Id, Request) ->
             JsonError = #json_error{code = ?JSONRPC_INTERNAL_ERROR},
             send(Socket, Id, JsonError)
     end.
+
+%%%
+%%% send_file
+%%%
+
+send_file(Socket, Docroot, "/") ->
+    send_file(Socket, Docroot, "index.html");
+send_file(Socket, Docroot, [$/|Rest]) ->
+    send_file(Socket, Docroot, Rest);
+send_file(Socket, Docroot, Path) ->
+    AbsPath = lists:takewhile(fun(C) -> C /= $? end, Path),
+    case string:str(Path, "..") of
+        0 ->
+            Filename = filename:join([Docroot, AbsPath]),
+            case file:read_file_info(Filename) of
+                {ok, #file_info{size = Size}} when Size /= undefined ->
+                    ok = gen_tcp:send(
+                           Socket,
+                           ["HTTP/1.1 200\r\n"
+                            "Content-Type: ", get_mime_type(AbsPath), "\r\n",
+                            "Content-Length: ", ?i2l(Size), "\r\n",
+                            "Connection: close\r\n\r\n"]),
+                    httplib:send_file(Socket, Docroot, Filename);
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
+
+get_mime_type(Path) ->
+    mime_types:lookup(tl(string:to_lower(filename:extension(Path)))).

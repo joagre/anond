@@ -127,7 +127,7 @@ get_random_peers(NicIpAddress, {IpAddress, Port}, MyNa, N) ->
 
 publish_peer(NicIpAddress, {IpAddress, Port}, Peer) ->
     jsonrpc:call(NicIpAddress, IpAddress, Port, <<"publish-peer">>,
-                 [{<<"peer">>, encode_peer(Peer)}]).
+                 encode_peer(Peer)).
 
 %%%
 %%% exported: unpublish_peer
