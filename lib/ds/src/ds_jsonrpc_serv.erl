@@ -211,19 +211,19 @@ get_network_topology([#peer{na = Na}|Rest]) ->
             case node_route_jsonrpc:get_route_entries(undefined, Na) of
                 {ok, Res} ->
                     [[{<<"na">>, node_jsonrpc:encode_na(Na)},
-                      {<<"nodes">>, encode_topology_nodes(Nodes)},
+                      {<<"peers">>, encode_topology_nodes(Nodes)},
                       {<<"route-entries">>,
                        encode_topology_route_entries(Res)}]|
                      get_network_topology(Rest)];
                 {error, _Reason} ->
                     [[{<<"na">>, node_jsonrpc:encode_na(Na)},
-                      {<<"nodes">>, encode_topology_nodes(Nodes)},
+                      {<<"peers">>, encode_topology_nodes(Nodes)},
                       {<<"route-entries">>, null}]|
                      get_network_topology(Rest)]
             end;
         {error, _Reason} ->
             [[{<<"na">>, node_jsonrpc:encode_na(Na)},
-              {<<"nodes">>, null},
+              {<<"peers">>, null},
               {<<"route-entries">>, null}]|
              get_network_topology(Rest)]
     end.
@@ -236,7 +236,7 @@ encode_topology_node(Node) ->
      {<<"path-cost">>, Node#node.path_cost}]++
         if
             ?bit_is_set(Node#node.flags, ?F_NODE_IS_INCOMING_PEER) ->
-                [{<<"incoming-node">>, true}];
+                [{<<"incoming-peer">>, true}];
             true ->
                 []
         end.

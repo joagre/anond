@@ -66,7 +66,7 @@ jsonrpc_handler(Socket, Handler, Docroot) ->
             %% just throw away header values for now
             {ok, _HeaderValues} = httplib:get_headers(Socket, []),
             ok = inet:setopts(Socket, [binary, {packet, 0}]),
-            send_file(Socket, Docroot, Path);
+            send_file(Socket, Docroot, ?b2l(Path));
         {ok, _} ->
             JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
             send(Socket, null, JsonError);
@@ -207,8 +207,8 @@ send_file(Socket, Docroot, Path) ->
     AbsPath = lists:takewhile(fun(C) -> C /= $? end, Path),
     case string:str(Path, "..") of
         0 ->
-            Filename = filename:join([Docroot, AbsPath]),
-            case file:read_file_info(Filename) of
+            FilePath = filename:join([Docroot, AbsPath]),
+            case file:read_file_info(FilePath) of
                 {ok, #file_info{size = Size}} when Size /= undefined ->
                     ok = gen_tcp:send(
                            Socket,
@@ -216,7 +216,7 @@ send_file(Socket, Docroot, Path) ->
                             "Content-Type: ", get_mime_type(AbsPath), "\r\n",
                             "Content-Length: ", ?i2l(Size), "\r\n",
                             "Connection: close\r\n\r\n"]),
-                    httplib:send_file(Socket, Docroot, Filename);
+                    httplib:send_file(Socket, FilePath);
                 _ ->
                     ok
             end;
