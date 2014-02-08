@@ -53,6 +53,9 @@ while [ $# -gt 0 ]; do
         -i)
             interactive="yes"
             ;;
+        -*)
+            usage
+            ;;
         *)
             ;;
     esac
