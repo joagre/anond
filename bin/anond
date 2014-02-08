@@ -1,16 +1,15 @@
 #!/bin/sh
 
-short_options="c:"
-long_options="config:,stop,reload,control-address:,control-port:,interactive"
-
-if ! options=$(getopt -u -o ${short_options} -l ${long_options} -- "$@"); then
-    echo "Usage: $0 [-c|--config FILENAME] [--interactive]"
-    echo "Usage: $0 --stop [--control-address ADDRESS] [--control-port PORT]"
-    echo "Usage: $0 --reload [--control-address ADDRESS] [--control-port PORT]"
+function usage {
+    echo "Usage: $0 [-c CONFIG-FILENAME] [-i]"
+    echo "Usage: $0 -s [-a IP-ADDRESS] [-p PORT]"
+    echo "Usage: $0 -r [-a IP-ADDRESS] [-p PORT]"
     exit 1
-fi
+}
 
-set -- $options
+args=options=$(getopt -u "c:sra:p:i" -- "$@")
+
+set -- $args
 
 bindir=`dirname $0`
 erl=${bindir}/erl
@@ -19,40 +18,40 @@ mode="daemon"
 config=""
 address=""
 port=""
-interactive=false
+interactive="no"
 pa=""
+
 # @DEVEL_ONLY_START
 if [ ! -f ${erl} ]; then
     erl="erl"
-    interactive=true
     pa=" -pa ${bindir}/../lib/common/ebin -pa ${bindir}/../lib/ds/ebin -pa ${bindir}/../lib/jsx/ebin -pa ${bindir}/../lib/node/ebin -pa ${bindir}/../lib/overseer/ebin -pa ${bindir}/../lib/procket/ebin -pa ${bindir}/../lib/salt/ebin -pa ${bindir}/../lib/test/ebin -pa ${bindir}/../lib/tunctl/ebin -pa ${bindir}/../lib/util/ebin"
 fi
 # @DEVEL_ONLY_STOP
 
 while [ $# -gt 0 ]; do
     case $1 in
-        -c|--config)
+        -c)
             config=" --config $2"
             shift
             ;;
-        --stop)
+        -s)
             mode="stop"
             boot=" -boot ${bindir}/start_clean"
             ;;
-        --reload)
+        -r)
             mode="reload"
             boot=" -boot ${bindir}/start_clean"
             ;;
-        --control-address)
+        -a)
             address=" --control-address $2"
             shift
             ;;
-        --control-port)
+        -p)
             port=" --control-port $2"
             shift
             ;;
-        --interactive)
-            interactive=true
+        -i)
+            interactive="yes"
             ;;
         *)
             ;;
@@ -60,27 +59,29 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-if ${interactive}; then
+if [ ${interactive} = "yes" ]; then
     shell=""
 else
     if [ ${mode} = "daemon" ]; then
         shell=" -detached"
-    else 
+    else
         shell=" -noinput"
     fi
 fi
 
 case ${mode} in
     daemon)
+        echo exec ${erl}${shell}${pa}${boot}${config}
         exec ${erl}${shell}${pa}${boot}${config}
         break
         ;;
     stop)
+        echo exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv stop
         exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv stop
         break
         ;;
     reload)
-        exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv reload
+        echo exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv reload
         break
         ;;
 esac

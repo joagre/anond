@@ -16,7 +16,7 @@
 %%% constants
 -define(DEFAULT_CONFIG_FILENAME, "/etc/anond/anond.conf").
 -define(DEFAULT_CONTROL_ADDRESS, {127, 0, 0, 1}).
--define(DEFAULT_CONTROL_PORT, 23765).
+-define(DEFAULT_CONTROL_PORT, 23313).
 -define(JSON_SCHEMA,
         [{mode,
           #json_type{name = string, typical = normal,

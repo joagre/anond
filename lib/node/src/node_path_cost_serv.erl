@@ -18,7 +18,7 @@
 -include_lib("util/include/shorthand.hrl").
 
 %%% constants
--define(PERCENT_NUDGE, 5).
+-define(PERCENT_NUDGE, 20).
 
 %%% records
 

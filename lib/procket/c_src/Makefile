@@ -7,11 +7,15 @@ else
     LDFLAGS=-shared
 endif
 
-all:
+all: ../priv/procket.so
+
+../priv/procket.so: procket.o
+	$(CC) $(LDFLAGS) procket.o ./libancillary.a $(ERL_TOP)/lib/erlang/usr/lib/liberl_interface.a $(ERL_TOP)/lib/erlang/usr/lib/libei.a -o ../priv/procket.so
+
+procket.o: procket.c
 	$(MAKE) -f Makefile.ancillary
 	$(MAKE) -f Makefile.cmd
 	$(CC) $(CFLAGS) -c -Wall -Werror -fPIC procket.c -o procket.o
-	$(CC) $(LDFLAGS) procket.o ./libancillary.a $(ERL_TOP)/lib/erlang/usr/lib/liberl_interface.a $(ERL_TOP)/lib/erlang/usr/lib/libei.a -o ../priv/procket.so
 
 clean:
 	rm -f *.a *.o ../priv/procket ../priv/procket.so

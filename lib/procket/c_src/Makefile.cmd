@@ -1,12 +1,11 @@
-
 CC=gcc
-CMD_DIR= $(dir$(lastword $(MAKEFILE_LIST)))../priv
-CMD_PATH= $(CMD_DIR)/procket
+CMD_DIR=$(dir$(lastword $(MAKEFILE_LIST)))../priv
+CMD_PATH=$(CMD_DIR)/procket
 
-all: dirs compile
+all: dirs $(CMD_PATH)
 
 dirs:
 	-@mkdir -p $(CMD_DIR)
 
-compile:
-	$(CC) $(PROCKET_CFLAGS) -g -Wall -o $(CMD_PATH) -L. procket_cmd.c -lancillary
+$(CMD_PATH):
+	$(CC) $(PROCKET_CFLAGS) -Wall -o $(CMD_PATH) -L. procket_cmd.c -lancillary

@@ -17,26 +17,117 @@
   stroke: #000;
   stroke-width: 1.5px;
 }
+
+.node.fixed {
+  fill: #f00;
+}
+
+text {
+  stroke: none;
+  fill: #000;
+  font-size: 8pt;
+  pointer-events: none;
+}
     </style>
   </head>
   <body>
     <svg/>
     <script>
-var width = 600;
-var height = 400;
+var width = 960;
+var height = 500;
 
 var force = d3.layout.force()
     .size([width, height])
-    .charge(-400)
-    .linkDistance(40)
+    .linkDistance(function(d) { return d["path-cost"]*6; })
     .on("tick", tick);
+
+var drag = force.drag()
+    .on("dragstart", dragstart);
 
 var svg = d3.select("svg")
     .attr("width", width)
     .attr("height", height);
 
+svg.append("defs").append("marker")
+    .attr("id", "arrowhead")
+    .attr("refX", 6 + 3)
+    .attr("refY", 2)
+    .attr("markerWidth", 6)
+    .attr("markerHeight", 4)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M 0,0 V 4 L6,2 Z");
+
+/*
+svg.append("svg:defs").append("marker")
+    .data(["succeeds", "from", "received", "sent", "redeemed", "same_owner", "owns", "transfers", "identifies"])
+    .enter().append("svg:marker")
+    .attr("id", String)
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 25)
+    .attr("refY", -1.5)
+    .attr("markerWidth", 6)
+    .attr("markerHeight", 6)
+    .attr("orient", "auto")
+    .append("svg:path")
+    .attr("d", "M0,-5L10,0L0,5");
+*/
+
+
 var link = svg.selectAll(".link");
 var node = svg.selectAll(".node");
+
+
+anond.neighbours = function(networkTopology, handler) {
+    var node = new Array();
+
+    for (var i = 0; i < networkTopology.length; i++)
+        node[i] = {"na": networkTopology[i].na};
+
+    var link = new Array();
+    var k = 0;
+
+        for (var i = 0; i < networkTopology.length; i++) {
+            if(networkTopology[i].peers == null)
+                continue;
+            var source =
+                anond._nodeIndex(networkTopology[i].na, networkTopology);
+            anond._assert(source != -1, "source must not be -1");
+            for (var j = 0; j < networkTopology[i].peers.length; j++) {
+                if(networkTopology[i].peers[j]["incoming-peer"])
+                    continue;
+                else {
+                    var target =
+                        anond._nodeIndex(networkTopology[i].peers[j].na,
+                                        networkTopology);
+                    anond._assert(target != -1, "target must not be -1");
+                    links[k++] =
+                        {"from": networkTopology[i].na,
+                         "to": networkTopology[i].peers[j].na,
+                         "source": source,
+                         "target": target,
+                         "path-cost": networkTopology[i].peers[j]["path-cost"]};
+                }
+            }
+        }
+
+                                handler({node: node, links: links});
+    };
+
+    self.getNetworkTopology(networkTopologyHandler);
+};
+
+var storedNetworkTopolgy = null;
+
+anond.getNetworkTopology(function(networkTopology) {
+    storedNetworkTopology = networkToplogy;
+    anond.loadNeighbours(
+        function(graph) {
+
+
+
+
+
 
 anond.loadNeighbours(function(graph) {
     force
@@ -46,12 +137,22 @@ anond.loadNeighbours(function(graph) {
 
     link = link.data(graph.links)
         .enter().append("line")
-        .attr("class", "link");
+        .attr("class", "link")
+        .attr("marker-end", "url(#arrowhead)");
 
     node = node.data(graph.nodes)
-        .enter().append("circle")
+        .enter().append("g")
         .attr("class", "node")
-        .attr("r", 5);
+        .on("dblclick", dblclick)
+        .call(drag);
+
+    node.append("circle")
+        .attr("r", 4.5);
+
+    node.append("text")
+        .attr("x", 10)
+        .attr("dy", ".3em")
+        .text(function(d) { return d.na; });
 });
 
 function tick() {
@@ -60,8 +161,16 @@ function tick() {
         .attr("x2", function(d) { return d.target.x; })
         .attr("y2", function(d) { return d.target.y; });
 
-    node.attr("cx", function(d) { return d.x; })
-        .attr("cy", function(d) { return d.y; });
+  node
+      .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+}
+
+function dblclick(d) {
+    d3.select(this).classed("fixed", d.fixed = false);
+}
+
+function dragstart(d) {
+    d3.select(this).classed("fixed", d.fixed = true);
 }
     </script>
   </body>
