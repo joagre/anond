@@ -1,0 +1,18 @@
+.node {
+    fill: #ccc;
+    stroke: #888;
+    cursor: pointer;
+}
+.node.fixed {
+    fill: #f00;
+}
+.nodeLabel {
+    font-size: 9px;
+}
+.link {
+    stroke: #ccc;
+}
+.linkLabel {
+    fill: #888;
+    font-size: 9px;
+}
