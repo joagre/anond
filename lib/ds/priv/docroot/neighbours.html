@@ -1,3 +1,7 @@
+<!--
+http://bl.ocks.org/mbostock/1095795
+http://bl.ocks.org/jhb/5955887
+-->
 <!DOCTYPE html>
 <html>
   <head>
@@ -6,27 +10,25 @@
     <script src="jquery-1.11.0.min.js"></script>
     <script src="anond.js"></script>
     <style>
-.link {
-  stroke: #000;
-  stroke-width: 1.5px;
-}
-
 .node {
-  cursor: move;
   fill: #ccc;
-  stroke: #000;
-  stroke-width: 1.5px;
+  stroke: #888;
 }
 
-.node.fixed {
-  fill: #f00;
+.nodeLabel {
+  font-size: 9px;
 }
 
-text {
-  stroke: none;
-  fill: #000;
-  font-size: 8pt;
-  pointer-events: none;
+.link {
+  stroke: #ccc;
+}
+
+.linkLabel {
+
+  fill: #888;
+
+
+  font-size: 9px;
 }
     </style>
   </head>
@@ -36,142 +38,148 @@ text {
 var width = 960;
 var height = 500;
 
+var nodes = [];
+var links = [];
+
 var force = d3.layout.force()
+    .nodes(nodes)
+    .links(links)
     .size([width, height])
-    .linkDistance(function(d) { return d["path-cost"]*6; })
+    .linkDistance(function(d) { return d["path-cost"]*5; })
     .on("tick", tick);
 
-var drag = force.drag()
-    .on("dragstart", dragstart);
-
-var svg = d3.select("svg")
+var svg = d3.select("body").append("svg")
     .attr("width", width)
     .attr("height", height);
 
-svg.append("defs").append("marker")
-    .attr("id", "arrowhead")
-    .attr("refX", 6 + 3)
-    .attr("refY", 2)
-    .attr("markerWidth", 6)
-    .attr("markerHeight", 4)
-    .attr("orient", "auto")
-    .append("path")
-    .attr("d", "M 0,0 V 4 L6,2 Z");
-
-/*
-svg.append("svg:defs").append("marker")
-    .data(["succeeds", "from", "received", "sent", "redeemed", "same_owner", "owns", "transfers", "identifies"])
-    .enter().append("svg:marker")
-    .attr("id", String)
-    .attr("viewBox", "0 -5 10 10")
-    .attr("refX", 25)
-    .attr("refY", -1.5)
-    .attr("markerWidth", 6)
-    .attr("markerHeight", 6)
-    .attr("orient", "auto")
-    .append("svg:path")
-    .attr("d", "M0,-5L10,0L0,5");
-*/
-
-
-var link = svg.selectAll(".link");
 var node = svg.selectAll(".node");
+var nodeLabel = svg.selectAll(".nodeLabel");
+var link = svg.selectAll(".link");
+var linkLabel = svg.selectAll(".linkLabel");
 
+var networkTopology = null;
 
-anond.neighbours = function(networkTopology, handler) {
-    var node = new Array();
+var getNetworkTopology = function() {
+    self = this;
+    anond.getNetworkTopology(function(newNetworkTopology) {
+        anond.allNeighbours(newNetworkTopology, function(graph) {
+            console.log(newNetworkTopology);
+            networkTopology = newNetworkTopology;
 
-    for (var i = 0; i < networkTopology.length; i++)
-        node[i] = {"na": networkTopology[i].na};
+            // Remove no longer existing nodes
+            for (var i = 0; i < nodes.length; i++)
+                if (anond.nodeIndex(nodes[i].na, graph.nodes) == -1)
+                    nodes.splice(i, 1);
 
-    var link = new Array();
-    var k = 0;
+            // Add new nodes
+            for (var i = 0; i < graph.nodes.length; i++)
+                if (anond.nodeIndex(graph.nodes[i].na, nodes) == -1)
+                    nodes.push(graph.nodes[i]);
 
-        for (var i = 0; i < networkTopology.length; i++) {
-            if(networkTopology[i].peers == null)
-                continue;
-            var source =
-                anond._nodeIndex(networkTopology[i].na, networkTopology);
-            anond._assert(source != -1, "source must not be -1");
-            for (var j = 0; j < networkTopology[i].peers.length; j++) {
-                if(networkTopology[i].peers[j]["incoming-peer"])
-                    continue;
-                else {
-                    var target =
-                        anond._nodeIndex(networkTopology[i].peers[j].na,
-                                        networkTopology);
-                    anond._assert(target != -1, "target must not be -1");
-                    links[k++] =
-                        {"from": networkTopology[i].na,
-                         "to": networkTopology[i].peers[j].na,
-                         "source": source,
-                         "target": target,
-                         "path-cost": networkTopology[i].peers[j]["path-cost"]};
-                }
+            // Remove no longer existing links
+            for (var i = 0; i < links.length; i++)
+                if (anond.nodeIndex(links[i].na, graph.links) == -1)
+                    links.splice(i, 1);
+
+            // Add new link
+            for (var i = 0; i < graph.links.length; i++) {
+                var j = anond.linkIndex(graph.links[i].from, graph.links[i].to,
+                                        links);
+
+                if (j == -1)
+                    links.push(graph.links[i]);
+                else
+                    if (graph.links[i]["path-cost"] != links[j]["path-cost"])
+                        links[j]["path-cost"] = graph.links[i]["path-cost"];
             }
-        }
 
-                                handler({node: node, links: links});
-    };
+            setTimeout(getNetworkTopology, 2000);
+            start();
+        });
+    });
+}
 
-    self.getNetworkTopology(networkTopologyHandler);
-};
+function start() {
+    node = node.data(force.nodes(), function(d) { return d.na; });
+    node.enter()
+        .append("circle")
+        .attr({"r": 4, "class": "node"})
+        .call(force.drag)
+    node.exit().remove();
 
-var storedNetworkTopolgy = null;
-
-anond.getNetworkTopology(function(networkTopology) {
-    storedNetworkTopology = networkToplogy;
-    anond.loadNeighbours(
-        function(graph) {
-
-
-
-
-
-
-anond.loadNeighbours(function(graph) {
-    force
-        .nodes(graph.nodes)
-        .links(graph.links)
-        .start();
-
-    link = link.data(graph.links)
-        .enter().append("line")
-        .attr("class", "link")
-        .attr("marker-end", "url(#arrowhead)");
-
-    node = node.data(graph.nodes)
-        .enter().append("g")
-        .attr("class", "node")
-        .on("dblclick", dblclick)
-        .call(drag);
-
-    node.append("circle")
-        .attr("r", 4.5);
-
-    node.append("text")
-        .attr("x", 10)
-        .attr("dy", ".3em")
+    nodeLabel = nodeLabel.data(force.nodes(), function(d) { return d.na; });
+    nodeLabel.enter()
+        .append("text")
+        .attr("class", "nodeLabel")
         .text(function(d) { return d.na; });
-});
+    nodeLabel.exit().remove();
+
+    link = link.data(force.links(), function(d) { return d.from+"-"+d.to; });
+    link.enter()
+        .insert("line", ".node")
+        .attr("class", "link")
+        .attr("marker-end","url(#arrowheadEnd)")
+        .attr("marker-start","url(#arrowheadStart)")
+    link.exit().remove();
+
+    linkLabel = linkLabel.data(force.links(),
+                               function(d) { return d.from+"-"+d.to; });
+    linkLabel.enter()
+        .append("text")
+        .attr("class", "linkLabel")
+        .text(function(d) { return d["path-cost"]; });
+    linkLabel.exit().remove();
+
+    force.start();
+}
+
+var defs = svg.append("defs");
+
+defs.append("marker")
+    .attr({"id": "arrowheadEnd",
+           "viewBox": "-0 -5 10 10",
+           "refX": 15,
+           "refY": 0,
+           "orient": "auto",
+           "markerWidth": 8,
+           "markerHeight": 8,
+           "xoverflow": "visible"})
+    .append("svg:path")
+    .attr("d", "M 0,-4 L 10,0 L 0,4")
+    .attr("fill", "#ccc");
+
+defs.append("marker")
+    .attr({"id": "arrowheadStart",
+           "viewBox": "-0 -5 10 10",
+           "refX": -5,
+           "refY": 0,
+           "orient": "auto",
+           "markerWidth": 8,
+           "markerHeight": 8,
+           "xoverflow": "visible"})
+    .append("svg:path")
+    .attr("d", "M 10,-4 L 0,0 L 10,4")
+    .attr("fill", "#ccc");
 
 function tick() {
+    node.attr("cx", function(d) { return d.x; })
+        .attr("cy", function(d) { return d.y; })
+
+    nodeLabel.attr("x", function(d) { return d.x+7; })
+        .attr("y", function(d) { return d.y+3; });
+
     link.attr("x1", function(d) { return d.source.x; })
         .attr("y1", function(d) { return d.source.y; })
         .attr("x2", function(d) { return d.target.x; })
         .attr("y2", function(d) { return d.target.y; });
 
-  node
-      .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+    linkLabel.attr("x", function(d) { return d.source.x+
+                                      (d.target.x-d.source.x)/2; })
+        .attr("y", function(d) { return d.source.y+
+                                 (d.target.y-d.source.y)/2; })
 }
 
-function dblclick(d) {
-    d3.select(this).classed("fixed", d.fixed = false);
-}
-
-function dragstart(d) {
-    d3.select(this).classed("fixed", d.fixed = true);
-}
+getNetworkTopology();
     </script>
   </body>
 </html>

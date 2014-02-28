@@ -53,6 +53,8 @@ while [ $# -gt 0 ]; do
         -i)
             interactive="yes"
             ;;
+        --)
+            ;;
         -*)
             usage
             ;;
@@ -74,17 +76,14 @@ fi
 
 case ${mode} in
     daemon)
-        echo exec ${erl}${shell}${pa}${boot}${config}
         exec ${erl}${shell}${pa}${boot}${config}
         break
         ;;
     stop)
-        echo exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv stop
         exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv stop
         break
         ;;
     reload)
-        echo exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv reload
         break
         ;;
 esac
