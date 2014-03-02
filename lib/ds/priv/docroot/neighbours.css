@@ -3,8 +3,10 @@
     stroke: #888;
     cursor: pointer;
 }
-.node.fixed {
-    fill: #f00;
+.selectedNode {
+    fill: #cc0099;
+    stroke: #888;
+    cursor: pointer;
 }
 .nodeLabel {
     font-size: 9px;
