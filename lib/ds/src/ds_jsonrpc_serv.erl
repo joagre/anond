@@ -218,13 +218,13 @@ get_network_topology([#peer{na = Na}|Rest]) ->
                 {error, _Reason} ->
                     [[{<<"na">>, node_jsonrpc:encode_na(Na)},
                       {<<"peers">>, encode_topology_nodes(Nodes)},
-                      {<<"route-entries">>, null}]|
+                      {<<"route-entries">>, []}]|
                      get_network_topology(Rest)]
             end;
         {error, _Reason} ->
             [[{<<"na">>, node_jsonrpc:encode_na(Na)},
-              {<<"peers">>, null},
-              {<<"route-entries">>, null}]|
+              {<<"peers">>, []},
+              {<<"route-entries">>, []}]|
              get_network_topology(Rest)]
     end.
 
@@ -242,6 +242,8 @@ encode_topology_node(Node) ->
         end.
 
 encode_topology_route_entries(Res) ->
-    [node_jsonrpc:encode_nas(Hops) ||
-        #route_entry{hops = Hops} <- Res,
+    [[{<<"path-cost">>, PathCost},
+      {<<"route">>, node_jsonrpc:encode_nas(Hops)}] ||
+        #route_entry{path_cost = PathCost,
+                     hops = Hops} <- Res,
         Hops /= []].

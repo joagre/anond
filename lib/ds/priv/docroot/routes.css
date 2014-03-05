@@ -12,9 +12,6 @@
     font-size: 9px;
 }
 .link {
+    fill: none;
     stroke: #ccc;
-}
-.linkLabel {
-    fill: #888;
-    font-size: 9px;
 }
