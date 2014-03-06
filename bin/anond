@@ -24,7 +24,7 @@ pa=""
 # @DEVEL_ONLY_START
 if [ ! -f ${erl} ]; then
     erl="erl"
-    pa=" -pa ${bindir}/../lib/common/ebin -pa ${bindir}/../lib/ds/ebin -pa ${bindir}/../lib/jsx/ebin -pa ${bindir}/../lib/node/ebin -pa ${bindir}/../lib/overseer/ebin -pa ${bindir}/../lib/procket/ebin -pa ${bindir}/../lib/salt/ebin -pa ${bindir}/../lib/test/ebin -pa ${bindir}/../lib/tunctl/ebin -pa ${bindir}/../lib/util/ebin"
+    pa=" -pa ${bindir}/../lib/common/ebin -pa ${bindir}/../lib/ds/ebin -pa ${bindir}/../lib/jsx/ebin -pa ${bindir}/../lib/node/ebin -pa ${bindir}/../lib/procket/ebin -pa ${bindir}/../lib/salt/ebin -pa ${bindir}/../lib/test/ebin -pa ${bindir}/../lib/tunctl/ebin -pa ${bindir}/../lib/util/ebin"
 fi
 # @DEVEL_ONLY_STOP
 
