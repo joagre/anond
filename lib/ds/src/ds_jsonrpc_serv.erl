@@ -233,13 +233,9 @@ encode_topology_nodes(Nodes) ->
 
 encode_topology_node(Node) ->
     [{<<"na">>, node_jsonrpc:encode_na(Node#node.na)},
-     {<<"path-cost">>, Node#node.path_cost}]++
-        if
-            ?bit_is_set(Node#node.flags, ?F_NODE_IS_INCOMING_PEER) ->
-                [{<<"incoming-peer">>, true}];
-            true ->
-                []
-        end.
+     {<<"path-cost">>, Node#node.path_cost},
+     {<<"incoming-peer">>,
+      ?bit_is_set(Node#node.flags, ?F_NODE_IS_INCOMING_PEER)}].
 
 encode_topology_route_entries(Res) ->
     [[{<<"path-cost">>, PathCost},
