@@ -1,12 +1,12 @@
 -module(net_serv).
 
 %%% external exports
--export([start_link/4, stop/1, stop/2]).
+-export([start_link/4, start_link/5, stop/1, stop/2]).
 -export([format_error/1]).
 
 %%% internal exports
--export([start_session/5]).
--export([init/5]).
+-export([start_session/6]).
+-export([init/6]).
 
 %%% include files
 -include_lib("util/include/log.hrl").
@@ -23,13 +23,15 @@
 -type option() :: {'max_sessions', integer()} |
                   {'max_sessions_per_client', integer()} |
                   {'name', atom()}.
--type socket_options() :: [gen_tcp:listen_option()].
+-type transport_module() :: 'gen_tcp' | 'ssl'.
+-type transport_options() :: [ssl:option()].
 -type error_reason() :: inet:posix().
 
 %%% records
 -record(state, {
           parent                  :: pid(),
-          listen_socket           :: gen_tcp:socket(),
+          transport_module        :: transport_module(),
+          listen_socket           :: gen_tcp:socket() | ssl:sslsocket(),
           session_db              :: ets:tid(),
           handler                 :: handler(),
           max_sessions            :: integer(),
@@ -40,17 +42,22 @@
 %%% exported: start_link
 %%%
 
--spec start_link(inet:port_number(), options(), socket_options(), handler()) ->
+start_link(Port, Options, TransportOptions, Handler) ->
+    start_link(Port, Options, gen_tcp, TransportOptions, Handler).
+
+-spec start_link(inet:port_number(), options(), transport_module(),
+                 transport_options(), handler()) ->
                         {'ok', pid()} |
                         {'error',
                          {'not_started', error_reason()} |
                          'already_started' |
                          {'invalid_option', any()}}.
 
-start_link(Port, Options, SocketOptions, Handler) ->
+start_link(Port, Options, TransportModule, TransportOptions, Handler) ->
     case valid_options(?VALID_OPTIONS, Options) of
         yes ->
-            Args = [self(), Port, Options, SocketOptions, Handler],
+            Args = [self(), Port, Options, TransportModule, TransportOptions,
+                    Handler],
             Pid = proc_lib:spawn_link(?MODULE, init, Args),
             receive
                 {Pid, started} ->
@@ -97,15 +104,17 @@ format_error(Reason) ->
 %%% server loop
 %%%
 
-init(Parent, Port, Options, SocketOptions, Handler) ->
+init(Parent, Port, Options, TransportModule, TransportOptions, Handler) ->
     process_flag(trap_exit, true),
     case lookup_option(name, Options, '$not_set') of
         '$not_set' ->
-            setup(Parent, Port, Options, SocketOptions, Handler);
+            setup(Parent, Port, Options, TransportModule, TransportOptions,
+                  Handler);
         Name ->
             case catch register(Name, self()) of
                 true ->
-                    setup(Parent, Port, Options, SocketOptions, Handler);
+                    setup(Parent, Port, Options, TransportModule,
+                          TransportOptions, Handler);
                 _ ->
                     Parent ! {self(), already_started}
             end
@@ -118,17 +127,19 @@ lookup_option(Option, [{Option, Value}|_], _DefaultValue) ->
 lookup_option(_Option, [_|Rest], DefaultValue) ->
     lookup_option(_Option, Rest, DefaultValue).
 
-setup(Parent, Port, Options, SocketOptions, Handler) ->
-    MaxSessions = lookup_option(max_sessions, Options, ?DEFAULT_MAX_SESSIONS),
-    MaxSessionsPerClient =
-        lookup_option(max_sessions_per_client, Options,
-                      ?DEFAULT_MAX_SESSIONS_PER_CLIENT),
-    case gen_tcp:listen(Port, SocketOptions) of
+setup(Parent, Port, Options, TransportModule, TransportOptions, Handler) ->
+    case listen(Port, TransportModule, TransportOptions) of
         {ok, ListenSocket} ->
-            Parent ! {self(), started},
+            SessionDb = create_session_db(),
+            MaxSessions =
+                lookup_option(max_sessions, Options, ?DEFAULT_MAX_SESSIONS),
+            MaxSessionsPerClient =
+                lookup_option(max_sessions_per_client, Options,
+                              ?DEFAULT_MAX_SESSIONS_PER_CLIENT),
             self() ! {start_session, undefined, undefined},
-            SessionDb = ets:new(session_db, [bag]),
+            Parent ! {self(), started},
             loop(#state{parent = Parent,
+                        transport_module = TransportModule,
                         listen_socket = ListenSocket,
                         session_db = SessionDb,
                         handler = Handler,
@@ -139,6 +150,7 @@ setup(Parent, Port, Options, SocketOptions, Handler) ->
     end.
 
 loop(#state{parent = Parent,
+            transport_module = TransportModule,
             listen_socket = ListenSocket,
             session_db = SessionDb,
             handler = Handler,
@@ -146,11 +158,11 @@ loop(#state{parent = Parent,
             max_sessions_per_client = MaxSessionsPerClient} = S) ->
     receive
 	{From, stop} ->
-            cleanup(ListenSocket, SessionDb),
+            cleanup(TransportModule, ListenSocket, SessionDb),
 	    From ! {self(), ok};
 	{start_session, IpAddress, SessionPid} ->
             log_session(SessionDb, IpAddress, SessionPid),
-            NumberOfSessions = ets:info(SessionDb, size),
+            NumberOfSessions = number_of_sessions(SessionDb),
             if
                 MaxSessions /= -1 andalso
                 NumberOfSessions > MaxSessions ->
@@ -158,51 +170,53 @@ loop(#state{parent = Parent,
                     self() ! {start_session, undefined, undefined},
                     loop(S);
                 true ->
-                    Args = [self(), Handler, ListenSocket, SessionDb,
-                            MaxSessionsPerClient],
+                    Args = [self(), Handler, TransportModule, ListenSocket,
+                            SessionDb, MaxSessionsPerClient],
                     proc_lib:spawn_link(?MODULE, start_session, Args),
                     loop(S)
             end;
         {'EXIT', Parent, shutdown} ->
-            cleanup(ListenSocket, SessionDb),
+            cleanup(TransportModule, ListenSocket, SessionDb),
             exit(shutdown);
         {'EXIT', SessionPid, _Reason} ->
-            true = ets:match_delete(SessionDb, {'_', SessionPid}),
+            delete_session(SessionDb, SessionPid),
             loop(S);
         UnknownMessage ->
             ?error_log({unknown_message, UnknownMessage}),
             loop(S)
     end.
 
-cleanup(ListenSocket, SessionDb) ->
-    ets:foldl(fun({_, SessionPid}) ->
-                      exit(SessionPid, shutdown)
-              end, [], SessionDb),
-    ets:delete(SessionDb),
-    gen_tcp:close(ListenSocket).
+cleanup(TransportModule, ListenSocket, SessionDb) ->
+    for_all_sessions(SessionDb,
+                     fun({_IpAddress, SessionPid}) ->
+                             exit(SessionPid, shutdown)
+                     end),
+    delete_session_db(SessionDb),
+    close(TransportModule, ListenSocket).
 
-start_session(Parent, {Module, Function, Args}, ListenSocket, SessionDb,
+start_session(Parent, Handler, TransportModule, ListenSocket, SessionDb,
               MaxSessionsPerClient) ->
-    case gen_tcp:accept(ListenSocket) of
+    case accept(TransportModule, ListenSocket) of
 	{ok, Socket} ->
-            IpAddress = peername(Socket),
+            IpAddress = peername(TransportModule, Socket),
             Parent ! {start_session, IpAddress, self()},
             case verify_session(SessionDb, MaxSessionsPerClient, IpAddress) of
                 false ->
-                    gen_tcp:close(Socket);
+                    close(TransportModule, Socket);
                 true ->
+                    {Module, Function, Args} = Handler,
                     case catch apply(Module, Function, [Socket|Args]) of
                         ok ->
-                            gen_tcp:close(Socket);
+                            close(TransportModule, Socket);
                         {error, closed} ->
                             ok;
                         {error, Reason} ->
                             ?daemon_log("Unexpected handler error: ~p",
                                         [Reason]),
-                            gen_tcp:close(Socket);
+                            close(TransportModule, Socket);
                         {'EXIT', Reason} ->
                             ?error_log(Reason),
-                            gen_tcp:close(Socket)
+                            close(TransportModule, Socket)
                     end
             end;
 	Reason ->
@@ -211,13 +225,51 @@ start_session(Parent, {Module, Function, Args}, ListenSocket, SessionDb,
 	    Parent ! {start_session, undefined, undefined}
     end.
 
-peername(Socket) ->
-    case inet:peername(Socket) of
+%%%
+%%% Socket abstractions for TCP and SSL
+%%%
+
+listen(Port, TransportModule, TransportOptions) ->
+    TransportModule:listen(Port, TransportOptions).
+
+accept(ssl, ListenSocket) ->
+    case ssl:transport_accept(ListenSocket) of
+        {ok, Socket} ->
+            ssl:ssl_accept(Socket);
+        {error, Reason} ->
+            {error, Reason}
+    end;
+accept(TransportModule, ListenSocket) ->
+    TransportModule:accept(ListenSocket).
+
+peername(gen_tcp, Socket) ->
+    peername(inet, Socket);
+peername(TransportModule, Socket) ->
+    case TransportModule:peername(Socket) of
         {ok, {IpAddress, _}} ->
             IpAddress;
         _ ->
             undefined
     end.
+
+close(TransportModule, Socket) ->
+    TransportModule:close(Socket).
+
+%%%
+%%% Session database
+%%%
+
+create_session_db() ->
+    ets:new(session_db, [bag]).
+
+delete_session_db(SessionDb) ->
+    ets:delete(SessionDb).
+
+number_of_sessions(SessionDb) ->
+    ets:info(SessionDb, size).
+
+delete_session(SessionDb, SessionPid) ->
+    true = ets:match_delete(SessionDb, {'_', SessionPid}).
 
 log_session(_SessionDb, _IpAddress, undefined) ->
     true;
@@ -232,3 +284,9 @@ verify_session(_SessionDb, _IpAddress, -1) ->
     true;
 verify_session(SessionDb, IpAddress, MaxNumberOfSessionsPerClient) ->
     length(ets:lookup(SessionDb, IpAddress)) < MaxNumberOfSessionsPerClient.
+
+for_all_sessions(SessionDb, Fun) ->
+    ets:foldl(fun({IpAddress, SessionPid}, Acc) ->
+                      Fun({IpAddress, SessionPid}),
+                      Acc
+              end, [], SessionDb).

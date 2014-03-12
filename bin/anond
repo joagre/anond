@@ -1,9 +1,15 @@
 #!/bin/sh
 
 function usage {
-    echo "Usage: $0 [-c CONFIG-FILENAME] [-i]"
-    echo "Usage: $0 -s [-a IP-ADDRESS] [-p PORT]"
-    echo "Usage: $0 -r [-a IP-ADDRESS] [-p PORT]"
+    echo "Usage:"
+    echo "$0 [-c CONFIG-FILENAME] [-i]"
+    echo "    Start anond"
+    echo "$0 -s [-a IP-ADDRESS] [-p PORT]"
+    echo "    Stop anond"
+    echo "$0 -r [-a IP-ADDRESS] [-p PORT]"
+    echo "    Reread the anond config file"
+    echo "$0 -k"
+    echo "    Generate a self-signed SSL certificate"
     exit 1
 }
 
@@ -52,6 +58,17 @@ while [ $# -gt 0 ]; do
             ;;
         -i)
             interactive="yes"
+            ;;
+        -k)
+            if which openssl > /dev/null; then
+                openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 -subj "/" -keyout /tmp/key.pem -out /tmp/cert.pem > /dev/null 2>&1
+                cat /tmp/key.pem /tmp/cert.pem
+                rm -f /tmp/key.pem /tmp/cert.pem
+                exit 0
+            else
+                echo "OpenSSL must be installed to create a self-signed certificate"
+                exit 1
+            fi
             ;;
         --)
             ;;
