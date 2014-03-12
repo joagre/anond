@@ -1,15 +1,15 @@
 -module(ds_jsonrpc_serv).
 
 %% example use:
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "enforce-peer-ttl", "id": 1}' http://192.168.1.80:6700/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-number-of-peers", "id": 1}' http://192.168.1.80:6700/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-all-peers", "id": 1}' http://192.168.1.80:6700/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-random-peers", "params": {"my-na": "127.0.0.1:50010", "n": 4}, "id": 1}' http://192.168.1.80:6700/jsonrpc
-%% curl -X POST -d '{"jsonrpc": "2.0", "method": "publish-peer", "params": {"na": "127.0.0.1:50011", "public-key": "aa", "flags": 4}, "id": 1}' http://192.168.1.80:6700/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "unpublish-peer", "params": {"na": "127.0.0.1:50011"}, "id": 1}' http://192.168.1.80:6700/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "published-peers", "params": {"nas": ["127.0.0.1:50010"]}, "id": 1}' http://192.168.1.80:6700/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "reserve-oa", "params": {"oa": "fe80::c685:8ff:fe46:d502", "na": "127.0.0.1:50011"}, "id": 1}' http://192.168.1.80:6700/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-network-topology", "id": 1}' http://192.168.1.80:6700/jsonrpc
+%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "enforce-peer-ttl", "id": 1}' https://127.0.0.1:6700/jsonrpc
+%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "get-number-of-peers", "id": 1}' https://127.0.0.1:6700/jsonrpc
+%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "get-all-peers", "id": 1}' https://127.0.0.1:6700/jsonrpc
+%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "get-random-peers", "params": {"my-na": "127.0.0.1:50010", "n": 4}, "id": 1}' https://127.0.0.1:6700/jsonrpc
+%% curl -k -X POST -d '{"jsonrpc": "2.0", "method": "publish-peer", "params": {"na": "127.0.0.1:50011", "public-key": "aa", "flags": 4}, "id": 1}' https://127.0.0.1:6700/jsonrpc
+%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "unpublish-peer", "params": {"na": "127.0.0.1:50011"}, "id": 1}' https://127.0.0.1:6700/jsonrpc
+%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "published-peers", "params": {"nas": ["127.0.0.1:50010"]}, "id": 1}' https://127.0.0.1:6700/jsonrpc
+%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "reserve-oa", "params": {"oa": "fe80::c685:8ff:fe46:d502", "na": "127.0.0.1:50011"}, "id": 1}' https://127.0.0.1:6700/jsonrpc
+%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "get-network-topology", "id": 1}' https://127.0.0.1:6700/jsonrpc
 
 %%% external exports
 -export([start_link/0]).
@@ -40,8 +40,9 @@
 
 start_link() ->
     {IpAddress, Port} = ?config(['directory-server', listen]),
+    CertFile = ?config(['directory-server', 'cert-file']),
     Docroot = filename:join(code:priv_dir(ds), "docroot"),
-    jsonrpc_serv:start_link(IpAddress, Port, [],
+    jsonrpc_serv:start_link(IpAddress, Port, CertFile, [],
                             {?MODULE, ds_handler, []}, Docroot).
 
 ds_handler(<<"enforce-peer-ttl">>, undefined) ->

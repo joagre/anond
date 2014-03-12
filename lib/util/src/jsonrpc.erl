@@ -24,17 +24,9 @@
 %%% exported: call
 %%%
 
--spec call(inet:ip_address() | 'undefined', inet:ip_address(),
-           inet:port_number(), binary()) ->
-                  {'ok', jsx:json_term()}  | {'error', error_reason()}.
-
 call(NicIpAddress, IpAddress, Port, Method) ->
     call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
          undefined).
-
--spec call(inet:ip_address() | 'undefined', inet:ip_address(),
-           inet:port_number(), binary(), jsx:json_term() | 'undefined') ->
-                  {'ok',  jsx:json_term()} | {'error', error_reason()}.
 
 call(NicIpAddress, IpAddress, Port, Method, Params) ->
     call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
@@ -55,7 +47,7 @@ call(NicIpAddress, IpAddress, Port, Timeout, Uri, Method, Params) ->
     case catch jsx:encode(Request) of
         EncodedRequest when is_binary(EncodedRequest) ->
             PrettifiedRequest = jsx:prettify(EncodedRequest),
-            case httplib:post(NicIpAddress, IpAddress, Port, Timeout,
+            case httplib:post(ssl, NicIpAddress, IpAddress, Port, Timeout,
                               Uri, <<"application/json">>, PrettifiedRequest) of
                 {ok, Response} ->
                     case catch jsx:decode(Response) of

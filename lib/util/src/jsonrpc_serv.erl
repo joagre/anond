@@ -1,7 +1,7 @@
 -module(jsonrpc_serv).
 
 %%% external exports
--export([start_link/4, start_link/5]).
+-export([start_link/6]).
 
 %%% internal exports
 -export([jsonrpc_handler/3]).
@@ -24,28 +24,26 @@
 %%% exported: start_link
 %%%
 
-start_link(IpAddress, Port, Options, Handler) ->
-    start_link(IpAddress, Port, Options, Handler, _Docroot = undefined).
-
--spec start_link(inet:ip_address(), inet:port_number(), net_serv:options(),
-                 net_serv:handler(), binary() | 'undefined') ->
+-spec start_link(inet:ip_address(), inet:port_number(), binary(),
+                 net_serv:options(), net_serv:handler(),
+                 binary() | 'undefined') ->
                         {ok, pid()}.
 
-start_link(IpAddress, Port, Options, Handler, Docroot) ->
-    SocketOptions =
-        [{packet, http_bin}, {active, false}, {ip, IpAddress},
-         {reuseaddr, true}],
-    net_serv:start_link(Port, Options, SocketOptions,
+start_link(IpAddress, Port, CertFile, Options, Handler, Docroot) ->
+    TransportOptions =
+        [{certfile, CertFile}, {packet, http_bin}, {active, false},
+         {ip, IpAddress}, {reuseaddr, true}],
+    net_serv:start_link(Port, Options, ssl, TransportOptions,
                         {?MODULE, jsonrpc_handler, [Handler, Docroot]}).
 
 jsonrpc_handler(Socket, Handler, Docroot) ->
-    case gen_tcp:recv(Socket, 0) of
+    case ssl:recv(Socket, 0) of
         %% a jsonrpc request
         {ok, {http_request, 'POST', {abs_path, <<"/jsonrpc">>}, {1, 1}}} ->
-            ok = inet:setopts(Socket, [{packet, httph_bin}]),
+            ok = ssl:setopts(Socket, [{packet, httph_bin}]),
             {ok, HeaderValues} =
-                httplib:get_headers(Socket, [{'content-length', -1}]),
-            ok = inet:setopts(Socket, [binary, {packet, 0}]),
+                httplib:get_headers(ssl, Socket, [{'content-length', -1}]),
+            ok = ssl:setopts(Socket, [binary, {packet, 0}]),
             BinaryContentLength =
                 httplib:lookup_header_value('content-length', HeaderValues),
             case catch ?b2i(BinaryContentLength) of
@@ -58,10 +56,10 @@ jsonrpc_handler(Socket, Handler, Docroot) ->
         %% a request for a file
         {ok, {http_request, 'GET', {abs_path, Path}, {1, 1}}}
           when Docroot /= undefined ->
-            ok = inet:setopts(Socket, [{packet, httph_bin}]),
+            ok = ssl:setopts(Socket, [{packet, httph_bin}]),
             %% just throw away header values for now
-            {ok, _HeaderValues} = httplib:get_headers(Socket, []),
-            ok = inet:setopts(Socket, [binary, {packet, 0}]),
+            {ok, _HeaderValues} = httplib:get_headers(ssl, Socket, []),
+            ok = ssl:setopts(Socket, [binary, {packet, 0}]),
             send_file(Socket, Docroot, ?b2l(Path));
         {ok, _} ->
             JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
@@ -91,7 +89,7 @@ handle_jsonrpc_request(Socket, {M, F, A}, ContentLength)
         {error, Reason} ->
             JsonError = #json_error{
               code = ?JSONRPC_INTERNAL_ERROR,
-              message = ?l2b(inet:format_error(Reason))},
+              message = ?l2b(ssl:format_error(Reason))},
             send(Socket, null, JsonError)
     end;
 handle_jsonrpc_request(Socket, _Handler, ContentLength) ->
@@ -106,8 +104,8 @@ handle_jsonrpc_request(Socket, _Handler, ContentLength) ->
 %%%
 
 recv(Socket, ContentLength) ->
-    ok = inet:setopts(Socket, [binary, {packet, 0}]),
-    case gen_tcp:recv(Socket, ContentLength) of
+    ok = ssl:setopts(Socket, [binary, {packet, 0}]),
+    case ssl:recv(Socket, ContentLength) of
         {ok, Response} ->
             case catch jsx:decode(Response) of
                 [{<<"jsonrpc">>, <<"2.0">>},
@@ -179,7 +177,7 @@ send_to_client(Socket, Id, Request) ->
         EncodedRequest when is_binary(EncodedRequest) ->
             PrettifiedRequest = jsx:prettify(EncodedRequest),
             ContentLength = ?i2l(size(PrettifiedRequest)),
-            gen_tcp:send(
+            ssl:send(
               Socket,
               [<<"HTTP/1.1 200 OK\r\n">>,
                <<"Content-Type: application/json\r\n">>,
@@ -206,13 +204,13 @@ send_file(Socket, Docroot, Path) ->
             FilePath = filename:join([Docroot, AbsPath]),
             case file:read_file_info(FilePath) of
                 {ok, #file_info{size = Size}} when Size /= undefined ->
-                    ok = gen_tcp:send(
+                    ok = ssl:send(
                            Socket,
                            ["HTTP/1.1 200\r\n"
                             "Content-Type: ", get_mime_type(AbsPath), "\r\n",
                             "Content-Length: ", ?i2l(Size), "\r\n",
                             "Connection: close\r\n\r\n"]),
-                    httplib:send_file(Socket, FilePath);
+                    httplib:send_file(ssl, Socket, FilePath);
                 _ ->
                     ok
             end;

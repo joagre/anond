@@ -58,12 +58,11 @@ start_link(Address, Port) ->
 
 init(Parent, Address, Port) ->
     process_flag(trap_exit, true),
-    Options = [{active, false}, binary, {ip, Address},
-               {recbuf, ?LISTEN_RECBUF}, {reuseaddr, true},
-               {backlog, ?LISTEN_BACKLOG}],
-    SessionHandler = {?MODULE, session_handler, [Address, Port]},
-    case net_serv:start_link(Port, ?MAX_SESSIONS, [], Options,
-                             SessionHandler) of
+    TransportOptions = [{active, false}, binary, {ip, Address},
+                        {recbuf, ?LISTEN_RECBUF}, {reuseaddr, true},
+                        {backlog, ?LISTEN_BACKLOG}],
+    case net_serv:start_link(Port, [], gen_tcp, TransportOptions,
+                             {?MODULE, session_handler, [Address, Port]}) of
         {ok, NetServPid} ->
             S = #state{parent = Parent,
                        address = Address,

@@ -1,11 +1,11 @@
 -module(node_route_jsonrpc_serv).
 
 %% example use:
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-route-entries", "id": 1}' http://127.0.0.1:50010/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-nodes", "id": 1}' http://127.0.0.1:50010/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "enable-recalc", "id": 1}' http://127.0.0.1:50010/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "disable-recalc", "id": 1}' http://127.0.0.1:50010/jsonrpc
-%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "recalc", "id": 1}' http://127.0.0.1:50010/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-route-entries", "id": 1}' https://127.0.0.1:50010/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "get-nodes", "id": 1}' https://127.0.0.1:50010/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "enable-recalc", "id": 1}' https://127.0.0.1:50010/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "disable-recalc", "id": 1}' https://127.0.0.1:50010/jsonrpc
+%% $ curl -X POST -d '{"jsonrpc": "2.0", "method": "recalc", "id": 1}' https://127.0.0.1:50010/jsonrpc
 
 %%% external exports
 -export([start_link/2]).
@@ -16,6 +16,7 @@
 %%% include files
 -include_lib("node/include/node.hrl").
 -include_lib("node/include/node_route.hrl").
+-include_lib("util/include/config.hrl").
 -include_lib("util/include/jsonrpc_serv.hrl").
 -include_lib("util/include/log.hrl").
 -include_lib("util/include/shorthand.hrl").
@@ -32,13 +33,17 @@
 
 -spec start_link(na(), supervisor:sup_ref()) -> {ok, pid()}.
 
-start_link({IpAddress, Port}, NodeInstanceSup) ->
+start_link({IpAddress, Port} = Na, NodeInstanceSup) ->
+    NodeInstance = ?config([nodes, {'node-address', Na}]),
+    {value, {'cert-file', CertFile}} =
+        lists:keysearch('cert-file', 1, NodeInstance),
     %% I would prefer to use NodeRouteServ instead of NodeInstanceSup
     %% as handler function argument but asking for it here would lead
     %% to a deadlock. I could add support for some sort of delayed
     %% processing in net_serv.erl but I will not.
-    jsonrpc_serv:start_link(IpAddress, Port, [],
-                            {?MODULE, node_handler, [NodeInstanceSup]}).
+    jsonrpc_serv:start_link(IpAddress, Port, CertFile, [],
+                            {?MODULE, node_handler, [NodeInstanceSup]},
+                            undefined).
 
 %% experimental api (must be restricted)
 node_handler(<<"get-route-entries">>, undefined, NodeInstanceSup) ->

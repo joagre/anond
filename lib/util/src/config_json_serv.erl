@@ -232,9 +232,9 @@ init(Parent, ConfigFilename, JsonSchema, ControlListenPath, Handler) ->
                 {ok, JsonTerm} ->
                     {IpAddress, Port} =
                         json_lookup(JsonTerm, ControlListenPath),
-                    SocketOptions = [{packet, 2}, {ip, IpAddress}, binary],
-                    case net_serv:start_link(Port, [], SocketOptions,
-                                             Handler) of
+                    TransportOptions = [{packet, 2}, {ip, IpAddress}, binary],
+                    case net_serv:start_link(
+                           Port, [], gen_tcp, TransportOptions, Handler) of
                         {ok, NetServ} ->
                             S = #state{parent = Parent,
                                        net_serv = NetServ,

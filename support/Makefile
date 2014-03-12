@@ -2,7 +2,7 @@ include erl.mk
 
 .PHONY: dialyzer
 
-# salt, procket, tunctl and test excluded
+# salt, procket, tunctl and test due to no or broken type specifications
 LIBS=common ds jsx node util
 
 dialyzer: dialyzer.plt
@@ -12,6 +12,7 @@ dialyzer.plt: dialyzer_init.plt
 	rm -f $@ ; cp $< $@
 	$(DIALYZER) --check_plt --plt $@ || true
 
+# ssl has broken type specifications
 DIALYZER_PLT_APPS=asn1 compiler crypto erts kernel public_key sasl ssl stdlib tools
 
 dialyzer_init.plt:

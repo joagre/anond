@@ -1,7 +1,7 @@
 -module(net_serv).
 
 %%% external exports
--export([start_link/4, start_link/5, stop/1, stop/2]).
+-export([start_link/5, stop/1, stop/2]).
 -export([format_error/1]).
 
 %%% internal exports
@@ -18,12 +18,14 @@
 -define(DEFAULT_MAX_SESSIONS_PER_CLIENT, 64).
 
 %%% types
+
+-type transport_module() :: 'gen_tcp' | 'ssl'.
+-type socket() :: gen_tcp:socket() | ssl:sslsocket().
 -type handler() :: {Module :: atom(), Function :: atom(), Args :: list()}.
 -type options() :: [option()].
 -type option() :: {'max_sessions', integer()} |
                   {'max_sessions_per_client', integer()} |
                   {'name', atom()}.
--type transport_module() :: 'gen_tcp' | 'ssl'.
 -type transport_options() :: [ssl:option()].
 -type error_reason() :: inet:posix().
 
@@ -31,7 +33,7 @@
 -record(state, {
           parent                  :: pid(),
           transport_module        :: transport_module(),
-          listen_socket           :: gen_tcp:socket() | ssl:sslsocket(),
+          listen_socket           :: socket(),
           session_db              :: ets:tid(),
           handler                 :: handler(),
           max_sessions            :: integer(),
@@ -41,9 +43,6 @@
 %%%
 %%% exported: start_link
 %%%
-
-start_link(Port, Options, TransportOptions, Handler) ->
-    start_link(Port, Options, gen_tcp, TransportOptions, Handler).
 
 -spec start_link(inet:port_number(), options(), transport_module(),
                  transport_options(), handler()) ->
@@ -202,6 +201,7 @@ start_session(Parent, Handler, TransportModule, ListenSocket, SessionDb,
             Parent ! {start_session, IpAddress, self()},
             case verify_session(SessionDb, MaxSessionsPerClient, IpAddress) of
                 false ->
+                    ?daemon_log("Client too busy...", []),
                     close(TransportModule, Socket);
                 true ->
                     {Module, Function, Args} = Handler,
@@ -235,12 +235,17 @@ listen(Port, TransportModule, TransportOptions) ->
 accept(ssl, ListenSocket) ->
     case ssl:transport_accept(ListenSocket) of
         {ok, Socket} ->
-            ssl:ssl_accept(Socket);
+            case ssl:ssl_accept(Socket) of
+                ok ->
+                    {ok, Socket};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         {error, Reason} ->
             {error, Reason}
     end;
-accept(TransportModule, ListenSocket) ->
-    TransportModule:accept(ListenSocket).
+accept(gen_tcp, ListenSocket) ->
+    gen_tcp:accept(ListenSocket).
 
 peername(gen_tcp, Socket) ->
     peername(inet, Socket);
