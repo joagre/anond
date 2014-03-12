@@ -84,6 +84,6 @@ case ${mode} in
         break
         ;;
     reload)
-        break
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv reload
         ;;
 esac

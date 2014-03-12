@@ -24,22 +24,18 @@
 %%% exported: start_link
 %%%
 
--spec start_link(inet:ip_address(), inet:port_number(), tcp_serv:options(),
-                 tcp_serv:handler()) ->
-                        {ok, pid()}.
-
 start_link(IpAddress, Port, Options, Handler) ->
     start_link(IpAddress, Port, Options, Handler, _Docroot = undefined).
 
--spec start_link(inet:ip_address(), inet:port_number(), tcp_serv:options(),
-                 tcp_serv:handler(), binary() | 'undefined') ->
+-spec start_link(inet:ip_address(), inet:port_number(), net_serv:options(),
+                 net_serv:handler(), binary() | 'undefined') ->
                         {ok, pid()}.
 
 start_link(IpAddress, Port, Options, Handler, Docroot) ->
     SocketOptions =
         [{packet, http_bin}, {active, false}, {ip, IpAddress},
          {reuseaddr, true}],
-    tcp_serv:start_link(Port, ?MAX_SESSIONS, Options, SocketOptions,
+    net_serv:start_link(Port, Options, SocketOptions,
                         {?MODULE, jsonrpc_handler, [Handler, Docroot]}).
 
 jsonrpc_handler(Socket, Handler, Docroot) ->

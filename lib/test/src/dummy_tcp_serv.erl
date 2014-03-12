@@ -24,7 +24,7 @@
           enabled      :: boolean(),
           address      :: inet:ip_address(),
           port         :: inet:ip_port(),
-          tcp_serv_pid :: pid()
+          net_serv_pid :: pid()
          }).
 
 %%% types
@@ -36,7 +36,7 @@
 -spec start_link(inet:ip(), inet:ip_port()) ->
                         {'ok', pid()} |
                         {'error',
-                         {'not_started', tcp_serv:error_reason()}}.
+                         {'not_started', net_serv:error_reason()}}.
 
 start_link(Address, Port) ->
     Args = [self(), Address, Port],
@@ -46,7 +46,7 @@ start_link(Address, Port) ->
 	    {ok, Pid};
 	{Pid, {not_started, Reason}} ->
             ?daemon_log("Failed to start dummy tcp server: ~s",
-                        [tcp_serv:format_error(Reason)]),
+                        [net_serv:format_error(Reason)]),
             {error, {not_started, Reason}};
         {Pid, Reason} ->
             {error, Reason}
@@ -62,13 +62,13 @@ init(Parent, Address, Port) ->
                {recbuf, ?LISTEN_RECBUF}, {reuseaddr, true},
                {backlog, ?LISTEN_BACKLOG}],
     SessionHandler = {?MODULE, session_handler, [Address, Port]},
-    case tcp_serv:start_link(Port, ?MAX_SESSIONS, [], Options,
+    case net_serv:start_link(Port, ?MAX_SESSIONS, [], Options,
                              SessionHandler) of
-        {ok, TcpServPid} ->
+        {ok, NetServPid} ->
             S = #state{parent = Parent,
                        address = Address,
                        port = Port,
-                       tcp_serv_pid = TcpServPid},
+                       net_serv_pid = NetServPid},
             Parent ! {self(), started},
             loop(S);
         {error, {not_started, Reason}} ->
@@ -79,7 +79,7 @@ loop(#state{parent = Parent,
             enabled = _Enabled,
             address = _Address,
             port = _Port,
-            tcp_serv_pid = _TcpServPid} = S) ->
+            net_serv_pid = _NetServPid} = S) ->
     receive
         {'EXIT', Parent, Reason} ->
             exit(Reason);
@@ -93,7 +93,7 @@ loop(#state{parent = Parent,
 %%%
 
 -spec session_handler(inet:socket(), inet:ip_address(), inet:ip_port()) ->
-                             tcp_server:session_handler_result().
+                             net_server:session_handler_result().
 
 session_handler(Socket, Address, Port) ->
     case gen_tcp:recv(Socket, 0) of
