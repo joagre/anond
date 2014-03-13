@@ -1,75 +1,74 @@
-A = Next thing to do
+N = Next thing to do
+L = Later
 
 node_route_serv.erl
 -------------------
-A Integrate Patrik's psp code and authentication of path costs code
+* Peer -> Neignbour
+* Integrate Patrik's psp code and authentication of path costs code
 * Use many overlay addresses and pick new ones now and then
 * Pick new peers now and then
+* Replace stae peers
 
 node_route_jsonrpc_serv.erl
 ---------------------------
-* Add an experimental anond.conf configurable to cloak experimental
+N Add an experimental anond.conf configurable to cloak experimental
   jsonrpc functions.
-
-ssl_serv.erl
-------------
-* Implement it
-* Should be a plugin replacement for lib/util/src/tcp_serv.erl
 
 node_tun_serv.erl
 -----------------
-A Setup a test setup on trashgrid.net, i.e. nine overlay nodes without
-  tun device and one with a tun device. Setup
-  http://media.pragprog.com/titles/jaerlang/code/shout.erl on the tun
-  device.
+* Buy hardware. Setup a bittorent overlay network.
 * Intercept DNS traffic. Forward DNS lookups to other overlay
   nodes. Forward lookups for the "anond" domain to the anond directory
   server (see below).
 
 node_{recv,send}_serv.erl
 -------------------------
-A Add encryption using NaCl
-* Accumulate and send everything in 1024 bytes UDP packets. Send cells
-  anyway after a configurable amount of time (pad to 1024 bytes).
+N1 Add encryption using NaCl , hmac for jsonrpc and key infrastructure for tunnels
 * Add a configurable to limit download and upload rate in B/s
 
 ds_jsonrpc_serv.erl
 -------------------
-* Add an experimental anond.cond configurable to cloak experimental
+N0 Add hmac support for jsonrpc + add pk infrasructure to conf files ++ add anond flag
+N Add an experimental anond.cond configurable to cloak experimental
   jsonrpc functions.
+
+d3.js
+-----
+add color to curves
+does it actually work in all cases?
 
 ds_serv.erl
 -----------
+N Peers? Nodes?
 * http://www.h-online.com/security/features/How-Skype-Co-get-round-firewalls-747197.html
-* Use OA as public key (should we?)
-* Use dets instead of ets (should we?)
+N Use dets instead of ets (should we?)
   - Add anond.conf parameter to set directory for dets file.
   - Add anond.conf parameter to clear the dets file on each restart.
-* Make publish_peer/1, unpublish_peer/1 and published_peers/1 spoof
-  proof. Signatures?
+N Make publish_peer/1, unpublish_peer/1 and published_peers/1 spoof
+  proof. Signatures? = HMAC
 * Add DNS functionality for overlay addresses. Make it spoof
   proof. Signatures?
 
 tuncer
 ------
-* ioctl calls (it shpuld be enough to have the right permission on
+L ioctl calls (it shpuld be enough to have the right permission on
   beam.smp in order to setup tun and ip addresses)
-* Add support for blocking reads
-* Make it run on Windows
-* Add type specifications
+L Add support for blocking reads
+L Make it run on Windows
+L Add type specifications
 
 generic stuff
 -------------
-* Write documentation (Use LyX)
+L Write documentation (Use LyX)
   A White paper
   - End-user (client and server users)
-* Ask Per to contribute the delayed start patch to the Erlang distro.
-* Add package management support for:
+L Ask Per to contribute the delayed start patch to the Erlang distro.
+L Add package management support for:
   - Ubuntu
   - Mac
   - Windows
-* Setup a nice anond site
-* Implement anond control panels for:
+L Setup a nice anond site
+L Implement anond control panels for:
   - GTK
   - Mac
   - Windows
