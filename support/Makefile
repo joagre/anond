@@ -2,7 +2,7 @@ include erl.mk
 
 .PHONY: dialyzer
 
-# salt, procket, tunctl and test due to no or broken type specifications
+# salt, procket, tunctl and test excluded due to broken type specifications
 LIBS=common ds jsx node util
 
 dialyzer: dialyzer.plt
