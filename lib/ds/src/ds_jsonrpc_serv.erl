@@ -40,7 +40,7 @@
 
 start_link() ->
     {IpAddress, Port} = ?config(['directory-server', listen]),
-    CertFile = ?config(['directory-server', 'cert-file']),
+    CertFile = ?config(['directory-server', 'json-rpc-certificate']),
     Docroot = filename:join(code:priv_dir(ds), "docroot"),
     jsonrpc_serv:start_link(IpAddress, Port, CertFile, [],
                             {?MODULE, ds_handler, []}, Docroot).

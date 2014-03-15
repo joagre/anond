@@ -7,7 +7,8 @@
         'ipv4address:port' |
         'ipv6address' |
         'base64' |
-        'filename' |
+        'readable_file' |
+        'writable_file' |
         'string'.
 
 -type ip_address_port() :: {inet:ip4_address(), inet:port_number()}.

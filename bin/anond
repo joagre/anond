@@ -8,12 +8,14 @@ function usage {
     echo "    Stop anond"
     echo "$0 -r [-a IP-ADDRESS] [-p PORT]"
     echo "    Reread the anond config file"
-    echo "$0 -k"
+    echo "$0 -k <SELF-SIGNED CERTIFICATE FILENAME>"
     echo "    Generate a self-signed SSL certificate"
+    echo "$0 -j <PUBLIC KEY FILENAME> <PRIVATE KEY FILENAME>"
+    echo "    Generate a public/private node key pair"
     exit 1
 }
 
-args=options=$(getopt -u "c:sra:p:i" -- "$@")
+args=options=$(getopt -u "c:sra:p:ik:j:" -- "$@")
 
 set -- $args
 
@@ -60,15 +62,28 @@ while [ $# -gt 0 ]; do
             interactive="yes"
             ;;
         -k)
+            if [ $# -ne 2 ]; then
+                usage
+            fi
             if which openssl > /dev/null; then
                 openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 -subj "/" -keyout /tmp/key.pem -out /tmp/cert.pem > /dev/null 2>&1
-                cat /tmp/key.pem /tmp/cert.pem
+                cat /tmp/key.pem /tmp/cert.pem > $2
                 rm -f /tmp/key.pem /tmp/cert.pem
                 exit 0
             else
-                echo "OpenSSL must be installed to create a self-signed certificate"
+                echo "OpenSSL must be installed to create a certificate"
                 exit 1
             fi
+            ;;
+        -j)
+            if [ $# -lt 3 ]; then
+                usage
+            fi
+            mode="mk_key_pair"
+            boot=" -boot ${bindir}/start_clean"
+            public_key_file="$2"
+            private_key_file="$3"
+            shift 2
             ;;
         --)
             ;;
@@ -103,4 +118,6 @@ case ${mode} in
     reload)
         exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv reload
         ;;
+    mk_key_pair)
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run node_crypto generate_pki_keys ${public_key_file} ${private_key_file}
 esac

@@ -142,7 +142,6 @@ loop(#state{parent = Parent,
             RotatedPeerNas = rotate_peer_nas(PeerNas),
             case Mode of
                 normal ->
-                    ?dbg_log(normal_measure),
                     Pc = measure_path_cost(
                            NodeDb, RouteDb, UniqueId, MyNa,
                            NumberOfEchoRequests, AcceptableNumberOfEchoReplies,
@@ -154,7 +153,6 @@ loop(#state{parent = Parent,
                                  unique_id = UniqueId+1});
                 %% see doc/small_simulation.jpg
                 simulation ->
-                    ?dbg_log(simulation_measure),
                     {_NaIpAddress, NaPort} = MyNa,
                     {_PeerNaIpAddress, PeerNaPort} = PeerNa,
                     {value, {_, StoredPc}} =

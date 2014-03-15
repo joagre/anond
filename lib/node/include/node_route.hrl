@@ -23,7 +23,7 @@
 
 -record(node, {
           na             :: na() | '_',
-	  public_key     :: public_key:rsa_public_key() | '_',
+	  public_key     :: node_crypto:pki_key() | '_',
 	  path_cost      :: path_cost() | '_',
 	  flags = 0      :: integer() | '_',
           node_send_serv :: pid() | '_'

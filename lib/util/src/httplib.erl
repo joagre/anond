@@ -7,7 +7,7 @@
 -export([download/4]).
 -export([inflate_file/2]).
 -export([send_file/3]).
--export([post/8]).
+-export([post/8, post/9]).
 
 %%% internal exports
 
@@ -252,17 +252,23 @@ send_file(TransportModule, Socket, IoDevice, Position) ->
 %%% exported: post
 %%%
 
--spec post(transport_module(), inet:ip_address() | 'undefined',
-           inet:ip_address(), inet:port_number(), timeout(), binary(),
-           binary(), binary()) ->
-                  {'ok', binary()} | {'error', post_error_reason()}.
-
 post(TransportModule, NicIpAddress, IpAddress, Port, Timeout, Uri, ContentType,
      Payload) ->
+    post(TransportModule, NicIpAddress, IpAddress, Port, Timeout, Uri,
+         undefined, ContentType, Payload).
+
+-spec post(transport_module(), inet:ip_address() | 'undefined',
+           inet:ip_address(), inet:port_number(), timeout(), binary(),
+           binary() | 'undefined', binary(), binary()) ->
+                  {'ok', binary()} | {'error', post_error_reason()}.
+
+post(TransportModule, NicIpAddress, IpAddress, Port, Timeout, Uri, PrivateKey,
+     ContentType, Payload) ->
     HttpRequest =
         [<<"POST ">>, Uri, <<" HTTP/1.1\r\n">>,
          <<"Content-Type: ">>, ContentType, <<"\r\n">>,
          <<"Content-Length: ">>, ?i2l(size(Payload)), <<"\r\n">>,
+         content_hmac(Payload, PrivateKey),
          <<"Connection: close\r\n\r\n">>,
          Payload],
     case NicIpAddress of
@@ -277,6 +283,12 @@ post(TransportModule, NicIpAddress, IpAddress, Port, Timeout, Uri, ContentType,
         {error, Reason} ->
             {error, Reason}
     end.
+
+content_hmac(_Payload, undefined) ->
+    [];
+content_hmac(Payload, PrivateKey) ->
+    HMAC = base64:encode(salt:crypto_sign(Payload, PrivateKey)),
+    [<<"Content-HMAC: ">>, HMAC, <<"\r\n">>].
 
 send_and_recv(TransportModule, Timeout, HttpRequest, Socket) ->
     case TransportModule:send(Socket, HttpRequest) of

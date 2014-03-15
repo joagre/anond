@@ -10,7 +10,7 @@
 
 -record(peer, {
 	  na           :: na(),
-          public_key   :: public_key:rsa_public_key(),
+          public_key   :: node_crypto:pki_key(),
           last_updated :: timelib:gsecs(),
           flags = 0    :: non_neg_integer()
 	 }).

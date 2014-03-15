@@ -35,8 +35,8 @@
 
 start_link({IpAddress, Port} = Na, NodeInstanceSup) ->
     NodeInstance = ?config([nodes, {'node-address', Na}]),
-    {value, {'cert-file', CertFile}} =
-        lists:keysearch('cert-file', 1, NodeInstance),
+    {value, {'json-rpc-certificate', CertFile}} =
+        lists:keysearch('json-rpc-certificate', 1, NodeInstance),
     %% I would prefer to use NodeRouteServ instead of NodeInstanceSup
     %% as handler function argument but asking for it here would lead
     %% to a deadlock. I could add support for some sort of delayed

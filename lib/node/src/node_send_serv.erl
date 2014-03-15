@@ -27,6 +27,8 @@
           cell_size = 0        :: non_neg_integer(),
           %% anond.conf parameters
           my_na                :: na(),
+          public_key           :: node_crypto:pki_key(),
+          private_key          :: node_crypto:pki_key(),
           max_cell_size        :: non_neg_integer(),
           cell_sending_timeout :: non_neg_integer()}).
 
@@ -236,6 +238,12 @@ read_config(S) ->
 
 read_config(S, []) ->
     S;
+read_config(S, [{'public-key', Value}|Rest]) ->
+    Key = node_crypto:read_pki_key(Value),
+    read_config(S#state{public_key = Key}, Rest);
+read_config(S, [{'private-key', Value}|Rest]) ->
+    Key = node_crypto:read_pki_key(Value),
+    read_config(S#state{private_key = Key}, Rest);
 read_config(S, [{'max-cell-size', Value}|Rest]) ->
     read_config(S#state{max_cell_size = Value}, Rest);
 read_config(S, [{'cell-sending-timeout', Value}|Rest]) ->

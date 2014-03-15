@@ -48,7 +48,9 @@
         {'not_ipv4_address_port', json_value(), json_path()} |
         {'not_ipv6_address', json_value(), json_path()} |
         {'not_base64', json_value(), json_path()} |
-        {'not_valid_directory', string(), json_path()} |
+        {'not_readable_file', string(), json_path()} |
+        {'not_writable_file', string(), json_path()} |
+        {'not_writable_directory', string(), json_path()} |
         {'file_error', file:filename(), file:posix(), json_path()} |
         {'not_string', json_value(), json_path()} |
         {'invalid_value', json_value(), json_path()}.
@@ -182,9 +184,15 @@ format_error({config, {not_base64, Value, JsonPath}}) ->
     io_lib:format("~s: ~s is not a valid base64 value",
                   [json_path_to_string(JsonPath),
                    json_value_to_string(Value)]);
-format_error({config, {not_valid_directory, Dirname, JsonPath}}) ->
-    io_lib:format("~s: ~s is not an appropriate directory",
-                  [json_path_to_string(JsonPath), Dirname]);
+format_error({config, {not_readable_file, Dir, JsonPath}}) ->
+    io_lib:format("~s: ~s is not readable",
+                  [json_path_to_string(JsonPath), Dir]);
+format_error({config, {not_writable_file, Dir, JsonPath}}) ->
+    io_lib:format("~s: ~s is not writable",
+                  [json_path_to_string(JsonPath), Dir]);
+format_error({config, {not_writable_directory, Dir, JsonPath}}) ->
+    io_lib:format("~s: ~s is not writable",
+                  [json_path_to_string(JsonPath), Dir]);
 format_error({config, {file_error, Filename, Reason, JsonPath}}) ->
     io_lib:format("~s: ~s is not an appropriate file (~s)",
                   [json_path_to_string(JsonPath), Filename,
@@ -348,7 +356,9 @@ parse(ConfigFilename, JsonSchema) ->
             case catch jsx:decode(EncodedJson) of
                 JsonTerm when is_list(JsonTerm) ->
                     try
-                        {ok, validate(JsonSchema, atomify(JsonTerm), [])}
+                        ConfigDir = filename:dirname(ConfigFilename),
+                        {ok, validate(ConfigDir, JsonSchema, atomify(JsonTerm),
+                                      [])}
                     catch
                         throw:Reason ->
                             {error, Reason}
@@ -371,70 +381,79 @@ atomify([JsonTerm|Rest]) when is_list(JsonTerm), is_list(Rest) ->
 atomify([JsonValue|Rest]) when is_list(Rest) ->
     [JsonValue|atomify(Rest)].
 
-validate([], [], _JsonPath) ->
+validate(_ConfigDir, [], [], _JsonPath) ->
     [];
-validate([], _JsonTerm, JsonPath) ->
+validate(_ConfigDir, [], _JsonTerm, JsonPath) ->
     throw({trailing, JsonPath});
-validate(_JsonSchema, [], _JsonPath) ->
+validate(_ConfigDir, _JsonSchema, [], _JsonPath) ->
     [];
 %% single value
-validate([{Name, JsonType}|JsonSchemaRest],
+validate(ConfigDir, [{Name, JsonType}|JsonSchemaRest],
          [{Name, JsonValue}|JsonTermRest], JsonPath)
   when is_record(JsonType, json_type) ->
-    ValidatedValue = validate_value(JsonType, JsonValue, [Name|JsonPath]),
-    [{Name, ValidatedValue}|validate(JsonSchemaRest, JsonTermRest, JsonPath)];
-validate([{Name, JsonType}|_JsonSchemaRest],
+    ValidatedValue =
+        validate_value(ConfigDir, JsonType, JsonValue, [Name|JsonPath]),
+    [{Name, ValidatedValue}|
+     validate(ConfigDir, JsonSchemaRest, JsonTermRest, JsonPath)];
+validate(_ConfigDir, [{Name, JsonType}|_JsonSchemaRest],
          [{AnotherName, _JsonValue}|_JsonTermRest], JsonPath)
   when is_record(JsonType, json_type) ->
     throw({expected, [Name|JsonPath], [AnotherName|JsonPath]});
 %% array of single values
-validate([{Name, [JsonType]}|JsonSchemaRest],
+validate(ConfigDir, [{Name, [JsonType]}|JsonSchemaRest],
          [{Name, JsonValues}|JsonTermRest], JsonPath)
   when is_record(JsonType, json_type) ->
-    ValidatedValues = validate_values(JsonType, JsonValues, [Name|JsonPath]),
-    [{Name, ValidatedValues}|validate(JsonSchemaRest, JsonTermRest, JsonPath)];
-validate([{Name, [JsonType]}|_JsonSchemaRest],
+    ValidatedValues =
+        validate_values(ConfigDir, JsonType, JsonValues, [Name|JsonPath]),
+    [{Name, ValidatedValues}|
+     validate(ConfigDir, JsonSchemaRest, JsonTermRest, JsonPath)];
+validate(_ConfigDir, [{Name, [JsonType]}|_JsonSchemaRest],
          [{AnotherName, _JsonValue}|_JsonTermRest], JsonPath)
   when is_record(JsonType, json_type) ->
     throw({expected, [Name|JsonPath], [AnotherName|JsonPath]});
 %% object
-validate([{Name, NestedJsonSchema}|JsonSchemaRest],
+validate(ConfigDir, [{Name, NestedJsonSchema}|JsonSchemaRest],
          [{Name, NestedJsonTerm}|JsonTermRest], JsonPath) ->
-    [{Name, validate(NestedJsonSchema, NestedJsonTerm, [Name|JsonPath])}|
-     validate(JsonSchemaRest, JsonTermRest, JsonPath)];
-validate([{Name, _NestedJsonSchema}|_JsonSchemaRest],
+    [{Name, validate(ConfigDir, NestedJsonSchema, NestedJsonTerm,
+                     [Name|JsonPath])}|
+     validate(ConfigDir, JsonSchemaRest, JsonTermRest, JsonPath)];
+validate(_ConfigDir, [{Name, _NestedJsonSchema}|_JsonSchemaRest],
          [{AnotherName, _NestedJsonTerm}|_JsonTermRest], JsonPath) ->
     throw({expected, [Name|JsonPath],[AnotherName|JsonPath]});
 %% array of objects
-validate([JsonSchema|JsonSchemaRest],
+validate(ConfigDir, [JsonSchema|JsonSchemaRest],
          [JsonTerm|JsonTermRest], JsonPath)
   when is_list(JsonSchema), is_list(JsonTerm) ->
-    [validate(JsonSchema, JsonTerm, JsonPath)|
-     validate([JsonSchema|JsonSchemaRest], JsonTermRest, JsonPath)].
+    [validate(ConfigDir, JsonSchema, JsonTerm, JsonPath)|
+     validate(ConfigDir, [JsonSchema|JsonSchemaRest], JsonTermRest, JsonPath)].
 
 %% bool
-validate_value(#json_type{name = bool, convert = Convert}, Value, JsonPath)
+validate_value(_ConfigDir, #json_type{name = bool, convert = Convert}, Value,
+               JsonPath)
   when is_boolean(Value) ->
     convert_value(Convert, Value, JsonPath);
-validate_value(#json_type{name = bool}, Value, JsonPath) ->
+validate_value(_ConfigDir, #json_type{name = bool}, Value, JsonPath) ->
     throw({not_bool, Value, JsonPath});
 %% int
-validate_value(#json_type{name = {int, From, unbounded}, convert = Convert},
+validate_value(_ConfigDir, #json_type{name = {int, From, unbounded},
+                                      convert = Convert},
                Value, JsonPath)
   when is_integer(Value) andalso Value >= From andalso Value >= From ->
     convert_value(Convert, Value, JsonPath);
-validate_value(#json_type{name = {int, From, To}, convert = Convert}, Value,
+validate_value(_ConfigDir, #json_type{name = {int, From, To},
+                                      convert = Convert}, Value,
                JsonPath)
   when is_integer(Value) andalso Value >= From andalso Value =< To ->
     convert_value(Convert, Value, JsonPath);
-validate_value(#json_type{name = {int, From, To}}, Value, JsonPath)
+validate_value(_ConfigDir, #json_type{name = {int, From, To}}, Value, JsonPath)
   when is_integer(Value) ->
     throw({int_out_of_range, Value, From, To, JsonPath});
-validate_value(#json_type{name = {int, _From, _To}}, Value, JsonPath) ->
+validate_value(_ConfigDir, #json_type{name = {int, _From, _To}}, Value,
+               JsonPath) ->
     throw({not_int, Value, JsonPath});
 %% ipv4address:port
-validate_value(#json_type{name = 'ipv4address:port', convert = Convert}, Value,
-               JsonPath)
+validate_value(_ConfigDir, #json_type{name = 'ipv4address:port',
+                                      convert = Convert}, Value, JsonPath)
   when is_binary(Value) ->
     case string:tokens(?b2l(Value), ":") of
         [Ipv4AddressString, PortString] ->
@@ -453,11 +472,12 @@ validate_value(#json_type{name = 'ipv4address:port', convert = Convert}, Value,
         _ ->
             throw({not_ipv4_address_port, Value, JsonPath})
     end;
-validate_value(#json_type{name = 'ipv4address:port'}, Value, JsonPath) ->
+validate_value(_ConfigDir, #json_type{name = 'ipv4address:port'}, Value,
+               JsonPath) ->
     throw({not_ipv4_address_port, Value, JsonPath});
 %% ipv6address
-validate_value(#json_type{name = ipv6address, convert = Convert}, Value,
-               JsonPath)
+validate_value(_ConfigDir, #json_type{name = ipv6address,
+                                      convert = Convert}, Value, JsonPath)
   when is_binary(Value) ->
     case inet:parse_ipv6_address(?b2l(Value)) of
         {ok, Ipv6Address} ->
@@ -465,35 +485,62 @@ validate_value(#json_type{name = ipv6address, convert = Convert}, Value,
         {error, einval} ->
             throw({not_ipv6_address, Value, JsonPath})
     end;
-validate_value(#json_type{name = ipv6address}, Value, JsonPath) ->
+validate_value(_ConfigDir, #json_type{name = ipv6address}, Value, JsonPath) ->
     throw({not_ipv6_address, Value, JsonPath});
 %% base64
-validate_value(#json_type{name = base64, convert = Convert}, Value, JsonPath)
+validate_value(_ConfigDir, #json_type{name = base64, convert = Convert}, Value,
+               JsonPath)
   when is_binary(Value) ->
     convert_value(Convert, Value, JsonPath);
-validate_value(#json_type{name = base64}, Value, JsonPath) ->
+validate_value(_ConfigDir, #json_type{name = base64}, Value, JsonPath) ->
     throw({not_base64, Value, JsonPath});
-%% filename
-validate_value(#json_type{name = filename, convert = Convert}, Value, JsonPath)
+%% readable_file
+validate_value(ConfigDir, #json_type{name = readable_file, convert = Convert},
+               Value, JsonPath)
   when is_binary(Value) ->
-    Dirname = filename:dirname(?b2l(Value)),
-    case file:read_file_info(Dirname) of
-        {ok, #file_info{type = directory, access = read}} ->
-            convert_value(Convert, Value, JsonPath);
-        {ok, #file_info{type = directory, access = read_write}} ->
-            convert_value(Convert, Value, JsonPath);
+    ExpandedFilename = expand_config_dir(ConfigDir, ?b2l(Value)),
+    case file:read_file_info(ExpandedFilename) of
+        {ok, #file_info{type = Type, access = Access}}
+          when (Type == regular orelse Type == symlink) andalso
+               (Access == read orelse Access == read_write) ->
+            convert_value(Convert, ?l2b(ExpandedFilename), JsonPath);
         {ok, _FileInfo} ->
-            throw({not_valid_directory, Dirname, JsonPath});
+            throw({not_readable_file, ExpandedFilename, JsonPath});
         {error, Reason} ->
             throw({file_error, Value, Reason, JsonPath})
     end;
-validate_value(#json_type{name = filename}, Value, JsonPath) ->
-    throw({file_error, Value, enotdir, JsonPath});
+validate_value(_ConfigDir, #json_type{name = readable_file}, Value, JsonPath) ->
+    throw({file_error, Value, einval, JsonPath});
+%% writable_file
+validate_value(ConfigDir, #json_type{name = writable_file, convert = Convert},
+               Value, JsonPath)
+  when is_binary(Value) ->
+    ExpandedFilename = expand_config_dir(ConfigDir, ?b2l(Value)),
+    case file:read_file_info(ExpandedFilename) of
+        {ok, #file_info{type = Type, access = read_write}}
+          when Type == regular orelse Type == symlink ->
+            convert_value(Convert, ?l2b(ExpandedFilename), JsonPath);
+        {ok, _FileInfo} ->
+            throw({not_writable_file, ExpandedFilename, JsonPath});
+        {error, enoent} ->
+            ParentDir = filename:dirname(ExpandedFilename),
+            case file:read_file_info(ParentDir) of
+                {ok, #file_info{type = directory, access = read_write}} ->
+                    convert_value(Convert, ?l2b(ExpandedFilename), JsonPath);
+                {ok, _FileInfo} ->
+                    throw({not_writable_directory, ParentDir, JsonPath});
+                {error, Reason} ->
+                    throw({file_error, Value, Reason, JsonPath})
+            end
+    end;
+validate_value(_ConfigDir, #json_type{name = writable_file}, Value, JsonPath) ->
+    throw({file_error, Value, einval, JsonPath});
 %% string
-validate_value(#json_type{name = string, convert = Convert}, Value, JsonPath)
+validate_value(_ConfigDir, #json_type{name = string, convert = Convert}, Value,
+               JsonPath)
   when is_binary(Value) ->
     convert_value(Convert, Value, JsonPath);
-validate_value(#json_type{name = string}, Value, JsonPath) ->
+validate_value(_ConfigDir, #json_type{name = string}, Value, JsonPath) ->
     throw({not_string, Value, JsonPath}).
 
 convert_value(undefined, Value, _JsonPath) ->
@@ -506,8 +553,15 @@ convert_value(Convert, Value, JsonPath) ->
             ConvertedValue
     end.
 
-validate_values(_JsonType, [], _JsonPath) ->
+expand_config_dir(_ConfigDir, []) ->
     [];
-validate_values(JsonType, [JsonValue|Rest], JsonPath) ->
-    [validate_value(JsonType, JsonValue, JsonPath)|
-     validate_values(JsonType, Rest, JsonPath)].
+expand_config_dir(ConfigDir, "${CONFIG_DIR}"++Rest) ->
+    ConfigDir++Rest;
+expand_config_dir(ConfigDir, [C|Rest]) ->
+    [C|expand_config_dir(ConfigDir, Rest)].
+
+validate_values(_ConfigDir, _JsonType, [], _JsonPath) ->
+    [];
+validate_values(ConfigDir, JsonType, [JsonValue|Rest], JsonPath) ->
+    [validate_value(ConfigDir, JsonType, JsonValue, JsonPath)|
+     validate_values(ConfigDir, JsonType, Rest, JsonPath)].

@@ -1,12 +1,13 @@
 -module(jsonrpc).
 
 %%% external exports
--export([call/4, call/5, call/7]).
+-export([call/4, call/5, call/6, call/8]).
 
 %%% internal exports
 
 %%% include files
 -include_lib("util/include/jsonrpc_serv.hrl").
+-include_lib("util/include/log.hrl").
 -include_lib("util/include/shorthand.hrl").
 
 %%% constants
@@ -26,18 +27,22 @@
 
 call(NicIpAddress, IpAddress, Port, Method) ->
     call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
-         undefined).
+         undefined, undefined).
 
-call(NicIpAddress, IpAddress, Port, Method, Params) ->
+call(NicIpAddress, IpAddress, Port, Method, PrivateKey) ->
     call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
-         Params).
+         PrivateKey, undefined).
+
+call(NicIpAddress, IpAddress, Port, Method, PrivateKey, Params) ->
+    call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
+         PrivateKey, Params).
 
 -spec call(inet:ip_address() | 'undefined', inet:ip_address(),
            inet:port_number(), timeout(), binary(), binary(),
-           jsx:json_term() | 'undefined') ->
+           binary() | 'undefined', jsx:json_term() | 'undefined') ->
                   {'ok', jsx:json_term()} | {'error', error_reason()}.
 
-call(NicIpAddress, IpAddress, Port, Timeout, Uri, Method, Params) ->
+call(NicIpAddress, IpAddress, Port, Timeout, Uri, Method, PrivateKey, Params) ->
     Id = new_id(),
     Request =
         [{<<"jsonrpc">>, <<"2.0">>},
@@ -48,7 +53,8 @@ call(NicIpAddress, IpAddress, Port, Timeout, Uri, Method, Params) ->
         EncodedRequest when is_binary(EncodedRequest) ->
             PrettifiedRequest = jsx:prettify(EncodedRequest),
             case httplib:post(ssl, NicIpAddress, IpAddress, Port, Timeout,
-                              Uri, <<"application/json">>, PrettifiedRequest) of
+                              Uri, PrivateKey, <<"application/json">>,
+                              PrettifiedRequest) of
                 {ok, Response} ->
                     case catch jsx:decode(Response) of
                         {'EXIT', _} ->
@@ -86,7 +92,8 @@ call(NicIpAddress, IpAddress, Port, Timeout, Uri, Method, Params) ->
                 {error, Reason} ->
                     {error, Reason}
             end;
-        _ ->
+        Error ->
+            ?error_log({Request, Error}),
             {error, invalid_params}
     end.
 

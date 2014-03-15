@@ -233,8 +233,7 @@ update_route_entry(RouteDb,
 %%% exported: recalc
 %%%
 
--spec recalc(na(), node_db(), route_db(), node_psp:psp_db(),
-             public_key:rsa_private_key()) -> 'ok'.
+-spec recalc(na(), node_db(), route_db(), node_psp:psp_db(), binary()) -> 'ok'.
 
 recalc(MyNa, NodeDb, RouteDb, PspDb, PrivateKey) ->
     touch_route_entries(NodeDb, RouteDb),

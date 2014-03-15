@@ -165,6 +165,8 @@ loop(#state{parent = Parent,
             if
                 MaxSessions /= -1 andalso
                 NumberOfSessions > MaxSessions ->
+                    ?daemon_log("At most ~w sessions are allowed. Waiting "
+                                "for five seconds...", [MaxSessions]),
                     timer:sleep(?FIVE_SECONDS),
                     self() ! {start_session, undefined, undefined},
                     loop(S);
@@ -201,7 +203,9 @@ start_session(Parent, Handler, TransportModule, ListenSocket, SessionDb,
             Parent ! {start_session, IpAddress, self()},
             case verify_session(SessionDb, MaxSessionsPerClient, IpAddress) of
                 false ->
-                    ?daemon_log("Client too busy...", []),
+                    ?daemon_log("~s tried to open more than ~w sessions",
+                                [net_tools:string_address(IpAddress),
+                                 MaxSessionsPerClient]),
                     close(TransportModule, Socket);
                 true ->
                     {Module, Function, Args} = Handler,
@@ -220,13 +224,13 @@ start_session(Parent, Handler, TransportModule, ListenSocket, SessionDb,
                     end
             end;
 	Reason ->
-            ?daemon_log("Unexpected accept error: ~p", [Reason]),
+            ?daemon_log("Unexpected networking problem: ~p", [Reason]),
 	    timer:sleep(?FIVE_SECONDS),
 	    Parent ! {start_session, undefined, undefined}
     end.
 
 %%%
-%%% Socket abstractions for TCP and SSL
+%%% socket abstractions for TCP and SSL
 %%%
 
 listen(Port, TransportModule, TransportOptions) ->
@@ -261,7 +265,7 @@ close(TransportModule, Socket) ->
     TransportModule:close(Socket).
 
 %%%
-%%% Session database
+%%% session database
 %%%
 
 create_session_db() ->

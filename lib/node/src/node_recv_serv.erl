@@ -36,7 +36,9 @@
           socket              :: gen_udp:socket(),
           %% anond.conf parameters
           my_na               :: na(),
-          my_oa               :: oa()
+          my_oa               :: oa(),
+          public_key          :: node_crypto:pki_key(),
+          private_key         :: node_crypto:pki_key()
 	 }).
 
 %%% types
@@ -109,7 +111,8 @@ init(Parent, MyNa, NodeInstanceSup) ->
             {ok, NodeDb, RouteDb} =
                 node_route_serv:handshake(NodeRouteServ, ?MODULE),
             S = read_config(#receiver_state{
-                               my_na = MyNa, node_db = NodeDb,
+                               my_na = MyNa,
+                               node_db = NodeDb,
                                route_db = RouteDb,
                                node_route_serv = NodeRouteServ,
                                socket = Socket}),
@@ -289,7 +292,8 @@ send(DestOaOrNa, NodeDb, RouteDb, Data) ->
     case node_route:lookup_node_send_serv(NodeDb, RouteDb, DestOaOrNa) of
         {ok, NodeSendServ} ->
             ok = node_send_serv:send(NodeSendServ, {?MODULE, Data});
-        {error, _Reason} ->
+        {error, Reason} ->
+            ?dbg_log(Reason),
             ok
     end.
 
@@ -317,5 +321,11 @@ read_config(S, [{'overlay-addresses', [MyOa]}|Rest]) ->
     read_config(S#receiver_state{my_oa = MyOa}, Rest);
 read_config(_S, [{'overlay-addresses', _Oas}|_Rest]) ->
     throw(nyi);
+read_config(S, [{'public-key', Value}|Rest]) ->
+    Key = node_crypto:read_pki_key(Value),
+    read_config(S#receiver_state{public_key = Key}, Rest);
+read_config(S, [{'private-key', Value}|Rest]) ->
+    Key = node_crypto:read_pki_key(Value),
+    read_config(S#receiver_state{private_key = Key}, Rest);
 read_config(S, [_|Rest]) ->
     read_config(S, Rest).

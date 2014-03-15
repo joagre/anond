@@ -139,7 +139,8 @@ send(DestOa, NodeDb, RouteDb, Ipv6Packet) ->
         {ok, NodeSendServ} ->
             ok = node_send_serv:send(NodeSendServ,
                                      {?MODULE, DestOa, Ipv6Packet});
-        {error, _Reason} ->
+        {error, Reason} ->
+            ?dbg_log(Reason),
             ok
     end.
 
