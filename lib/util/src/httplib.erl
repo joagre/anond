@@ -7,7 +7,7 @@
 -export([download/4]).
 -export([inflate_file/2]).
 -export([send_file/3]).
--export([post/8, post/9]).
+-export([post/8]).
 
 %%% internal exports
 
@@ -23,6 +23,7 @@
 %%% records
 
 %%% types
+-type ip_address_port() :: {inet:ip_address(), inet:port_number()}.
 -type transport_module() :: 'gen_tcp' | 'ssl'.
 -type socket() :: gen_tcp:socket() | ssl:sslsocket().
 -type header_name() :: atom() | binary().
@@ -114,8 +115,10 @@ lookup_header_value(Name, Headers) ->
 
 lookup_header_value(Name, Headers, DefaultValue) ->
     case lists:keysearch(Name, 1, Headers) of
-        false when DefaultValue /= '$no_default_value' -> DefaultValue;
-        {value, {Name, Value}} -> Value
+        false when DefaultValue /= '$no_default_value' ->
+            DefaultValue;
+        {value, {Name, Value}} ->
+            Value
     end.
 
 %%%
@@ -252,49 +255,43 @@ send_file(TransportModule, Socket, IoDevice, Position) ->
 %%% exported: post
 %%%
 
-post(TransportModule, NicIpAddress, IpAddress, Port, Timeout, Uri, ContentType,
-     Payload) ->
-    post(TransportModule, NicIpAddress, IpAddress, Port, Timeout, Uri,
-         undefined, ContentType, Payload).
-
 -spec post(transport_module(), inet:ip_address() | 'undefined',
-           inet:ip_address(), inet:port_number(), timeout(), binary(),
-           binary() | 'undefined', binary(), binary()) ->
+           ip_address_port(), timeout(), binary(), binary(), binary(),
+           [{binary(), binary()}]) ->
                   {'ok', binary()} | {'error', post_error_reason()}.
 
-post(TransportModule, NicIpAddress, IpAddress, Port, Timeout, Uri, PrivateKey,
-     ContentType, Payload) ->
+post(TransportModule, LocalIpAddress, {IpAddress, Port}, Timeout, Uri,
+     ContentType, Payload, ExtraHeaders) ->
+    if
+        LocalIpAddress == undefined ->
+            ConnectOptions = [{packet, http_bin}, {active, false}];
+        true ->
+            ConnectOptions =
+                [{packet, http_bin}, {active, false}, {ip, LocalIpAddress}]
+    end,
     HttpRequest =
         [<<"POST ">>, Uri, <<" HTTP/1.1\r\n">>,
          <<"Content-Type: ">>, ContentType, <<"\r\n">>,
          <<"Content-Length: ">>, ?i2l(size(Payload)), <<"\r\n">>,
-         content_hmac(Payload, PrivateKey),
+         insert_extra_headers(ExtraHeaders),
          <<"Connection: close\r\n\r\n">>,
          Payload],
-    case NicIpAddress of
-        undefined ->
-            Options = [{packet, http_bin}, {active, false}];
-        _ ->
-            Options = [{packet, http_bin}, {active, false}, {ip, NicIpAddress}]
-    end,
-    case TransportModule:connect(IpAddress, Port, Options, Timeout) of
+    case TransportModule:connect(IpAddress, Port, ConnectOptions, Timeout) of
         {ok, Socket} ->
             send_and_recv(TransportModule, Timeout, HttpRequest, Socket);
         {error, Reason} ->
             {error, Reason}
     end.
 
-content_hmac(_Payload, undefined) ->
-    [];
-content_hmac(Payload, PrivateKey) ->
-    HMAC = base64:encode(salt:crypto_sign(Payload, PrivateKey)),
-    [<<"Content-HMAC: ">>, HMAC, <<"\r\n">>].
+insert_extra_headers(ExtraHeaders) ->
+    [[Name, <<": ">>, Value, <<"\r\n">>] || {Name, Value} <- ExtraHeaders].
 
 send_and_recv(TransportModule, Timeout, HttpRequest, Socket) ->
     case TransportModule:send(Socket, HttpRequest) of
         ok ->
             recv(TransportModule, Timeout, Socket);
         {error, Reason} ->
+            TransportModule:close(Socket),
             {error, Reason}
     end.
 
@@ -303,14 +300,16 @@ recv(TransportModule, Timeout, Socket) ->
         {ok, {http_response, {1, 1}, 200, <<"OK">>}} ->
             ok = setopts(TransportModule, Socket, [{packet, httph_bin}]),
             {ok, HeaderValues} =
-                get_headers(TransportModule, Socket, [{'content-length', -1}]),
+                get_headers(TransportModule, Socket,
+                            [{'content-length', not_set}]),
             ok = setopts(TransportModule, Socket, [binary, {packet, 0}]),
-            BinaryContentLength =
+            ContentLength =
                 lookup_header_value('content-length', HeaderValues),
-            case catch ?b2i(BinaryContentLength) of
-                ContentLength when is_integer(ContentLength) ->
+            case catch ?b2i(ContentLength) of
+                DecodedContentLength when is_integer(DecodedContentLength) ->
                     Result =
-                        TransportModule:recv(Socket, ContentLength, Timeout),
+                        TransportModule:recv(Socket, DecodedContentLength,
+                                             Timeout),
                     TransportModule:close(Socket),
                     Result;
                 _ ->

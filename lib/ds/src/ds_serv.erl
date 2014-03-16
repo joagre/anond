@@ -7,6 +7,7 @@
          get_random_peers/2]).
 -export([publish_peer/1, unpublish_peer/1, published_peers/1]).
 -export([reserve_oa/2, reserved_oas/1]).
+-export([lookup_peer/1]).
 
 %%% internal exports
 -export([init/1]).
@@ -156,6 +157,15 @@ reserved_oas(Na) ->
     serv:call(?MODULE, {reserved_oas, Na}).
 
 %%%
+%%% exported: lookup_peer
+%%%
+
+-spec lookup_peer(na()) -> [#peer{}].
+
+lookup_peer(Na) ->
+    ets:lookup(peer_db, Na).
+
+%%%
 %%% server loop
 %%%
 
@@ -167,7 +177,7 @@ init(Parent) ->
             random:seed({A1, A2, A3}),
             S = read_config(#state{}),
             ok = config_json_serv:subscribe(),
-	    PeerDb = ets:new(peer_db, [{keypos, 2}]),
+	    PeerDb = ets:new(peer_db, [{keypos, 2}, named_table]),
 	    OaDb = ets:new(oa_db, [bag]),
             timelib:start_timer(S#state.peer_ttl, {enforce_peer_ttl, true}),
 	    Parent ! {self(), started},
@@ -209,7 +219,7 @@ loop(#state{parent = Parent,
                 Repeat ->
                     timelib:start_timer(PeerTTL, {enforce_peer_ttl, true}),
                     loop(S);
-                true -> 
+                true ->
                     loop(S)
             end;
 	{From, stop} ->

@@ -40,12 +40,14 @@ format_error(Reason) ->
 %%% exported: get_route_entries
 %%%
 
--spec get_route_entries(inet:ip_address() | 'undefined', na()) ->
+-spec get_route_entries(httplib:ip_address_port() | 'undefined',
+                        httplib:ip_address_port()) ->
                                {'ok', [#route_entry{}]} |
                                {'error', error_reason()}.
 
-get_route_entries(NicIpAddress, {IpAddress, Port}) ->
-    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"get-route-entries">>) of
+get_route_entries(LocalIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(LocalIpAddressPort, IpAddressPort,
+                      <<"get-route-entries">>) of
         {ok, Res} ->
             decode_route_entries(Res);
         {error, Reason} ->
@@ -56,11 +58,12 @@ get_route_entries(NicIpAddress, {IpAddress, Port}) ->
 %%% exported: get_nodes
 %%%
 
--spec get_nodes(inet:ip_address() | 'undefined', na()) ->
+-spec get_nodes(httplib:ip_address_port() | 'undefined',
+                httplib:ip_address_port()) ->
                        {'ok', [#node{}]} | {'error', error_reason()}.
 
-get_nodes(NicIpAddress, {IpAddress, Port}) ->
-    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"get-nodes">>) of
+get_nodes(LocalIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"get-nodes">>) of
         {ok, Nodes} ->
             decode_nodes(Nodes);
         {error, Reason} ->
@@ -71,11 +74,12 @@ get_nodes(NicIpAddress, {IpAddress, Port}) ->
 %%% exported: enable_recalc
 %%%
 
--spec enable_recalc(inet:ip_address() | 'undefined', na()) ->
+-spec enable_recalc(httplib:ip_address_port() | 'undefined',
+                    httplib:ip_address_port()) ->
                            'ok' | {'error', error_reason()}.
 
-enable_recalc(NicIpAddress, {IpAddress, Port}) ->
-    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"enable-recalc">>) of
+enable_recalc(LocalIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"enable-recalc">>) of
         {ok, true} ->
             ok;
         {error, Reason} ->
@@ -86,11 +90,13 @@ enable_recalc(NicIpAddress, {IpAddress, Port}) ->
 %%% exported: disable_recalc
 %%%
 
--spec disable_recalc(inet:ip_address() | 'undefined', na()) ->
+-spec disable_recalc(httplib:ip_address_port() | 'undefined',
+                     httplib:ip_address_port()) ->
                             'ok' | {'error', error_reason()}.
 
-disable_recalc(NicIpAddress, {IpAddress, Port}) ->
-    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"disable-ecalc">>) of
+disable_recalc(LocalIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(LocalIpAddressPort, IpAddressPort,
+                      <<"disable-ecalc">>) of
         {ok, true} ->
             ok;
         {error, Reason} ->
@@ -101,11 +107,12 @@ disable_recalc(NicIpAddress, {IpAddress, Port}) ->
 %%% exported: recalc
 %%%
 
--spec recalc(inet:ip_address() | 'undefined', na()) ->
+-spec recalc(httplib:ip_address_port() | 'undefined',
+             httplib:ip_address_port()) ->
                     'ok' | {'error', error_reason()}.
 
-recalc(NicIpAddress, {IpAddress, Port}) ->
-    case jsonrpc:call(NicIpAddress, IpAddress, Port, <<"recalc">>) of
+recalc(LocalIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"recalc">>) of
         {ok, true} ->
             ok;
         {error, Reason} ->
@@ -197,9 +204,14 @@ encode_nodes(Nodes) ->
 
 encode_node(Node) ->
     [{<<"na">>, node_jsonrpc:encode_na(Node#node.na)},
-     {<<"public-key">>, Node#node.public_key},
-     {<<"path-cost">>, Node#node.path_cost},
+     {<<"public-key">>, base64:encode(Node#node.public_key)},
+     {<<"path-cost">>, encode_path_cost(Node#node.path_cost)},
      {<<"flags">>, Node#node.flags}].
+
+encode_path_cost(undefined) ->
+    -1;
+encode_path_cost(PathCost) ->
+    PathCost.
 
 %%%
 %%% exported: decode_nodes
@@ -224,7 +236,7 @@ decode_node([{<<"na">>, Na},
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
             {ok, #node{na = DecodedNa,
-                       public_key = PublicKey,
+                       public_key = base64:decode(PublicKey),
                        path_cost = Pc,
                        flags = Flags}};
         {error, Reason} ->

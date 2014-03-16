@@ -42,7 +42,22 @@ start_link() ->
     {IpAddress, Port} = ?config(['directory-server', listen]),
     CertFile = ?config(['directory-server', 'json-rpc-certificate']),
     Docroot = filename:join(code:priv_dir(ds), "docroot"),
-    jsonrpc_serv:start_link(IpAddress, Port, CertFile, [],
+    Options = [{lookup_public_key,
+                fun(_Na, <<"reserved-oas">>) ->
+                        ignore;
+                   (_Na, <<"get-network-topology">>) ->
+                        ignore;
+                   (Na, Method) ->
+                        case ds_serv:lookup_peer(Na) of
+                            [] when Method == <<"publish-peer">> ->
+                                ignore;
+                            [] ->
+                                not_found;
+                            [Peer] ->
+                                Peer#peer.public_key
+                        end
+                end}],
+    jsonrpc_serv:start_link(Options, IpAddress, Port, CertFile, [],
                             {?MODULE, ds_handler, []}, Docroot).
 
 ds_handler(<<"enforce-peer-ttl">>, undefined) ->
@@ -103,7 +118,8 @@ ds_handler(<<"publish-peer">>, [{<<"na">>, Na},
                                 {<<"flags">>, Flags}]) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
-            Peer = #peer{na = DecodedNa, public_key = PublicKey, flags = Flags},
+            Peer = #peer{na = DecodedNa, public_key = base64:decode(PublicKey),
+                         flags = Flags},
             ds_serv:publish_peer(Peer);
         {error, Reason} ->
             JsonError = #json_error{

@@ -193,7 +193,7 @@ loop(#state{parent = Parent,
             node_instance_sup = NodeInstanceSup,
             node_path_cost_serv = NodePathCostServ,
             directory_server = DsIpAddressPort,
-            my_na = {MyNaIpAddress, _MyNaPort} = MyNa,
+            my_na = {MyNaIpAddress, _MyNaPort} = MyNa = LocalIpAddressPort,
 	    my_oa = MyOa,
 	    public_key = PublicKey,
 	    private_key = PrivateKey,
@@ -207,13 +207,13 @@ loop(#state{parent = Parent,
             loop(read_config(S));
         bootstrap ->
             case ds_jsonrpc:publish_peer(
-                   MyNaIpAddress, DsIpAddressPort, PrivateKey,
+                   LocalIpAddressPort, DsIpAddressPort, PrivateKey,
                    #peer{na = MyNa, public_key = PublicKey}) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Published node address ~s",
                                 [net_tools:string_address(MyNa)]),
                     case ds_jsonrpc:reserve_oa(
-                           MyNaIpAddress, DsIpAddressPort, PrivateKey,
+                           LocalIpAddressPort, DsIpAddressPort, PrivateKey,
                            MyOa, MyNa) of
                         ok ->
                             ?daemon_log("Reserved overlay address ~s",
@@ -257,7 +257,7 @@ loop(#state{parent = Parent,
             end;
         republish_self ->
             case ds_jsonrpc:publish_peer(
-                   MyNaIpAddress, DsIpAddressPort, PrivateKey,
+                   LocalIpAddressPort, DsIpAddressPort, PrivateKey,
                    #peer{na = MyNa, public_key = PublicKey}) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Republished node address ~s",
@@ -398,10 +398,10 @@ read_config(S, [_|Rest]) ->
 %%%
 
 refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
-              {MyNaIpAddress, _NaPort} = MyNa, PrivateKey, NumberOfPeers,
-              AutoRecalc) ->
+              {MyNaIpAddress, _NaPort} = MyNa = LocalIpAddressPort, PrivateKey,
+              NumberOfPeers, AutoRecalc) ->
     ?daemon_log("Known peers: ~s", [net_tools:string_addresses(PeerNas)]),
-    case ds_jsonrpc:published_peers(MyNaIpAddress, DsIpAddressPort,
+    case ds_jsonrpc:published_peers(LocalIpAddressPort, DsIpAddressPort,
                                     PrivateKey, PeerNas) of
         {ok, PublishedPeerNas} ->
             ?daemon_log("Still published peers: ~s",
@@ -429,10 +429,11 @@ refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
     end.
 
 get_more_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
-               DsIpAddressPort, {MyNaIpAddress, _NaPort} = MyNa, PrivateKey,
+               DsIpAddressPort,
+               {MyNaIpAddress, _NaPort} = MyNa = LocalIpAddressPort, PrivateKey,
                AutoRecalc, RemainingPeerNas, NumberOfMissingPeers) ->
     case ds_jsonrpc:get_random_peers(
-           MyNaIpAddress, DsIpAddressPort, PrivateKey, MyNa,
+           LocalIpAddressPort, DsIpAddressPort, PrivateKey, MyNa,
            NumberOfMissingPeers) of
         {ok, NewPeers} ->
             NewPeerNas = [NewPeer#peer.na || NewPeer <- NewPeers],
@@ -488,13 +489,13 @@ purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
 
 handle_route_entry(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
                    NodePathCostServ, DsIpAddressPort,
-                   {MyNaIpAddress, _NaPort} = MyNa, MyOa, PrivateKey,
-                   #route_entry{na = ViaNa, path_cost = Pc} = Re) ->
+                   {MyNaIpAddress, _NaPort} = MyNa = LocalIpAddressPort, MyOa,
+                   PrivateKey, #route_entry{na = ViaNa, path_cost = Pc} = Re) ->
     case node_route:is_member_node(NodeDb, ViaNa) of
         true ->
             update_route_entry(RouteDb, PspDb, PeerNas, MyNa, MyOa, Re);
         false ->
-            case ds_jsonrpc:get_peer(MyNaIpAddress, DsIpAddressPort,
+            case ds_jsonrpc:get_peer(LocalIpAddressPort, DsIpAddressPort,
                                      PrivateKey, ViaNa) of
                 {ok, #peer{public_key = PublicKey}} ->
                     ?daemon_log("~s adding peer ~s",

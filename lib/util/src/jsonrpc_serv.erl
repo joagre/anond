@@ -1,10 +1,10 @@
 -module(jsonrpc_serv).
 
 %%% external exports
--export([start_link/6]).
+-export([start_link/7]).
 
 %%% internal exports
--export([jsonrpc_handler/3]).
+-export([jsonrpc_handler/4]).
 
 %%% include files
 -include_lib("kernel/include/file.hrl").
@@ -19,40 +19,58 @@
 %%% records
 
 %%% types
+-type options() :: [option()].
+-type option() :: {'lookup_public_key',
+                   fun((httplib:ip_address_port(), binary()) ->
+                              'ignore' | 'not_found' | binary())}.
 
 %%%
 %%% exported: start_link
 %%%
 
--spec start_link(inet:ip_address(), inet:port_number(), binary(),
+-spec start_link(options(), inet:ip_address(), inet:port_number(), binary(),
                  net_serv:options(), net_serv:handler(),
                  binary() | 'undefined') ->
                         {ok, pid()}.
 
-start_link(IpAddress, Port, CertFile, Options, Handler, Docroot) ->
+start_link(Options, IpAddress, Port, CertFile, NetServOptions, Handler,
+           Docroot) ->
     TransportOptions =
         [{certfile, CertFile}, {packet, http_bin}, {active, false},
          {ip, IpAddress}, {reuseaddr, true}],
-    net_serv:start_link(Port, Options, ssl, TransportOptions,
-                        {?MODULE, jsonrpc_handler, [Handler, Docroot]}).
+    net_serv:start_link(Port, NetServOptions, ssl, TransportOptions,
+                        {?MODULE, jsonrpc_handler,
+                         [Options, Handler, Docroot]}).
 
-jsonrpc_handler(Socket, Handler, Docroot) ->
+jsonrpc_handler(Socket, Options, Handler, Docroot) ->
     case ssl:recv(Socket, 0) of
         %% a jsonrpc request
         {ok, {http_request, 'POST', {abs_path, <<"/jsonrpc">>}, {1, 1}}} ->
             ok = ssl:setopts(Socket, [{packet, httph_bin}]),
             {ok, HeaderValues} =
-                httplib:get_headers(ssl, Socket, [{'content-length', -1}]),
+                httplib:get_headers(ssl, Socket,
+                                    [{'content-length', <<"-1">>},
+                                     {<<"content-hmac">>, not_set},
+                                     {<<"local-port">>, <<"-1">>}]),
             ok = ssl:setopts(Socket, [binary, {packet, 0}]),
-            BinaryContentLength =
+            ContentLength =
                 httplib:lookup_header_value('content-length', HeaderValues),
-            case catch ?b2i(BinaryContentLength) of
-                ContentLength when is_integer(ContentLength) ->
-                    handle_jsonrpc_request(Socket, Handler, ContentLength);
-                _ ->
+            ContentHMAC =
+                httplib:lookup_header_value(<<"content-hmac">>, HeaderValues),
+            LocalPort =
+                httplib:lookup_header_value(<<"local-port">>, HeaderValues),
+            case catch {?b2i(ContentLength), ?b2i(LocalPort)} of
+                {DecodedContentLength, DecodedLocalPort}
+                  when is_integer(DecodedContentLength) andalso
+                       is_integer(DecodedLocalPort) ->
+                    handle_jsonrpc_request(
+                      Socket, Options, Handler, DecodedContentLength,
+                      ContentHMAC, DecodedLocalPort);
+                Error ->
+                    ?error_log({Error, ContentLength, LocalPort}),
                     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
                     send(Socket, null, JsonError)
-            end;
+                end;
         %% a request for a file
         {ok, {http_request, 'GET', {abs_path, Path}, {1, 1}}}
           when Docroot /= undefined ->
@@ -68,16 +86,18 @@ jsonrpc_handler(Socket, Handler, Docroot) ->
             {error, Reason}
     end.
 
-handle_jsonrpc_request(Socket, _Handler, -1) ->
+handle_jsonrpc_request(Socket, _Options, _Handler, -1, _ContentHMAC,
+                       _LocalPort) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content length not specified">>},
     send(Socket, null, JsonError);
-handle_jsonrpc_request(Socket, {M, F, A}, ContentLength)
+handle_jsonrpc_request(Socket, Options, {Module, Function, Args}, ContentLength,
+                       ContentHMAC, LocalPort)
   when ContentLength < ?MAX_REQUEST_SIZE ->
-    case recv(Socket, ContentLength) of
+    case recv(Socket, Options, ContentLength, ContentHMAC, LocalPort) of
         {ok, Method, Params, Id} ->
-            case apply(M, F, [Method, Params|A]) of
+            case apply(Module, Function, [Method, Params|Args]) of
                 {ok, Result} ->
                     send(Socket, Id, Result);
                 {error, JsonError} when is_record(JsonError, json_error) ->
@@ -86,13 +106,19 @@ handle_jsonrpc_request(Socket, {M, F, A}, ContentLength)
         invalid_json ->
             JsonError = #json_error{code = ?JSONRPC_PARSE_ERROR},
             send(Socket, null, JsonError);
+        invalid_signature ->
+            JsonError = #json_error{
+              code = ?JSONRPC_INVALID_REQUEST,
+              message = <<"Invalid signature">>},
+            send(Socket, null, JsonError);
         {error, Reason} ->
             JsonError = #json_error{
               code = ?JSONRPC_INTERNAL_ERROR,
               message = ?l2b(ssl:format_error(Reason))},
             send(Socket, null, JsonError)
     end;
-handle_jsonrpc_request(Socket, _Handler, ContentLength) ->
+handle_jsonrpc_request(Socket, _Options, _Handler, ContentLength, _ContentHMAC,
+                       _LocalPort) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content is too large">>,
@@ -103,7 +129,7 @@ handle_jsonrpc_request(Socket, _Handler, ContentLength) ->
 %%% recv
 %%%
 
-recv(Socket, ContentLength) ->
+recv(Socket, Options, ContentLength, ContentHMAC, LocalPort) ->
     ok = ssl:setopts(Socket, [binary, {packet, 0}]),
     case ssl:recv(Socket, ContentLength) of
         {ok, Response} ->
@@ -112,16 +138,55 @@ recv(Socket, ContentLength) ->
                  {<<"method">>, Method},
                  {<<"params">>, Params},
                  {<<"id">>, Id}] ->
-                    {ok, Method, Params, Id};
+                    case verify_hmac(
+                           Socket, Options, ContentHMAC, LocalPort, Response,
+                           Method) of
+                        true ->
+                            {ok, Method, Params, Id};
+                        false ->
+                            invalid_signature
+                    end;
                 [{<<"jsonrpc">>, <<"2.0">>},
                  {<<"method">>, Method},
                  {<<"id">>, Id}] ->
-                    {ok, Method, undefined, Id};
-                _ ->
+                    case verify_hmac(
+                           Socket, Options, ContentHMAC, LocalPort, Response,
+                           Method) of
+                        true ->
+                            {ok, Method, undefined, Id};
+                        false ->
+                            invalid_signature
+                    end;
+                Error ->
+                    ?error_log({Error, Response}),
                     invalid_json
             end;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+verify_hmac(Socket, Options, ContentHMAC, LocalPort, Response, Method) ->
+    case lists:keysearch(lookup_public_key, 1, Options) of
+        {value, {lookup_public_key, LookupPublicKey}} ->
+            case ssl:peername(Socket) of
+                {ok, {IpAddress, _EphemeralPort}} ->
+                    case LookupPublicKey({IpAddress, LocalPort}, Method) of
+                        ignore ->
+                            true;
+                        not_found ->
+                            false;
+                        _PublicKey when ContentHMAC == not_set ->
+                            false;
+                        PublicKey ->
+                            {ok, salt:crypto_hash(Response)} ==
+                                salt:crypto_sign_open(
+                                  base64:decode(ContentHMAC), PublicKey)
+                    end;
+                {error, _Reason} ->
+                    false
+            end;
+        false ->
+            true
     end.
 
 %%%
@@ -184,7 +249,8 @@ send_to_client(Socket, Id, Request) ->
                <<"Content-Length: ">>, ContentLength, <<"\r\n">>,
                <<"Connection: close\r\n\r\n">>,
                PrettifiedRequest]);
-        _ ->
+        Error ->
+            ?error_log({Error, Request}),
             JsonError = #json_error{code = ?JSONRPC_INTERNAL_ERROR},
             send(Socket, Id, JsonError)
     end.

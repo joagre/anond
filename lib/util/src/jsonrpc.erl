@@ -1,7 +1,7 @@
 -module(jsonrpc).
 
 %%% external exports
--export([call/4, call/5, call/6, call/8]).
+-export([call/3, call/4, call/5, call/7]).
 
 %%% internal exports
 
@@ -25,24 +25,25 @@
 %%% exported: call
 %%%
 
-call(NicIpAddress, IpAddress, Port, Method) ->
-    call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
-         undefined, undefined).
+call(LocalIpAddressPort, IpAddressPort, Method) ->
+    call(LocalIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
+         Method, undefined, undefined).
 
-call(NicIpAddress, IpAddress, Port, Method, PrivateKey) ->
-    call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
-         PrivateKey, undefined).
+call(LocalIpAddressPort, IpAddressPort, Method, PrivateKey) ->
+    call(LocalIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
+         Method, PrivateKey, undefined).
 
-call(NicIpAddress, IpAddress, Port, Method, PrivateKey, Params) ->
-    call(NicIpAddress, IpAddress, Port, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
-         PrivateKey, Params).
+call(LocalIpAddressPort, IpAddressPort, Method, PrivateKey, Params) ->
+    call(LocalIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
+         Method, PrivateKey, Params).
 
--spec call(inet:ip_address() | 'undefined', inet:ip_address(),
-           inet:port_number(), timeout(), binary(), binary(),
-           binary() | 'undefined', jsx:json_term() | 'undefined') ->
+-spec call(httplib:ip_address_port() | 'undefined', httplib:ip_address_port(),
+           timeout(), binary(), binary(), binary() | 'undefined',
+           jsx:json_term() | 'undefined') ->
                   {'ok', jsx:json_term()} | {'error', error_reason()}.
 
-call(NicIpAddress, IpAddress, Port, Timeout, Uri, Method, PrivateKey, Params) ->
+call(LocalIpAddressPort, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+     Params) ->
     Id = new_id(),
     Request =
         [{<<"jsonrpc">>, <<"2.0">>},
@@ -51,10 +52,24 @@ call(NicIpAddress, IpAddress, Port, Timeout, Uri, Method, PrivateKey, Params) ->
         [{<<"id">>, Id}],
     case catch jsx:encode(Request) of
         EncodedRequest when is_binary(EncodedRequest) ->
-            PrettifiedRequest = jsx:prettify(EncodedRequest),
-            case httplib:post(ssl, NicIpAddress, IpAddress, Port, Timeout,
-                              Uri, PrivateKey, <<"application/json">>,
-                              PrettifiedRequest) of
+            case LocalIpAddressPort of
+                undefined ->
+                    LocalIpAddress = undefined,
+                    LocalPort = -1;
+                {LocalIpAddress, LocalPort} ->
+                    ok
+            end,
+            ExtraHeaders =
+                if
+                    PrivateKey == undefined ->
+                        [];
+                    true ->
+                        [{<<"Content-HMAC">>, hmac(EncodedRequest, PrivateKey)},
+                         {<<"Local-Port">>, ?i2b(LocalPort)}]
+                end,
+            case httplib:post(ssl, LocalIpAddress, IpAddressPort, Timeout,
+                              Uri, <<"application/json">>, EncodedRequest,
+                              ExtraHeaders) of
                 {ok, Response} ->
                     case catch jsx:decode(Response) of
                         {'EXIT', _} ->
@@ -111,3 +126,7 @@ params_if_any(undefined) ->
     [];
 params_if_any(Params) ->
     [{<<"params">>, Params}].
+
+hmac(Message, PrivateKey) ->
+    base64:encode(
+      salt:crypto_sign(salt:crypto_hash(Message), PrivateKey)).
