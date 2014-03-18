@@ -15,9 +15,9 @@
 -export([format_error/1]).
 -export([enforce_node_ttl/3]).
 -export([get_number_of_nodes/3, get_node/4, get_all_nodes/3,
-         get_random_nodes/5]).
+         get_random_nodes/4]).
 -export([publish_node/4, unpublish_node/4, published_nodes/4]).
--export([reserve_oa/5, reserved_oas/4]).
+-export([reserve_oa/4, reserved_oas/4]).
 -export([encode_node_descriptors/1, encode_node_descriptor/1,
          decode_node_descriptors/1, decode_node_descriptor/1]).
 
@@ -113,14 +113,13 @@ get_all_nodes(MyIpAddressPort, IpAddressPort, PrivateKey) ->
 %%%
 
 -spec get_random_nodes(httplib:ip_address_port(), httplib:ip_address_port(),
-                       node_crypto:pki_key(), na(), non_neg_integer()) ->
+                       node_crypto:pki_key(), non_neg_integer()) ->
                               {'ok', [#node_descriptor{}]} |
                               {'error', error_reason()}.
 
-get_random_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, MyNa, N) ->
+get_random_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, N) ->
     case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"get-random-nodes">>,
-                      PrivateKey, [{<<"my-na">>, node_jsonrpc:encode_na(MyNa)},
-                                   {<<"n">>, N}]) of
+                      PrivateKey, [{<<"n">>, N}]) of
         {ok, NodeDescriptors}->
             decode_node_descriptors(NodeDescriptors);
         {error, Reason} ->
@@ -132,13 +131,13 @@ get_random_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, MyNa, N) ->
 %%%
 
 -spec publish_node(httplib:ip_address_port(), httplib:ip_address_port(),
-                   node_crypto:pki_key(), #node_descriptor{}) ->
+                   node_crypto:pki_key(), node_crypto:pki_key()) ->
                           {'ok', NodeTTL :: non_neg_integer()} |
                           {'error', error_reason()}.
 
-publish_node(MyIpAddressPort, IpAddressPort, PrivateKey, NodeDescriptor) ->
+publish_node(MyIpAddressPort, IpAddressPort, PrivateKey, PublicKey) ->
     jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"publish-node">>,
-                 PrivateKey, encode_node_descriptor(NodeDescriptor)).
+                 PrivateKey, base64:encode(PublicKey)).
 
 %%%
 %%% exported: unpublish_node
@@ -180,13 +179,12 @@ published_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, Nas) ->
 %%%
 
 -spec reserve_oa(httplib:ip_address_port(), httplib:ip_address_port(),
-                 node_crypto:pki_key(), oa(), na()) ->
+                 node_crypto:pki_key(), oa()) ->
                         'ok' | {'error', error_reason()}.
 
-reserve_oa(MyIpAddressPort, IpAddressPort, PrivateKey, Oa, Na) ->
+reserve_oa(MyIpAddressPort, IpAddressPort, PrivateKey, Oa) ->
     case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"reserve-oa">>,
-                      PrivateKey, [{<<"oa">>, node_jsonrpc:encode_oa(Oa)},
-                                   {<<"na">>, node_jsonrpc:encode_na(Na)}]) of
+                      PrivateKey, [{<<"oa">>, node_jsonrpc:encode_oa(Oa)}]) of
         {ok, true} ->
             ok;
         {error, Reason} ->

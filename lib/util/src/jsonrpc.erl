@@ -25,24 +25,24 @@
 %%% exported: call
 %%%
 
-call(LocalIpAddressPort, IpAddressPort, Method) ->
-    call(LocalIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
-         Method, undefined, undefined).
+call(MyIpAddressPort, IpAddressPort, Method) ->
+    call(MyIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
+         undefined, undefined).
 
-call(LocalIpAddressPort, IpAddressPort, Method, PrivateKey) ->
-    call(LocalIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
-         Method, PrivateKey, undefined).
+call(MyIpAddressPort, IpAddressPort, Method, PrivateKey) ->
+    call(MyIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
+         PrivateKey, undefined).
 
-call(LocalIpAddressPort, IpAddressPort, Method, PrivateKey, Params) ->
-    call(LocalIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
-         Method, PrivateKey, Params).
+call(MyIpAddressPort, IpAddressPort, Method, PrivateKey, Params) ->
+    call(MyIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
+         PrivateKey, Params).
 
 -spec call(httplib:ip_address_port() | 'undefined', httplib:ip_address_port(),
            timeout(), binary(), binary(), binary() | 'undefined',
            jsx:json_term() | 'undefined') ->
                   {'ok', jsx:json_term()} | {'error', error_reason()}.
 
-call(LocalIpAddressPort, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+call(MyIpAddressPort, IpAddressPort, Timeout, Uri, Method, PrivateKey,
      Params) ->
     Id = new_id(),
     Request =
@@ -52,11 +52,11 @@ call(LocalIpAddressPort, IpAddressPort, Timeout, Uri, Method, PrivateKey,
         [{<<"id">>, Id}],
     case catch jsx:encode(Request) of
         EncodedRequest when is_binary(EncodedRequest) ->
-            case LocalIpAddressPort of
+            case MyIpAddressPort of
                 undefined ->
-                    LocalIpAddress = undefined,
-                    LocalPort = -1;
-                {LocalIpAddress, LocalPort} ->
+                    MyIpAddress = undefined,
+                    MyPort = -1;
+                {MyIpAddress, MyPort} ->
                     ok
             end,
             ExtraHeaders =
@@ -65,10 +65,10 @@ call(LocalIpAddressPort, IpAddressPort, Timeout, Uri, Method, PrivateKey,
                         [];
                     true ->
                         [{<<"Content-HMAC">>, hmac(EncodedRequest, PrivateKey)},
-                         {<<"Local-Port">>, ?i2b(LocalPort)}]
+                         {<<"My-Port">>, ?i2b(MyPort)}]
                 end,
-            case httplib:post(ssl, LocalIpAddress, IpAddressPort, Timeout,
-                              Uri, <<"application/json">>, EncodedRequest,
+            case httplib:post(ssl, MyIpAddress, IpAddressPort, Timeout, Uri,
+                              <<"application/json">>, EncodedRequest,
                               ExtraHeaders) of
                 {ok, Response} ->
                     case catch jsx:decode(Response) of

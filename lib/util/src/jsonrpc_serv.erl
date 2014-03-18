@@ -51,23 +51,22 @@ jsonrpc_handler(Socket, Options, Handler, Docroot) ->
                 httplib:get_headers(ssl, Socket,
                                     [{'content-length', <<"-1">>},
                                      {<<"content-hmac">>, not_set},
-                                     {<<"local-port">>, <<"-1">>}]),
+                                     {<<"my-port">>, <<"-1">>}]),
             ok = ssl:setopts(Socket, [binary, {packet, 0}]),
             ContentLength =
                 httplib:lookup_header_value('content-length', HeaderValues),
             ContentHMAC =
                 httplib:lookup_header_value(<<"content-hmac">>, HeaderValues),
-            LocalPort =
-                httplib:lookup_header_value(<<"local-port">>, HeaderValues),
-            case catch {?b2i(ContentLength), ?b2i(LocalPort)} of
-                {DecodedContentLength, DecodedLocalPort}
+            MyPort = httplib:lookup_header_value(<<"my-port">>, HeaderValues),
+            case catch {?b2i(ContentLength), ?b2i(MyPort)} of
+                {DecodedContentLength, DecodedMyPort}
                   when is_integer(DecodedContentLength) andalso
-                       is_integer(DecodedLocalPort) ->
+                       is_integer(DecodedMyPort) ->
                     handle_jsonrpc_request(
                       Socket, Options, Handler, DecodedContentLength,
-                      ContentHMAC, DecodedLocalPort);
+                      ContentHMAC, DecodedMyPort);
                 Error ->
-                    ?error_log({Error, ContentLength, LocalPort}),
+                    ?error_log({Error, ContentLength, MyPort}),
                     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
                     send(Socket, null, JsonError)
                 end;
@@ -86,18 +85,25 @@ jsonrpc_handler(Socket, Options, Handler, Docroot) ->
             {error, Reason}
     end.
 
-handle_jsonrpc_request(Socket, _Options, _Handler, -1, _ContentHMAC,
-                       _LocalPort) ->
+handle_jsonrpc_request(Socket, _Options, _Handler, -1, _ContentHMAC, _MyPort) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content length not specified">>},
     send(Socket, null, JsonError);
 handle_jsonrpc_request(Socket, Options, {Module, Function, Args}, ContentLength,
-                       ContentHMAC, LocalPort)
+                       ContentHMAC, MyPort)
   when ContentLength < ?MAX_REQUEST_SIZE ->
-    case recv(Socket, Options, ContentLength, ContentHMAC, LocalPort) of
+    case ssl:peername(Socket) of
+        {ok, {MyIpAddress, _EphemeralPort}} ->
+            ok;
+        {error, _Reason} ->
+            MyIpAddress = undefined
+    end,
+    case recv(Socket, Options, ContentLength, ContentHMAC, MyPort,
+              MyIpAddress) of
         {ok, Method, Params, Id} ->
-            case apply(Module, Function, [Method, Params|Args]) of
+            case apply(Module, Function,
+                       [{MyIpAddress, MyPort}, Method, Params|Args]) of
                 {ok, Result} ->
                     send(Socket, Id, Result);
                 {error, JsonError} when is_record(JsonError, json_error) ->
@@ -118,7 +124,7 @@ handle_jsonrpc_request(Socket, Options, {Module, Function, Args}, ContentLength,
             send(Socket, null, JsonError)
     end;
 handle_jsonrpc_request(Socket, _Options, _Handler, ContentLength, _ContentHMAC,
-                       _LocalPort) ->
+                       _MyPort) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content is too large">>,
@@ -129,7 +135,7 @@ handle_jsonrpc_request(Socket, _Options, _Handler, ContentLength, _ContentHMAC,
 %%% recv
 %%%
 
-recv(Socket, Options, ContentLength, ContentHMAC, LocalPort) ->
+recv(Socket, Options, ContentLength, ContentHMAC, MyPort, MyIpAddress) ->
     ok = ssl:setopts(Socket, [binary, {packet, 0}]),
     case ssl:recv(Socket, ContentLength) of
         {ok, Response} ->
@@ -138,9 +144,8 @@ recv(Socket, Options, ContentLength, ContentHMAC, LocalPort) ->
                  {<<"method">>, Method},
                  {<<"params">>, Params},
                  {<<"id">>, Id}] ->
-                    case verify_hmac(
-                           Socket, Options, ContentHMAC, LocalPort, Response,
-                           Method) of
+                    case verify_hmac(Options, ContentHMAC, MyPort, MyIpAddress,
+                                     Response, Method) of
                         true ->
                             {ok, Method, Params, Id};
                         false ->
@@ -149,9 +154,8 @@ recv(Socket, Options, ContentLength, ContentHMAC, LocalPort) ->
                 [{<<"jsonrpc">>, <<"2.0">>},
                  {<<"method">>, Method},
                  {<<"id">>, Id}] ->
-                    case verify_hmac(
-                           Socket, Options, ContentHMAC, LocalPort, Response,
-                           Method) of
+                    case verify_hmac(Options, ContentHMAC, MyPort, MyIpAddress,
+                                     Response, Method) of
                         true ->
                             {ok, Method, undefined, Id};
                         false ->
@@ -165,25 +169,23 @@ recv(Socket, Options, ContentLength, ContentHMAC, LocalPort) ->
             {error, Reason}
     end.
 
-verify_hmac(Socket, Options, ContentHMAC, LocalPort, Response, Method) ->
+verify_hmac(Options, ContentHMAC, MyPort, MyIpAddress, Response, Method) ->
     case lists:keysearch(lookup_public_key, 1, Options) of
+        {value, {lookup_public_key, _LookupPublicKey}}
+          when MyIpAddress == undefined ->
+            false;
         {value, {lookup_public_key, LookupPublicKey}} ->
-            case ssl:peername(Socket) of
-                {ok, {IpAddress, _EphemeralPort}} ->
-                    case LookupPublicKey({IpAddress, LocalPort}, Method) of
-                        ignore ->
-                            true;
-                        not_found ->
-                            false;
-                        _PublicKey when ContentHMAC == not_set ->
-                            false;
-                        PublicKey ->
-                            {ok, salt:crypto_hash(Response)} ==
-                                salt:crypto_sign_open(
-                                  base64:decode(ContentHMAC), PublicKey)
-                    end;
-                {error, _Reason} ->
-                    false
+            case LookupPublicKey({MyIpAddress, MyPort}, Method) of
+                ignore ->
+                    true;
+                not_found ->
+                    false;
+                _PublicKey when ContentHMAC == not_set ->
+                    false;
+                PublicKey ->
+                    {ok, salt:crypto_hash(Response)} ==
+                        salt:crypto_sign_open(
+                          base64:decode(ContentHMAC), PublicKey)
             end;
         false ->
             true

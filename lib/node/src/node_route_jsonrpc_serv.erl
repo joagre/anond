@@ -11,7 +11,7 @@
 -export([start_link/2]).
 
 %%% internal exports
--export([node_handler/3]).
+-export([node_handler/4]).
 
 %%% include files
 -include_lib("node/include/node.hrl").
@@ -46,27 +46,30 @@ start_link({IpAddress, Port} = Na, NodeInstanceSup) ->
                             undefined).
 
 %% experimental api (must be restricted)
-node_handler(<<"get-route-entries">>, undefined, NodeInstanceSup) ->
+node_handler(_MyIpAddressPort, <<"get-route-entries">>, undefined,
+             NodeInstanceSup) ->
     {ok, Res} =
         node_route_serv:get_route_entries(node_route_serv(NodeInstanceSup)),
     {ok, node_route_jsonrpc:encode_route_entries(Res)};
 %% experimental api (must be restricted)
-node_handler(<<"get-nodes">>, undefined, NodeInstanceSup) ->
+node_handler(_MyIpAddressPort, <<"get-nodes">>, undefined, NodeInstanceSup) ->
     {ok, Nodes} = node_route_serv:get_nodes(node_route_serv(NodeInstanceSup)),
     {ok, node_route_jsonrpc:encode_nodes(Nodes)};
 %% experimental api (must be restricted)
-node_handler(<<"enable-recalc">>, undefined, NodeInstanceSup) ->
+node_handler(_MyIpAddressPort,<<"enable-recalc">>, undefined,
+             NodeInstanceSup) ->
     ok = node_route_serv:enable_recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
 %% experimental api (must be restricted)
-node_handler(<<"disable-recalc">>, undefined, NodeInstanceSup) ->
+node_handler(_MyIpAddressPort, <<"disable-recalc">>, undefined,
+             NodeInstanceSup) ->
     ok = node_route_serv:disable_recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
 %% experimental api (must be restricted)
-node_handler(<<"recalc">>, undefined, NodeInstanceSup) ->
+node_handler(_MyIpAddressPort, <<"recalc">>, undefined, NodeInstanceSup) ->
     ok = node_route_serv:recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
-node_handler(Method, Params, _NodeInstanceSup) ->
+node_handler(_MyIpAddressPort, Method, Params, _NodeInstanceSup) ->
     ?error_log({invalid_request, Method, Params}),
     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
     {error, JsonError}.

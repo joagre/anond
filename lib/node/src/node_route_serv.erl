@@ -193,7 +193,7 @@ loop(#state{parent = Parent,
             node_instance_sup = NodeInstanceSup,
             node_path_cost_serv = NodePathCostServ,
             directory_server = DsIpAddressPort,
-            my_na = {MyNaIpAddress, _MyNaPort} = MyNa = LocalIpAddressPort,
+            my_na = MyNa = LocalIpAddressPort,
 	    my_oa = MyOa,
 	    public_key = PublicKey,
 	    private_key = PrivateKey,
@@ -208,13 +208,13 @@ loop(#state{parent = Parent,
         bootstrap ->
             case ds_jsonrpc:publish_node(
                    LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                   #node_descriptor{na = MyNa, public_key = PublicKey}) of
+                   PublicKey) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Published node address ~s",
                                 [net_tools:string_address(MyNa)]),
                     case ds_jsonrpc:reserve_oa(
                            LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                           MyOa, MyNa) of
+                           MyOa) of
                         ok ->
                             ?daemon_log("Reserved overlay address ~s",
                                         [net_tools:string_address(MyOa)]),
@@ -258,7 +258,7 @@ loop(#state{parent = Parent,
         republish_self ->
             case ds_jsonrpc:publish_node(
                    LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                   #node_descriptor{na = MyNa, public_key = PublicKey}) of
+                   PublicKey) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Republished node address ~s",
                                 [net_tools:string_address(MyNa)]),
@@ -398,7 +398,7 @@ read_config(S, [_|Rest]) ->
 %%%
 
 refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
-              {MyNaIpAddress, _NaPort} = MyNa = LocalIpAddressPort, PrivateKey,
+              MyNa = LocalIpAddressPort, PrivateKey,
               NumberOfPeers, AutoRecalc) ->
     ?daemon_log("Known peers: ~s", [net_tools:string_addresses(PeerNas)]),
     case ds_jsonrpc:published_nodes(LocalIpAddressPort, DsIpAddressPort,
@@ -430,10 +430,10 @@ refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
 
 get_more_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
                DsIpAddressPort,
-               {MyNaIpAddress, _NaPort} = MyNa = LocalIpAddressPort, PrivateKey,
+               MyNa = LocalIpAddressPort, PrivateKey,
                AutoRecalc, RemainingPeerNas, NumberOfMissingPeers) ->
     case ds_jsonrpc:get_random_nodes(
-           LocalIpAddressPort, DsIpAddressPort, PrivateKey, MyNa,
+           LocalIpAddressPort, DsIpAddressPort, PrivateKey,
            NumberOfMissingPeers) of
         {ok, NewPeers} ->
             NewPeerNas = [NewPeer#node_descriptor.na || NewPeer <- NewPeers],
@@ -489,7 +489,7 @@ purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
 
 handle_route_entry(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
                    NodePathCostServ, DsIpAddressPort,
-                   {MyNaIpAddress, _NaPort} = MyNa = LocalIpAddressPort, MyOa,
+                   MyNa = LocalIpAddressPort, MyOa,
                    PrivateKey, #route_entry{na = ViaNa, path_cost = Pc} = Re) ->
     case node_route:is_member_node(NodeDb, ViaNa) of
         true ->

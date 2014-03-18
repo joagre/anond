@@ -1,71 +1,13 @@
 N = Next thing to do
+* = ?
 L = Later
 
-node_route_serv.erl
--------------------
-* Peer -> Neignbour
-* Integrate Patrik's psp code and authentication of path costs code
-* Use many overlay addresses and pick new ones now and then
-* Pick new peers now and then
-* Replace stae peers
-
-node_route_jsonrpc_serv.erl
----------------------------
-N Add an experimental anond.conf configurable to cloak experimental
-  jsonrpc functions.
-
-node_tun_serv.erl
------------------
-* Buy hardware. Setup a bittorent overlay network.
-* Intercept DNS traffic. Forward DNS lookups to other overlay
-  nodes. Forward lookups for the "anond" domain to the anond directory
-  server (see below).
-
-node_{recv,send}_serv.erl
--------------------------
-N1 Add encryption using NaCl , hmac for jsonrpc and key infrastructure for tunnels
-* Add a configurable to limit download and upload rate in B/s
-
-ds_jsonrpc_serv.erl
--------------------
-N0 Add hmac support for jsonrpc + add pk infrasructure to conf files ++ add anond flag
-N Add an experimental anond.cond configurable to cloak experimental
-  jsonrpc functions.
-
-d3.js
------
-add color to curves
-does it actually work in all cases?
-
-ds_serv.erl
------------
-N Peers? Nodes?
- peer -> node_descritor
- local -> my
- remove na as input when suitbale
-
-* http://www.h-online.com/security/features/How-Skype-Co-get-round-firewalls-747197.html
-N Use dets instead of ets (should we?)
-  - Add anond.conf parameter to set directory for dets file.
-  - Add anond.conf parameter to clear the dets file on each restart.
-N Make publish_peer/1, unpublish_peer/1 and published_peers/1 spoof
-  proof. Signatures? = HMAC
-* Add DNS functionality for overlay addresses. Make it spoof
-  proof. Signatures?
-
-tuncer
-------
-L ioctl calls (it shpuld be enough to have the right permission on
-  beam.smp in order to setup tun and ip addresses)
-L Add support for blocking reads
-L Make it run on Windows
-L Add type specifications
-
-generic stuff
+Generic stuff
 -------------
+N Clean up in deaemon_log and dbg_log macro usage.
 L Write documentation (Use LyX)
-  A White paper
-  - End-user (client and server users)
+  - A White paper
+  - End-user guide (client and server users)
 L Ask Per to contribute the delayed start patch to the Erlang distro.
 L Add package management support for:
   - Ubuntu
@@ -76,3 +18,51 @@ L Implement anond control panels for:
   - GTK
   - Mac
   - Windows
+
+Directory server
+----------------
+N Use dets instead of ets
+  - Add anond.conf parameter to set directory for dets file.
+  - Add anond.conf parameter to clear the dets file on each restart.
+N Cloak experimental json-rpc functions, i.e. reserved-oas() and
+get_network_topology()
+* Implement firewall UDP hole punching:
+http://www.h-online.com/security/features/How-Skype-Co-get-round-firewalls-747197.html
+* Make it possible to register a "domain"-name for a bunch of overlay
+adresses. The registration could be done through the directory
+server. Name lookups could be done towards a UDP based overlay service.
+
+Node
+----
+N Local -> My
+N Peer -> NeighbourNode
+N Cloak experimental json-rpc functions (all of them)
+N Start to use the PKI to encrypt tunnel traffic
+N Integrate Patrik's psp code and authentication of path costs code
+* Limit download and upload rate in B/s
+* Use many overlay addresses and pick new ones now and then
+* Pick new neighbour nodes now and then when needed(TM)
+
+d3.js
+-----
+N Add color to curves
+* Does it actually work in all cases when nodes come and go?
+
+DNS
+---
+* Investigate how to intercept DNS traffic (port 53) on the end-user
+machine using something such as https://gnunet.org/book/export/html/1631 and
+http://blog.listincomprehension.com/2010/07/dns-programming-with-erlang.html.
+
+Hardware setup
+--------------
+N Buy a really big machine with 128GB RAM and setup 50 Ubuntu
+servers. Run a bittorrent tracker on one of them and let the rest of
+them download/seed files.
+
+Tuncer
+------
+L Add ioctl calls for all "ifconfig" calls to remove the need to give
+root access to beam.smp, e.g. it should be enough use setcap on Linux
+L Make tuncer:read/2 work
+L Make it run on Windows
