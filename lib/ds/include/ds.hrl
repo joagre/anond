@@ -4,11 +4,11 @@
 -include_lib("node/include/node.hrl").
 
 -define(DS_JSONRPC_PERMISSION_DENIED, 1).
--define(DS_JSONRPC_UNKNOWN_PEER, 2).
--define(DS_JSONRPC_TOO_FEW_PEERS, 3).
+-define(DS_JSONRPC_UNKNOWN_NODE, 2).
+-define(DS_JSONRPC_TOO_FEW_NODES, 3).
 -define(DS_JSONRPC_NO_RESERVED_OAS, 4).
 
--record(peer, {
+-record(node_descriptor, {
 	  na           :: na(),
           public_key   :: node_crypto:pki_key(),
           last_updated :: timelib:gsecs(),
@@ -18,7 +18,7 @@
 -define(F_DS_EXPERIMENTAL, (1 bsl 1)).
 
 %% see doc/small_simulation.jpg
--define(NON_RANDOM_PEERS,
+-define(NON_RANDOM_NODES,
         [{50001, [50002, 50007]},
          {50002, [50010, 50006]},
          {50003, [50009, 50008]},

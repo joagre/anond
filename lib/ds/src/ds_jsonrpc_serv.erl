@@ -48,33 +48,33 @@ start_link() ->
                    (_Na, <<"get-network-topology">>) ->
                         ignore;
                    (Na, Method) ->
-                        case ds_serv:lookup_peer(Na) of
-                            [] when Method == <<"publish-peer">> ->
+                        case ds_serv:lookup_node(Na) of
+                            [] when Method == <<"publish-node">> ->
                                 ignore;
                             [] ->
                                 not_found;
-                            [Peer] ->
-                                Peer#peer.public_key
+                            [NodeDescriptor] ->
+                                NodeDescriptor#node_descriptor.public_key
                         end
                 end}],
     jsonrpc_serv:start_link(Options, IpAddress, Port, CertFile, [],
                             {?MODULE, ds_handler, []}, Docroot).
 
-ds_handler(<<"enforce-peer-ttl">>, undefined) ->
-    ok = ds_serv:enforce_peer_ttl(),
+ds_handler(<<"enforce-node-ttl">>, undefined) ->
+    ok = ds_serv:enforce_node_ttl(),
     {ok, true};
-ds_handler(<<"get-number-of-peers">>, undefined) ->
-    ds_serv:get_number_of_peers();
-ds_handler(<<"get-peer">>, [{<<"na">>, Na}]) ->
+ds_handler(<<"get-number-of-nodes">>, undefined) ->
+    ds_serv:get_number_of_nodes();
+ds_handler(<<"get-node">>, [{<<"na">>, Na}]) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
-            case ds_serv:get_peer(DecodedNa) of
-                {ok, Peer} ->
-                    {ok, ds_jsonrpc:encode_peer(Peer)};
-                {error, no_such_peer} ->
+            case ds_serv:get_node(DecodedNa) of
+                {ok, NodeDescriptor} ->
+                    {ok, ds_jsonrpc:encode_node_descriptor(NodeDescriptor)};
+                {error, no_such_node} ->
                     JsonError = #json_error{
-                      code = ?DS_JSONRPC_UNKNOWN_PEER,
-                      message = <<"Unknown peer">>,
+                      code = ?DS_JSONRPC_UNKNOWN_NODE,
+                      message = <<"Unknown node">>,
                       data = Na},
                     {error, JsonError}
             end;
@@ -85,20 +85,21 @@ ds_handler(<<"get-peer">>, [{<<"na">>, Na}]) ->
               data = <<"na">>},
             {error, JsonError}
     end;
-ds_handler(<<"get-all-peers">>, undefined) ->
-    {ok, Peers} = ds_serv:get_all_peers(),
-    {ok, ds_jsonrpc:encode_peers(Peers)};
-ds_handler(<<"get-random-peers">>, [{<<"my-na">>, MyNa}, {<<"n">>, N}]) ->
+ds_handler(<<"get-all-nodes">>, undefined) ->
+    {ok, NodeDescriptors} = ds_serv:get_all_nodes(),
+    {ok, ds_jsonrpc:encode_node_descriptors(NodeDescriptors)};
+ds_handler(<<"get-random-nodes">>, [{<<"my-na">>, MyNa}, {<<"n">>, N}]) ->
     case node_jsonrpc:decode_na(MyNa) of
         {ok, DecodedMyNa} ->
             if
                 is_integer(N) ->
-                    case ds_serv:get_random_peers(DecodedMyNa, N) of
-                        {ok, Peers} ->
-                            {ok, ds_jsonrpc:encode_peers(Peers)};
-                        {error, too_few_peers} ->
+                    case ds_serv:get_random_nodes(DecodedMyNa, N) of
+                        {ok, NodeDescriptors} ->
+                            {ok, ds_jsonrpc:encode_node_descriptors(
+                                   NodeDescriptors)};
+                        {error, too_few_nodes} ->
                             {error, #json_error{
-                               code = ?DS_JSONRPC_TOO_FEW_PEERS}}
+                               code = ?DS_JSONRPC_TOO_FEW_NODES}}
                     end;
                 true ->
                     JsonError = #json_error{
@@ -113,14 +114,16 @@ ds_handler(<<"get-random-peers">>, [{<<"my-na">>, MyNa}, {<<"n">>, N}]) ->
               data = <<"my-na">>},
             {error, JsonError}
     end;
-ds_handler(<<"publish-peer">>, [{<<"na">>, Na},
+ds_handler(<<"publish-node">>, [{<<"na">>, Na},
                                 {<<"public-key">>, PublicKey},
                                 {<<"flags">>, Flags}]) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
-            Peer = #peer{na = DecodedNa, public_key = base64:decode(PublicKey),
-                         flags = Flags},
-            ds_serv:publish_peer(Peer);
+            NodeDescriptor = #node_descriptor{
+              na = DecodedNa,
+              public_key = base64:decode(PublicKey),
+              flags = Flags},
+            ds_serv:publish_node(NodeDescriptor);
         {error, Reason} ->
             JsonError = #json_error{
               code = ?JSONRPC_INVALID_PARAMS,
@@ -128,10 +131,10 @@ ds_handler(<<"publish-peer">>, [{<<"na">>, Na},
               data = <<"na">>},
             {error, JsonError}
     end;
-ds_handler(<<"unpublish-peer">>, [{<<"na">>, Na}]) ->
+ds_handler(<<"unpublish-node">>, [{<<"na">>, Na}]) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
-            ok = ds_serv:unpublish_peer(DecodedNa),
+            ok = ds_serv:unpublish_node(DecodedNa),
             {ok, true};
         {error, Reason} ->
             JsonError = #json_error{
@@ -140,10 +143,10 @@ ds_handler(<<"unpublish-peer">>, [{<<"na">>, Na}]) ->
               data = <<"na">>},
             {error, JsonError}
     end;
-ds_handler(<<"published-peers">>, [{<<"nas">>, Nas}]) ->
+ds_handler(<<"published-nodes">>, [{<<"nas">>, Nas}]) ->
     case node_jsonrpc:decode_nas(Nas) of
         {ok, DecodedNas} ->
-            {ok, PublishedNas} = ds_serv:published_peers(DecodedNas),
+            {ok, PublishedNas} = ds_serv:published_nodes(DecodedNas),
             {ok, node_jsonrpc:encode_nas(PublishedNas)};
         {error, Reason} ->
             JsonError = #json_error{
@@ -160,10 +163,10 @@ ds_handler(<<"reserve-oa">>, [{<<"oa">>, Oa}, {<<"na">>, Na}]) ->
                     case ds_serv:reserve_oa(DecodedOa, DecodedNa) of
                         ok ->
                             {ok, true};
-                        {error, no_such_peer} ->
+                        {error, no_such_node} ->
                             JsonError = #json_error{
-                              code = ?DS_JSONRPC_UNKNOWN_PEER,
-                              message = <<"Unknown peer">>,
+                              code = ?DS_JSONRPC_UNKNOWN_NODE,
+                              message = <<"Unknown node">>,
                               data = Na},
                             {error, JsonError};
                         {error, too_many_oas} ->
@@ -209,8 +212,8 @@ ds_handler(<<"reserved-oas">>, [{<<"na">>, Na}]) ->
     end;
 %% experimental api (must be restricted)
 ds_handler(<<"get-network-topology">>, undefined) ->
-    {ok, Peers} = ds_serv:get_all_peers(),
-    {ok, get_network_topology(Peers)};
+    {ok, NodeDescriptors} = ds_serv:get_all_nodes(),
+    {ok, get_network_topology(NodeDescriptors)};
 ds_handler(Method, Params) ->
     ?error_log({invalid_request, Method, Params}),
     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
@@ -222,25 +225,25 @@ ds_handler(Method, Params) ->
 
 get_network_topology([]) ->
     [];
-get_network_topology([#peer{na = Na}|Rest]) ->
+get_network_topology([#node_descriptor{na = Na}|Rest]) ->
     case node_route_jsonrpc:get_nodes(undefined, Na) of
         {ok, Nodes} ->
             case node_route_jsonrpc:get_route_entries(undefined, Na) of
                 {ok, Res} ->
                     [[{<<"na">>, node_jsonrpc:encode_na(Na)},
-                      {<<"peers">>, encode_topology_nodes(Nodes)},
+                      {<<"neighbour-nodes">>, encode_topology_nodes(Nodes)},
                       {<<"route-entries">>,
                        encode_topology_route_entries(Res)}]|
                      get_network_topology(Rest)];
                 {error, _Reason} ->
                     [[{<<"na">>, node_jsonrpc:encode_na(Na)},
-                      {<<"peers">>, encode_topology_nodes(Nodes)},
+                      {<<"neighbour-nodes">>, encode_topology_nodes(Nodes)},
                       {<<"route-entries">>, []}]|
                      get_network_topology(Rest)]
             end;
         {error, _Reason} ->
             [[{<<"na">>, node_jsonrpc:encode_na(Na)},
-              {<<"peers">>, []},
+              {<<"neighbour-nodes">>, []},
               {<<"route-entries">>, []}]|
              get_network_topology(Rest)]
     end.
@@ -251,7 +254,7 @@ encode_topology_nodes(Nodes) ->
 encode_topology_node(Node) ->
     [{<<"na">>, node_jsonrpc:encode_na(Node#node.na)},
      {<<"path-cost">>, Node#node.path_cost},
-     {<<"incoming-peer">>,
+     {<<"incoming-neighbour-node">>,
       ?bit_is_set(Node#node.flags, ?F_NODE_IS_INCOMING_PEER)}].
 
 encode_topology_route_entries(Res) ->

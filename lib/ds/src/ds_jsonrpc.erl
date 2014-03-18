@@ -13,12 +13,13 @@
 
 %%% external exports
 -export([format_error/1]).
--export([enforce_peer_ttl/3]).
--export([get_number_of_peers/3, get_peer/4, get_all_peers/3,
-         get_random_peers/5]).
--export([publish_peer/4, unpublish_peer/4, published_peers/4]).
+-export([enforce_node_ttl/3]).
+-export([get_number_of_nodes/3, get_node/4, get_all_nodes/3,
+         get_random_nodes/5]).
+-export([publish_node/4, unpublish_node/4, published_nodes/4]).
 -export([reserve_oa/5, reserved_oas/4]).
--export([encode_peers/1, encode_peer/1, decode_peers/1, decode_peer/1]).
+-export([encode_node_descriptors/1, encode_node_descriptor/1,
+         decode_node_descriptors/1, decode_node_descriptor/1]).
 
 %%% internal exports
 
@@ -43,15 +44,15 @@ format_error(Reason) ->
     inet:format_error(Reason).
 
 %%%
-%%% exported: enforce_peer_ttl
+%%% exported: enforce_node_ttl
 %%%
 
--spec enforce_peer_ttl(httplib:ip_address_port() | 'undefined',
-                       httplib:ip_address_port(), node_crypto:pki_key()) ->
+-spec enforce_node_ttl(httplib:ip_address_port(), httplib:ip_address_port(),
+                       node_crypto:pki_key()) ->
                               'ok' | {'error', error_reason()}.
 
-enforce_peer_ttl(LocalIpAddressPort, IpAddressPort, PrivateKey) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"enforce-peer-ttl">>,
+enforce_node_ttl(MyIpAddressPort, IpAddressPort, PrivateKey) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"enforce-node-ttl">>,
                       PrivateKey) of
         {ok, true} ->
             ok;
@@ -60,94 +61,95 @@ enforce_peer_ttl(LocalIpAddressPort, IpAddressPort, PrivateKey) ->
     end.
 
 %%%
-%%% exported: get_number_of_peers
+%%% exported: get_number_of_nodes
 %%%
 
--spec get_number_of_peers(httplib:ip_address_port() | 'undefined',
-                          httplib:ip_address_port(), node_crypto:pki_key()) ->
+-spec get_number_of_nodes(httplib:ip_address_port(), httplib:ip_address_port(),
+                          node_crypto:pki_key()) ->
                                  {'ok', non_neg_integer()} |
                                  {'error', error_reason()}.
 
-get_number_of_peers(LocalIpAddressPort, IpAddressPort, PrivateKey) ->
-    jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"get-number-of-peers">>,
+get_number_of_nodes(MyIpAddressPort, IpAddressPort, PrivateKey) ->
+    jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"get-number-of-nodes">>,
                  PrivateKey).
 
 %%%
-%%% exported: get_peer
+%%% exported: get_node
 %%%
 
--spec get_peer(httplib:ip_address_port() | 'undefined',
-               httplib:ip_address_port(), node_crypto:pki_key(), na()) ->
-                      {'ok', #peer{}} | {'error', error_reason()}.
+-spec get_node(httplib:ip_address_port(), httplib:ip_address_port(),
+               node_crypto:pki_key(), na()) ->
+                      {'ok', #node_descriptor{}} | {'error', error_reason()}.
 
-get_peer(LocalIpAddressPort, IpAddressPort, PrivateKey, Na) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"get-peer">>,
+get_node(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"get-node">>,
                       PrivateKey, [{<<"na">>, node_jsonrpc:encode_na(Na)}]) of
-        {ok, Peer}->
-            decode_peer(Peer);
+        {ok, NodeDescriptor}->
+            decode_node_descriptor(NodeDescriptor);
         {error, Reason} ->
             {error, Reason}
     end.
 
 %%%
-%%% exported: get_all_peers
+%%% exported: get_all_nodes
 %%%
 
--spec get_all_peers(httplib:ip_address_port() | 'undefined',
-                    httplib:ip_address_port(), node_crypto:pki_key()) ->
-                           {'ok', [#peer{}]} | {'error', error_reason()}.
+-spec get_all_nodes(httplib:ip_address_port(), httplib:ip_address_port(),
+                    node_crypto:pki_key()) ->
+                           {'ok', [#node_descriptor{}]} |
+                           {'error', error_reason()}.
 
-get_all_peers(LocalIpAddressPort, IpAddressPort, PrivateKey) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"get-all-peers">>,
+get_all_nodes(MyIpAddressPort, IpAddressPort, PrivateKey) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"get-all-nodes">>,
                       PrivateKey) of
-        {ok, Peers}->
-            decode_peers(Peers);
+        {ok, NodeDescriptors}->
+            decode_node_descriptors(NodeDescriptors);
         {error, Reason} ->
             {error, Reason}
     end.
 
 %%%
-%%% exported: get_random_peers
+%%% exported: get_random_nodes
 %%%
 
--spec get_random_peers(httplib:ip_address_port() | 'undefined',
-                       httplib:ip_address_port(), node_crypto:pki_key(), na(),
-                       non_neg_integer()) ->
-                              {'ok', [#peer{}]} | {'error', error_reason()}.
+-spec get_random_nodes(httplib:ip_address_port(), httplib:ip_address_port(),
+                       node_crypto:pki_key(), na(), non_neg_integer()) ->
+                              {'ok', [#node_descriptor{}]} |
+                              {'error', error_reason()}.
 
-get_random_peers(LocalIpAddressPort, IpAddressPort, PrivateKey, MyNa, N) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"get-random-peers">>,
+get_random_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, MyNa, N) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"get-random-nodes">>,
                       PrivateKey, [{<<"my-na">>, node_jsonrpc:encode_na(MyNa)},
                                    {<<"n">>, N}]) of
-        {ok, Peers}->
-            decode_peers(Peers);
+        {ok, NodeDescriptors}->
+            decode_node_descriptors(NodeDescriptors);
         {error, Reason} ->
             {error, Reason}
     end.
 
 %%%
-%%% exported: publish_peer
+%%% exported: publish_node
 %%%
 
--spec publish_peer(httplib:ip_address_port() | 'undefined',
-                   httplib:ip_address_port(), node_crypto:pki_key(), #peer{}) ->
-                          {'ok', PeerTTL :: non_neg_integer()} |
+-spec publish_node(httplib:ip_address_port(), httplib:ip_address_port(),
+                   node_crypto:pki_key(), #node_descriptor{}) ->
+                          {'ok', NodeTTL :: non_neg_integer()} |
                           {'error', error_reason()}.
 
-publish_peer(LocalIpAddressPort, IpAddressPort, PrivateKey, Peer) ->
-    jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"publish-peer">>,
-                 PrivateKey, encode_peer(Peer)).
+publish_node(MyIpAddressPort, IpAddressPort, PrivateKey, NodeDescriptor) ->
+    jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"publish-node">>,
+                 PrivateKey, encode_node_descriptor(NodeDescriptor)).
 
 %%%
-%%% exported: unpublish_peer
+%%% exported: unpublish_node
 %%%
 
--spec unpublish_peer(httplib:ip_address_port() | 'undefined',
-                     httplib:ip_address_port(), node_crypto:pki_key(), na()) ->
+-spec unpublish_node(httplib:ip_address_port(), httplib:ip_address_port(),
+                     node_crypto:pki_key(), na()) ->
                             'ok' | {'error', error_reason()}.
 
-unpublish_peer(LocalIpAddressPort, IpAddressPort, PrivateKey, Na) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"unpublish-peer">>,
+unpublish_node(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"unpublish-node">>,
                       PrivateKey, [{<<"na">>, node_jsonrpc:encode_na(Na)}]) of
         {ok, true} ->
             ok;
@@ -156,16 +158,15 @@ unpublish_peer(LocalIpAddressPort, IpAddressPort, PrivateKey, Na) ->
     end.
 
 %%%
-%%% exported: published_peers
+%%% exported: published_nodes
 %%%
 
--spec published_peers(httplib:ip_address_port() | 'undefined',
-                      httplib:ip_address_port(), node_crypto:pki_key(),
-                      [na()]) ->
+-spec published_nodes(httplib:ip_address_port(), httplib:ip_address_port(),
+                      node_crypto:pki_key(), [na()]) ->
                              {'ok', [na()]} | {'error', error_reason()}.
 
-published_peers(LocalIpAddressPort, IpAddressPort, PrivateKey, Nas) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"published-peers">>,
+published_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, Nas) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"published-nodes">>,
                       PrivateKey,
                       [{<<"nas">>, node_jsonrpc:encode_nas(Nas)}]) of
         {ok, PublishedNas} ->
@@ -178,13 +179,12 @@ published_peers(LocalIpAddressPort, IpAddressPort, PrivateKey, Nas) ->
 %%% exported: reserve_oa
 %%%
 
--spec reserve_oa(httplib:ip_address_port() | 'undefined',
-                 httplib:ip_address_port(), node_crypto:pki_key(), oa(),
-                 na()) ->
+-spec reserve_oa(httplib:ip_address_port(), httplib:ip_address_port(),
+                 node_crypto:pki_key(), oa(), na()) ->
                         'ok' | {'error', error_reason()}.
 
-reserve_oa(LocalIpAddressPort, IpAddressPort, PrivateKey, Oa, Na) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"reserve-oa">>,
+reserve_oa(MyIpAddressPort, IpAddressPort, PrivateKey, Oa, Na) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"reserve-oa">>,
                       PrivateKey, [{<<"oa">>, node_jsonrpc:encode_oa(Oa)},
                                    {<<"na">>, node_jsonrpc:encode_na(Na)}]) of
         {ok, true} ->
@@ -197,12 +197,12 @@ reserve_oa(LocalIpAddressPort, IpAddressPort, PrivateKey, Oa, Na) ->
 %%% exported: reserved_oas
 %%%
 
--spec reserved_oas(httplib:ip_address_port() | 'undefined',
-                   httplib:ip_address_port(), node_crypto:pki_key(), na()) ->
+-spec reserved_oas(httplib:ip_address_port(), httplib:ip_address_port(),
+                   node_crypto:pki_key(), na()) ->
                           {'ok', [oa()]} | {'error', error_reason()}.
 
-reserved_oas(LocalIpAddressPort, IpAddressPort, PrivateKey, Na) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"reserved-oas">>,
+reserved_oas(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"reserved-oas">>,
                       PrivateKey, [{<<"na">>, node_jsonrpc:encode_na(Na)}]) of
         {ok, Oas} ->
             node_jsonrpc:decode_oas(Oas);
@@ -211,52 +211,55 @@ reserved_oas(LocalIpAddressPort, IpAddressPort, PrivateKey, Na) ->
     end.
 
 %%%
-%%% exported: encode_peers (to be used by ds_jsonrpc_serv.erl) ok
+%%% exported: encode_node_descriptors (to be used by ds_jsonrpc_serv.erl)
 %%%
 
--spec encode_peers([#peer{}]) -> jsx:json_term().
+-spec encode_node_descriptors([#node_descriptor{}]) -> jsx:json_term().
 
-encode_peers(Peers) ->
-    [encode_peer(Peer) || Peer <- Peers].
-
-%%%
-%%% exported: encode_peer (to be used by ds_jsonrpc_serv.erl)
-%%%
-
--spec encode_peer(#peer{}) -> jsx:json_term().
-
-encode_peer(Peer) ->
-    [{<<"na">>, node_jsonrpc:encode_na(Peer#peer.na)},
-     {<<"public-key">>, base64:encode(Peer#peer.public_key)},
-     {<<"flags">>, Peer#peer.flags}].
+encode_node_descriptors(NodeDescriptors) ->
+    [encode_node_descriptor(NodeDescriptor) ||
+        NodeDescriptor <- NodeDescriptors].
 
 %%%
-%%% exported: decode_peers (to be used by ds_jsonrpc_serv.erl)
+%%% exported: encode_node_descriptor (to be used by ds_jsonrpc_serv.erl)
 %%%
 
--spec decode_peers(jsx:json_term()) ->
-                          {'ok', [#peer{}]} | {'error', 'einval'}.
+-spec encode_node_descriptor(#node_descriptor{}) -> jsx:json_term().
 
-decode_peers(Peers) ->
-    node_jsonrpc:decode(Peers, fun decode_peer/1).
+encode_node_descriptor(NodeDescriptor) ->
+    [{<<"na">>, node_jsonrpc:encode_na(NodeDescriptor#node_descriptor.na)},
+     {<<"public-key">>,
+      base64:encode(NodeDescriptor#node_descriptor.public_key)},
+     {<<"flags">>, NodeDescriptor#node_descriptor.flags}].
 
 %%%
-%%% exported: decode_peer (to be used by ds_jsonrpc_serv.erl)
+%%% exported: decode_node_descriptors (to be used by ds_jsonrpc_serv.erl)
 %%%
 
--spec decode_peer(jsx:json_term()) ->
-                          {'ok', #peer{}} | {'error', 'einval'}.
+-spec decode_node_descriptors(jsx:json_term()) -> {'ok', [#node_descriptor{}]} |
+                                                  {'error', 'einval'}.
 
-decode_peer([{<<"na">>, Na},
-             {<<"public-key">>, PublicKey},
-             {<<"flags">>, Flags}])
+decode_node_descriptors(NodeDescriptors) ->
+    node_jsonrpc:decode(NodeDescriptors, fun decode_node_descriptor/1).
+
+%%%
+%%% exported: decode_node_descriptor (to be used by ds_jsonrpc_serv.erl)
+%%%
+
+-spec decode_node_descriptor(jsx:json_term()) -> {'ok', #node_descriptor{}} |
+                                                 {'error', 'einval'}.
+
+decode_node_descriptor([{<<"na">>, Na},
+                        {<<"public-key">>, PublicKey},
+                        {<<"flags">>, Flags}])
   when is_binary(PublicKey), is_integer(Flags) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
-            {ok, #peer{na = DecodedNa, public_key = base64:decode(PublicKey),
-                       flags = Flags}};
+            {ok, #node_descriptor{na = DecodedNa,
+                                  public_key = base64:decode(PublicKey),
+                                  flags = Flags}};
         {error, Reason} ->
             {error, Reason}
     end;
-decode_peer(_Peer) ->
+decode_node_descriptor(_NodeDescriptor) ->
     {error, einval}.

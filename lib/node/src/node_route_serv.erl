@@ -206,9 +206,9 @@ loop(#state{parent = Parent,
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
         bootstrap ->
-            case ds_jsonrpc:publish_peer(
+            case ds_jsonrpc:publish_node(
                    LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                   #peer{na = MyNa, public_key = PublicKey}) of
+                   #node_descriptor{na = MyNa, public_key = PublicKey}) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Published node address ~s",
                                 [net_tools:string_address(MyNa)]),
@@ -256,9 +256,9 @@ loop(#state{parent = Parent,
                     loop(S)
             end;
         republish_self ->
-            case ds_jsonrpc:publish_peer(
+            case ds_jsonrpc:publish_node(
                    LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                   #peer{na = MyNa, public_key = PublicKey}) of
+                   #node_descriptor{na = MyNa, public_key = PublicKey}) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Republished node address ~s",
                                 [net_tools:string_address(MyNa)]),
@@ -401,7 +401,7 @@ refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
               {MyNaIpAddress, _NaPort} = MyNa = LocalIpAddressPort, PrivateKey,
               NumberOfPeers, AutoRecalc) ->
     ?daemon_log("Known peers: ~s", [net_tools:string_addresses(PeerNas)]),
-    case ds_jsonrpc:published_peers(LocalIpAddressPort, DsIpAddressPort,
+    case ds_jsonrpc:published_nodes(LocalIpAddressPort, DsIpAddressPort,
                                     PrivateKey, PeerNas) of
         {ok, PublishedPeerNas} ->
             ?daemon_log("Still published peers: ~s",
@@ -432,18 +432,18 @@ get_more_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
                DsIpAddressPort,
                {MyNaIpAddress, _NaPort} = MyNa = LocalIpAddressPort, PrivateKey,
                AutoRecalc, RemainingPeerNas, NumberOfMissingPeers) ->
-    case ds_jsonrpc:get_random_peers(
+    case ds_jsonrpc:get_random_nodes(
            LocalIpAddressPort, DsIpAddressPort, PrivateKey, MyNa,
            NumberOfMissingPeers) of
         {ok, NewPeers} ->
-            NewPeerNas = [NewPeer#peer.na || NewPeer <- NewPeers],
+            NewPeerNas = [NewPeer#node_descriptor.na || NewPeer <- NewPeers],
             ?daemon_log("Found ~w new peers: ~s",
                         [NumberOfMissingPeers,
                          net_tools:string_addresses(NewPeerNas)]),
             purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
                         PeerNas),
             lists:foreach(
-              fun(#peer{na = PeerNa, public_key = PeerPublicKey}) ->
+              fun(#node_descriptor{na = PeerNa, public_key = PeerPublicKey}) ->
                       {ok, NodeSendServ} =
                           node_send_sup:start_node_send_serv(
                             MyNa, PeerNa, NodeInstanceSup),
@@ -495,9 +495,9 @@ handle_route_entry(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
         true ->
             update_route_entry(RouteDb, PspDb, PeerNas, MyNa, MyOa, Re);
         false ->
-            case ds_jsonrpc:get_peer(LocalIpAddressPort, DsIpAddressPort,
+            case ds_jsonrpc:get_node(LocalIpAddressPort, DsIpAddressPort,
                                      PrivateKey, ViaNa) of
-                {ok, #peer{public_key = PublicKey}} ->
+                {ok, #node_descriptor{public_key = PublicKey}} ->
                     ?daemon_log("~s adding peer ~s",
                                 [net_tools:string_address(MyOa),
                                  net_tools:string_address(ViaNa)]),

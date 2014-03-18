@@ -40,6 +40,10 @@ does it actually work in all cases?
 ds_serv.erl
 -----------
 N Peers? Nodes?
+ peer -> node_descritor
+ local -> my
+ remove na as input when suitbale
+
 * http://www.h-online.com/security/features/How-Skype-Co-get-round-firewalls-747197.html
 N Use dets instead of ets (should we?)
   - Add anond.conf parameter to set directory for dets file.

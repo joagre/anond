@@ -35,18 +35,18 @@
                            {'error', jsonrpc:error_reason()}.
 
 get_all_nodes(DsIpAddressPort) ->
-    case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
-        {ok, Peers} ->
+    case ds_jsonrpc:get_all_nodes(undefined, DsIpAddressPort) of
+        {ok, NodeDescriptors} ->
             AllNodes =
                 lists:map(
-                  fun(#peer{na = Na}) ->
+                  fun(#node_descriptor{na = Na}) ->
                           case node_route_jsonrpc:get_nodes(undefined, Na) of
                               {ok, Nodes} ->
                                   {Na, Nodes};
                               {error, Reason} ->
                                   {Na, {not_available, Reason}}
                           end
-                  end, Peers),
+                  end, NodeDescriptors),
             {ok, AllNodes};
         {error, Reason} ->
             {error, Reason}
@@ -75,11 +75,11 @@ get_nodes(Na) ->
                                    {'error', jsonrpc:error_reason()}.
 
 get_all_route_entries(DsIpAddressPort) ->
-    case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
-        {ok, Peers} ->
+    case ds_jsonrpc:get_all_nodes(undefined, DsIpAddressPort) of
+        {ok, NodeDescriptors} ->
             AllRouteTables =
                 lists:map(
-                  fun(#peer{na = Na}) ->
+                  fun(#node_descriptor{na = Na}) ->
                           case node_route_jsonrpc:get_route_entries(
                                  undefined, Na) of
                               {ok, Res} ->
@@ -87,7 +87,7 @@ get_all_route_entries(DsIpAddressPort) ->
                               {error, Reason} ->
                                   {Na, {not_available, Reason}}
                           end
-                  end, Peers),
+                  end, NodeDescriptors),
             {ok, AllRouteTables};
         {error, Reason} ->
             {error, Reason}
@@ -110,12 +110,12 @@ get_route_entries(Na) ->
 -spec enable_recalc_for_all(ds_ip_address_port()) -> 'ok'.
 
 enable_recalc_for_all(DsIpAddressPort) ->
-    case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
-        {ok, Peers} ->
+    case ds_jsonrpc:get_all_nodes(undefined, DsIpAddressPort) of
+        {ok, NodeDescriptors} ->
             lists:foreach(
-              fun(#peer{na = Na}) ->
+              fun(#node_descriptor{na = Na}) ->
                       node_route_jsonrpc:enable_recalc(undefined, Na)
-              end, Peers),
+              end, NodeDescriptors),
             ok;
         {error, Reason} ->
             {error, Reason}
@@ -133,12 +133,12 @@ enable_recalc(Na) ->
 -spec disable_recalc_for_all(ds_ip_address_port()) -> 'ok'.
 
 disable_recalc_for_all(DsIpAddressPort) ->
-    case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
-        {ok, Peers} ->
+    case ds_jsonrpc:get_all_nodes(undefined, DsIpAddressPort) of
+        {ok, NodeDescriptors} ->
             lists:foreach(
-              fun(#peer{na = Na}) ->
+              fun(#node_descriptor{na = Na}) ->
                       node_route_jsonrpc:disable_recalc(undefined, Na)
-              end, Peers),
+              end, NodeDescriptors),
             ok;
         {error, Reason} ->
             {error, Reason}
@@ -156,12 +156,12 @@ disable_recalc(Na) ->
 -spec recalc_all(ds_ip_address_port()) -> 'ok'.
 
 recalc_all(DsIpAddressPort) ->
-    case ds_jsonrpc:get_all_peers(undefined, DsIpAddressPort) of
-        {ok, Peers} ->
+    case ds_jsonrpc:get_all_nodes(undefined, DsIpAddressPort) of
+        {ok, NodeDescriptors} ->
             lists:foreach(
-              fun(#peer{na = Na}) ->
+              fun(#node_descriptor{na = Na}) ->
                       node_route_jsonrpc:recalc(undefined, Na)
-              end, Peers),
+              end, NodeDescriptors),
             ok;
         {error, Reason} ->
             {error, Reason}
