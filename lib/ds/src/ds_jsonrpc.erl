@@ -1,7 +1,7 @@
 -module(ds_jsonrpc).
 
 %% example use:
-%% ds_jsonrpc:enforce_peer_ttl(undefined, {{192,168,1,80}, <<>>, 6700}).
+%% ds_jsonrpc:housekeeping(undefined, {{192,168,1,80}, <<>>, 6700}).
 %% ds_jsonrpc:get_number_of_peers(undefined, {{192,168,1,80}, <<>>, 6700}).
 %% ds_jsonrpc:get_all_peers(undefined, {{192,168,1,80}, <<>>, 6700}).
 %% ds_jsonrpc:get_random_peers(undefined, {{192,168,1,80}, 6700}, <<>>, {{192,168,1,80}, 9001}, 1).
@@ -13,7 +13,7 @@
 
 %%% external exports
 -export([format_error/1]).
--export([enforce_node_ttl/3]).
+-export([housekeeping/3]).
 -export([get_number_of_nodes/3, get_node/4, get_all_nodes/3,
          get_random_nodes/4]).
 -export([publish_node/4, unpublish_node/4, published_nodes/4]).
@@ -44,15 +44,15 @@ format_error(Reason) ->
     inet:format_error(Reason).
 
 %%%
-%%% exported: enforce_node_ttl
+%%% exported: housekeeping
 %%%
 
--spec enforce_node_ttl(httplib:ip_address_port(), httplib:ip_address_port(),
-                       node_crypto:pki_key()) ->
-                              'ok' | {'error', error_reason()}.
+-spec housekeeping(httplib:ip_address_port(), httplib:ip_address_port(),
+                   node_crypto:pki_key()) ->
+                          'ok' | {'error', error_reason()}.
 
-enforce_node_ttl(MyIpAddressPort, IpAddressPort, PrivateKey) ->
-    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"enforce-node-ttl">>,
+housekeeping(MyIpAddressPort, IpAddressPort, PrivateKey) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"housekeeping">>,
                       PrivateKey) of
         {ok, true} ->
             ok;

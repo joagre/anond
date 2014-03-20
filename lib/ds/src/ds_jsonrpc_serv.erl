@@ -1,7 +1,7 @@
 -module(ds_jsonrpc_serv).
 
 %% example use:
-%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "enforce-peer-ttl", "id": 1}' https://127.0.0.1:6700/jsonrpc
+%% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "housekeeping", "id": 1}' https://127.0.0.1:6700/jsonrpc
 %% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "get-number-of-peers", "id": 1}' https://127.0.0.1:6700/jsonrpc
 %% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "get-all-peers", "id": 1}' https://127.0.0.1:6700/jsonrpc
 %% $ curl -k -X POST -d '{"jsonrpc": "2.0", "method": "get-random-peers", "params": {"my-na": "127.0.0.1:50010", "n": 4}, "id": 1}' https://127.0.0.1:6700/jsonrpc
@@ -60,8 +60,8 @@ start_link() ->
     jsonrpc_serv:start_link(Options, IpAddress, Port, CertFile, [],
                             {?MODULE, ds_handler, []}, Docroot).
 
-ds_handler(_MyNa, <<"enforce-node-ttl">>, undefined) ->
-    ok = ds_serv:enforce_node_ttl(),
+ds_handler(_MyNa, <<"housekeeping">>, undefined) ->
+    ok = ds_serv:housekeeping(),
     {ok, true};
 ds_handler(_MyNa, <<"get-number-of-nodes">>, undefined) ->
     ds_serv:get_number_of_nodes();

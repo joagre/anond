@@ -29,7 +29,8 @@
           name    :: type_name(),
           info    :: binary(),
           typical :: json_value(),
-          convert :: fun((json_value()) -> json_value())
+          convert :: fun((json_value()) -> json_value()),
+          reloadable = true
          }).
 
 -type json_schema() :: [{atom(), #json_type{}}] | [json_schema()].

@@ -8,7 +8,8 @@ N Clean up in deaemon_log and dbg_log macro usage.
 L Write documentation (Use LyX)
   - A White paper
   - End-user guide (client and server users)
-L Ask Per to contribute the delayed start patch to the Erlang distro.
+N Ask Per to contribute the delayed start patch to the Erlang distro.
+  _ Verify that we use it ok, i.e. for common_config_json_serv errors
 L Add package management support for:
   - Ubuntu
   - Mac
@@ -21,9 +22,7 @@ L Implement anond control panels for:
 
 Directory server
 ----------------
-N Use dets instead of ets
-  - Add anond.conf parameter to set directory for dets file.
-  - Add anond.conf parameter to clear the dets file on each restart.
+N Cleanup public keys older than a number of weeks (for inactive nodes)
 N Cloak experimental json-rpc functions, i.e. reserved-oas() and
 get_network_topology()
 * Implement firewall UDP hole punching:
@@ -38,14 +37,16 @@ N Local -> My
 N Peer -> NeighbourNode
 N Cloak experimental json-rpc functions (all of them)
 N Start to use the PKI to encrypt tunnel traffic
+  - handshake, rethinkg directory server get_node(). needed? etc
+  - call ds_serv:get_node (renamed to get_public_key?)
 N Integrate Patrik's psp code and authentication of path costs code
+N Many oas per na
 * Limit download and upload rate in B/s
 * Use many overlay addresses and pick new ones now and then
 * Pick new neighbour nodes now and then when needed(TM)
 
 d3.js
 -----
-N Add color to curves
 * Does it actually work in all cases when nodes come and go?
 
 DNS

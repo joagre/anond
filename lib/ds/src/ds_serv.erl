@@ -2,7 +2,7 @@
 
 %%% external exports
 -export([start_link/0, stop/0, stop/1]).
--export([enforce_node_ttl/0]).
+-export([housekeeping/0]).
 -export([get_number_of_nodes/0, get_node/1, get_all_nodes/0,
          get_random_nodes/2]).
 -export([publish_node/1, unpublish_node/1, published_nodes/1]).
@@ -20,25 +20,31 @@
 -include_lib("util/include/shorthand.hrl").
 
 %%% constants
+-define(NODE_DB, node_db).
 
 %%% records
 -record(state, {
 	  parent           :: pid(),
-	  node_db          :: ets:tid(),
+	  node_db          :: atom(),
           oa_db            :: ets:tid(),
           %% anond.conf parameters
-          mode             :: common_config_jsonrpc_serv:mode(),
-          node_ttl         :: non_neg_integer(),
-          max_oas_per_node :: non_neg_integer()
+          mode                  :: common_config_jsonrpc_serv:mode(),
+          db_path               :: binary(),
+          db_clear_on_start     :: boolean(),
+          node_ttl              :: non_neg_integer(),
+          max_oas_per_node      :: non_neg_integer()
 	 }).
 
 %%% types
+-define(TEN_MINUTES, (1000*60*10)).
 
 %%%
 %%% exported: start_link
 %%%
 
--spec start_link() -> {'ok', pid()} | {'error', 'already_started'}.
+-spec start_link() -> {'ok', pid()} |
+                      {'error', 'already_started' |
+                                {'node_db_not_available', term()}}.
 
 start_link() ->
     Args = [self()],
@@ -65,13 +71,13 @@ stop(Timeout) ->
     serv:call(?MODULE, stop, Timeout).
 
 %%%
-%%% exported: enforce_node_ttl
+%%% exported: housekeeping
 %%%
 
--spec enforce_node_ttl() -> 'ok'.
+-spec housekeeping() -> 'ok'.
 
-enforce_node_ttl() ->
-    ?MODULE ! {enforce_node_ttl, false},
+housekeeping() ->
+    ?MODULE ! {housekeeping, false},
     ok.
 
 %%%
@@ -164,7 +170,7 @@ reserved_oas(Na) ->
 -spec lookup_node(na()) -> [#node_descriptor{}].
 
 lookup_node(Na) ->
-    ets:lookup(node_db, Na).
+    dets:lookup(?NODE_DB, Na).
 
 %%%
 %%% server loop
@@ -174,15 +180,29 @@ init(Parent) ->
     process_flag(trap_exit, true),
     case catch register(?MODULE, self()) of
         true ->
-            {A1, A2, A3} = erlang:now(),
-            random:seed({A1, A2, A3}),
             S = read_config(#state{}),
-            ok = config_json_serv:subscribe(),
-	    NodeDb = ets:new(node_db, [{keypos, 2}, named_table]),
-	    OaDb = ets:new(oa_db, [bag]),
-            timelib:start_timer(S#state.node_ttl, {enforce_node_ttl, true}),
-	    Parent ! {self(), started},
-	    loop(S#state{parent = Parent, node_db = NodeDb, oa_db = OaDb});
+            if
+                S#state.db_clear_on_start ->
+                    file:delete(S#state.db_path);
+                true ->
+                    keep
+            end,
+            case dets:open_file(?NODE_DB,
+                                [{file, S#state.db_path}, {keypos, 2}]) of
+                {ok, NodeDb} ->
+                    {A1, A2, A3} = erlang:now(),
+                    random:seed({A1, A2, A3}),
+                    ok = config_json_serv:subscribe(),
+                    OaDb = ets:new(oa_db, [bag]),
+                    timelib:start_timer(?TEN_MINUTES, {housekeeping, true}),
+                    Parent ! {self(), started},
+                    loop(S#state{parent = Parent, node_db = NodeDb,
+                                 oa_db = OaDb});
+                {error, Reason} ->
+                    ?daemon_log("~s: Not available (~p)",
+                                [S#state.db_path, Reason]),
+                    Parent ! {self(), {node_db_not_available, Reason}}
+            end;
         _ ->
             Parent ! {self(), already_started}
     end.
@@ -191,16 +211,18 @@ loop(#state{parent = Parent,
             node_db = NodeDb,
             oa_db = OaDb,
             mode = Mode,
+            db_path = _DbPath,
+            db_clear_on_start = _DbCLearOnStart,
             node_ttl = NodeTTL,
             max_oas_per_node = MaxOasPerNode} = S) ->
     receive
         config_updated ->
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
-        {enforce_node_ttl, Repeat} ->
+        {housekeeping, Repeat} ->
             ?daemon_log("Looking for stale nodes...", []),
             StaleNas =
-                ets:foldl(
+                dets:foldl(
                   fun(#node_descriptor{na = Na, last_updated = LastUpdated},
                       Acc) ->
                           Delta = timelib:ugnow_delta({minus, LastUpdated}),
@@ -212,30 +234,30 @@ loop(#state{parent = Parent,
                           end
                   end, [], NodeDb),
             lists:foreach(fun(Na) ->
-                                  true = ets:delete(NodeDb, Na),
+                                  ok = dets:delete(NodeDb, Na),
                                   true = ets:match_delete(OaDb, {'_', Na}),
                                   ?daemon_log("Removed stale node ~s",
                                               [net_tools:string_address(Na)])
                           end, StaleNas),
             if
                 Repeat ->
-                    timelib:start_timer(NodeTTL, {enforce_node_ttl, true}),
+                    timelib:start_timer(?TEN_MINUTES, {housekeeping, true}),
                     loop(S);
                 true ->
                     loop(S)
             end;
 	{From, stop} ->
             ?daemon_log("Stopping directory server...", []),
-	    ets:delete(NodeDb),
+	    dets:close(NodeDb),
 	    ets:delete(OaDb),
 	    From ! {self(), ok};
         {From, get_number_of_nodes} ->
-            NumberOfNodes = ets:info(NodeDb, size),
+            NumberOfNodes = dets:info(NodeDb, size),
             ?daemon_log("Calculated number of nodes (~w)", [NumberOfNodes]),
             From ! {self(), {ok, NumberOfNodes}},
             loop(S);
         {From, {get_node, Na}} ->
-            case ets:lookup(NodeDb, Na) of
+            case dets:lookup(NodeDb, Na) of
                 [NodeDescriptor] ->
                     From ! {self(), {ok, NodeDescriptor}},
                     loop(S);
@@ -244,7 +266,10 @@ loop(#state{parent = Parent,
                     loop(S)
             end;
         {From, get_all_nodes} ->
-            AllNodeDescriptors = ets:tab2list(NodeDb),
+            AllNodeDescriptors =
+                dets:foldl(fun(NodeDescriptor, Acc) ->
+                                   [NodeDescriptor|Acc]
+                           end, [], NodeDb),
             ?daemon_log("Extracted all (~w) nodes",
                         [length(AllNodeDescriptors)]),
             From ! {self(), {ok, AllNodeDescriptors}},
@@ -265,7 +290,7 @@ loop(#state{parent = Parent,
                     loop(S)
             end;
         {From, {get_random_nodes, MyNa, N}} when is_integer(N) ->
-            case ets:info(NodeDb, size) of
+            case dets:info(NodeDb, size) of
                 Size when N >= Size ->
                     ?daemon_log("~w random nodes could not be extracted",
                                 [Size]),
@@ -285,26 +310,26 @@ loop(#state{parent = Parent,
         {From, {publish_node, #node_descriptor{na = Na} = NodeDescriptor}} ->
             UpdatedNodeDescriptor =
                 NodeDescriptor#node_descriptor{last_updated = timelib:ugnow()},
-            true = ets:insert(NodeDb, UpdatedNodeDescriptor),
+            ok = dets:insert(NodeDb, UpdatedNodeDescriptor),
             ?daemon_log("Node ~s (re)published",
                         [net_tools:string_address(Na)]),
             From ! {self(), {ok, NodeTTL}},
             loop(S);
         {From, {unpublish_node, Na}} ->
-            true = ets:delete(NodeDb, Na),
+            ok = dets:delete(NodeDb, Na),
             ?daemon_log("Node ~s unpublished", [net_tools:string_address(Na)]),
             From ! {self(), ok},
             loop(S);
         {From, {published_nodes, Nas}} ->
             StillPublishedNas =
-                [Na || Na <- Nas, ets:member(NodeDb, Na) == true],
+                [Na || Na <- Nas, dets:member(NodeDb, Na) == true],
             ?daemon_log("Out of these nodes ~s, these are still published ~s",
                         [net_tools:string_addresses(Nas),
                          net_tools:string_addresses(StillPublishedNas)]),
             From ! {self(), {ok, StillPublishedNas}},
             loop(S);
         {From, {reserve_oa, Oa, Na}} ->
-            case ets:lookup(NodeDb, Na) of
+            case dets:lookup(NodeDb, Na) of
                 [] ->
                     ?daemon_log(
                        "Rejected reservation of overlay address ~s to unknown "
@@ -346,7 +371,7 @@ loop(#state{parent = Parent,
                     loop(S)
             end;
         {'EXIT', Parent, Reason} ->
-	    true = ets:delete(NodeDb),
+	    ok = dets:close(NodeDb),
             exit(Reason);
         UnknownMessage ->
             ?error_log({unknown_message, UnknownMessage}),
@@ -359,9 +384,12 @@ loop(#state{parent = Parent,
 
 read_config(S) ->
     Mode = ?config([mode]),
+    DbPath = ?config(['directory-server', db, path]),
+    DbClearOnStart = ?config(['directory-server', db, 'clear-on-start']),
     NodeTTL = ?config(['directory-server', 'node-ttl']),
     MaxOasPerNode = ?config(['directory-server', 'max-oas-per-node']),
-    S#state{mode = Mode, node_ttl = NodeTTL, max_oas_per_node = MaxOasPerNode}.
+    S#state{mode = Mode, db_path = DbPath, db_clear_on_start = DbClearOnStart,
+            node_ttl = NodeTTL, max_oas_per_node = MaxOasPerNode}.
 
 %%%
 %%% get_random_nodes
@@ -385,7 +413,7 @@ lookup_simulated_nodes(NodeDb, NeighbourNodeNas) ->
 lookup_simulated_nodes(_NodeDb, [], Acc) ->
     {ok, lists:reverse(Acc)};
 lookup_simulated_nodes(NodeDb, [NeighbourNodeNa|Rest], Acc) ->
-    case ets:lookup(NodeDb, NeighbourNodeNa) of
+    case dets:lookup(NodeDb, NeighbourNodeNa) of
         [NodeDescriptor] ->
             lookup_simulated_nodes(NodeDb, Rest, [NodeDescriptor|Acc]);
         [] ->
@@ -395,7 +423,7 @@ lookup_simulated_nodes(NodeDb, [NeighbourNodeNa|Rest], Acc) ->
 %% http://en.wikipedia.org/wiki/Reservoir_sampling
 get_random_nodes(NodeDb, MyNa, N) ->
     Tid = ets:new(sample_db, []),
-    NextKey = init_sample(NodeDb, MyNa, ets:first(NodeDb), N, Tid),
+    NextKey = init_sample(NodeDb, MyNa, dets:first(NodeDb), N, Tid),
     Sample = extract_node_sample(NodeDb, MyNa, NextKey, N, Tid, N+1),
     ets:delete(Tid),
     Sample.
@@ -403,26 +431,26 @@ get_random_nodes(NodeDb, MyNa, N) ->
 init_sample(_NodeDb, _MyNa, Na, 0, _Tid) ->
     Na;
 init_sample(NodeDb, MyNa, MyNa, N, Tid) ->
-    init_sample(NodeDb, MyNa, ets:next(NodeDb, MyNa), N, Tid);
+    init_sample(NodeDb, MyNa, dets:next(NodeDb, MyNa), N, Tid);
 init_sample(NodeDb, MyNa, Na, N, Tid) ->
-    [NodeDescriptor] = ets:lookup(NodeDb, Na),
+    [NodeDescriptor] = dets:lookup(NodeDb, Na),
     true = ets:insert(Tid, {N, NodeDescriptor}),
-    init_sample(NodeDb, MyNa, ets:next(NodeDb, Na), N-1, Tid).
+    init_sample(NodeDb, MyNa, dets:next(NodeDb, Na), N-1, Tid).
 
 extract_node_sample(_NodeDb, _MyNa, '$end_of_table', _N, Tid, _M) ->
     ets:foldl(fun({_, NodeDescriptor}, Acc) ->
                       [NodeDescriptor|Acc]
               end, [], Tid);
 extract_node_sample(NodeDb, MyNa, MyNa, N, Tid, M) ->
-    extract_node_sample(NodeDb, MyNa, ets:next(NodeDb, MyNa), N, Tid, M);
+    extract_node_sample(NodeDb, MyNa, dets:next(NodeDb, MyNa), N, Tid, M);
 extract_node_sample(NodeDb, MyNa, Na, N, Tid, M) ->
     case random:uniform(M) of
         RandomN when RandomN =< N ->
-            [NodeDescriptor] = ets:lookup(NodeDb, Na),
+            [NodeDescriptor] = dets:lookup(NodeDb, Na),
             true = ets:insert(Tid, {RandomN, NodeDescriptor}),
-            extract_node_sample(NodeDb, MyNa, ets:next(NodeDb, Na), N, Tid,
+            extract_node_sample(NodeDb, MyNa, dets:next(NodeDb, Na), N, Tid,
                                 M+1);
         _ ->
-            extract_node_sample(NodeDb, MyNa, ets:next(NodeDb, Na), N, Tid,
+            extract_node_sample(NodeDb, MyNa, dets:next(NodeDb, Na), N, Tid,
                                 M+1)
     end.
