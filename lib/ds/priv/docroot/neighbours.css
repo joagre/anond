@@ -12,9 +12,13 @@
     font: 10px arial,sans-serif;
 }
 .link {
-    stroke: #ccc;
+    stroke: #888;
+    opacity: 0.8;
 }
 .linkLabel {
     fill: #888;
     font: 10px arial,sans-serif;
+}
+#description {
+    font: 12px arial,sans-serif;
 }

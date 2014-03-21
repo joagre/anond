@@ -30,7 +30,7 @@
 
 %%% records
 -record(state, {
-	  experimental_support :: boolean()
+	  experimental_api :: boolean()
          }).
 
 %%% types
@@ -60,8 +60,8 @@ start_link() ->
                                 NodeDescriptor#node_descriptor.public_key
                         end
                 end}],
-    ExperimentalSupport = ?config(['directory-server', 'experimental-support']),
-    S = #state{experimental_support = ExperimentalSupport},
+    ExperimentalApi = ?config(['directory-server', 'experimental-api']),
+    S = #state{experimental_api = ExperimentalApi},
     jsonrpc_serv:start_link(Options, IpAddress, Port, JsonRpcCertificate, [],
                             {?MODULE, ds_handler, [S]}, Docroot).
 
@@ -90,7 +90,9 @@ ds_handler(_MyNa, <<"get-node">>, [{<<"na">>, Na}], _S) ->
               data = <<"na">>},
             {error, JsonError}
     end;
-ds_handler(_MyNa, <<"get-all-nodes">>, undefined, _S) ->
+%% experimental api
+ds_handler(_MyNa, <<"get-all-nodes">>, undefined,
+           #state{experimental_api = true}) ->
     {ok, NodeDescriptors} = ds_serv:get_all_nodes(),
     {ok, ds_jsonrpc:encode_node_descriptors(NodeDescriptors)};
 ds_handler(MyNa, <<"get-random-nodes">>, [{<<"n">>, N}], _S)
@@ -100,7 +102,11 @@ ds_handler(MyNa, <<"get-random-nodes">>, [{<<"n">>, N}], _S)
             {ok, ds_jsonrpc:encode_node_descriptors(NodeDescriptors)};
         {error, too_few_nodes} ->
             {error, #json_error{
-               code = ?DS_JSONRPC_TOO_FEW_NODES}}
+               code = ?DS_JSONRPC_TOO_FEW_NODES}};
+        {error, {too_many_nodes, MaxRandomNodes}} ->
+            {error, #json_error{
+               code = ?DS_JSONRPC_TOO_MANY_NODES,
+               data = MaxRandomNodes}}
     end;
 ds_handler(MyNa, <<"publish-node">>, PublicKey, _S) when is_binary(PublicKey) ->
     NodeDescriptor= #node_descriptor{na = MyNa,
@@ -157,7 +163,7 @@ ds_handler(MyNa, <<"reserve-oa">>, [{<<"oa">>, Oa}], _S) ->
     end;
 %% experimental api
 ds_handler(MyNa, <<"reserved-oas">>, undefined,
-           #state{experimental_support = true}) ->
+           #state{experimental_api = true}) ->
     case ds_serv:reserved_oas(MyNa) of
         {ok, ReservedOas} ->
             {ok, node_jsonrpc:encode_oas(ReservedOas)};
@@ -170,7 +176,7 @@ ds_handler(MyNa, <<"reserved-oas">>, undefined,
     end;
 %% experimental api
 ds_handler(_MyNa, <<"get-network-topology">>, undefined,
-           #state{experimental_support = true}) ->
+           #state{experimental_api = true}) ->
     {ok, NodeDescriptors} = ds_serv:get_all_nodes(),
     {ok, get_network_topology(NodeDescriptors)};
 ds_handler(_MyNa, Method, Params, _S) ->

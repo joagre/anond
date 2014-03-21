@@ -34,6 +34,7 @@
           db_clear_on_start :: boolean(),
           node_ttl          :: non_neg_integer(),
           hard_node_ttl     :: non_neg_integer(),
+          max_random_nodes  :: non_neg_integer(),
           max_oas_per_node  :: non_neg_integer()
 	 }).
 
@@ -115,7 +116,9 @@ get_all_nodes() ->
 
 -spec get_random_nodes(na(), non_neg_integer()) ->
                               {'ok', [#node_descriptor{}]} |
-                              {'error', 'too_few_nodes'}.
+                              {'error', 'too_few_nodes' |
+                                        {'too_many_nodes', non_neg_integer()}}.
+
 get_random_nodes(MyNa, N) ->
     serv:call(?MODULE, {get_random_nodes, MyNa, N}).
 
@@ -125,8 +128,8 @@ get_random_nodes(MyNa, N) ->
 
 -spec publish_node(#node_descriptor{}) -> {'ok', NodeTTL :: non_neg_integer()}.
 
-publish_node(NodeDescriptor) ->
-    serv:call(?MODULE, {publish_node, NodeDescriptor}).
+publish_node(Nd) ->
+    serv:call(?MODULE, {publish_node, Nd}).
 
 %%%
 %%% exported: unpublish_node
@@ -217,6 +220,7 @@ loop(#state{parent = Parent,
             db_clear_on_start = _DbCLearOnStart,
             node_ttl = NodeTTL,
             hard_node_ttl = HardNodeTTL,
+            max_random_nodes = MaxRandomNodes,
             max_oas_per_node = MaxOasPerNode} = S) ->
     receive
         config_updated ->
@@ -239,7 +243,7 @@ loop(#state{parent = Parent,
             lists:foreach(fun(Na) ->
                                   ok = dets:delete(NodeDb, Na),
                                   true = ets:match_delete(OaDb, {'_', Na}),
-                                  ?daemon_log("Removed stale node ~s",
+                                  ?daemon_log("~s is stale!",
                                               [net_tools:string_address(Na)])
                           end, StaleNas),
             NotRepublishedNas =
@@ -255,15 +259,15 @@ loop(#state{parent = Parent,
                           end
                   end, [], NodeDb),
             lists:foreach(fun(Na) ->
-                                  [NodeDescriptor] = dets:lookup(NodeDb, Na),
-                                  UpdatedNodeDescriptor =
-                                      NodeDescriptor#node_descriptor{
+                                  [Nd] = dets:lookup(NodeDb, Na),
+                                  UpdatedNd =
+                                      Nd#node_descriptor{
                                         flags = ?bit_set(
-                                                   NodeDescriptor#node_descriptor.flags,
+                                                   Nd#node_descriptor.flags,
                                                    ?F_DS_NOT_REPUBLISHED)},
-                                  ok = dets:insert(NodeDb, UpdatedNodeDescriptor),
+                                  ok = dets:insert(NodeDb, UpdatedNd),
                                   true = ets:match_delete(OaDb, {'_', Na}),
-                                  ?daemon_log("Marked node ~s as not republished",
+                                  ?daemon_log("~s not republished!",
                                               [net_tools:string_address(Na)])
                           end, NotRepublishedNas),
             if
@@ -285,38 +289,35 @@ loop(#state{parent = Parent,
             loop(S);
         {From, {get_node, Na}} ->
             case dets:lookup(NodeDb, Na) of
-                [NodeDescriptor] ->
-                    From ! {self(), {ok, NodeDescriptor}},
+                [Nd] ->
+                    From ! {self(), {ok, Nd}},
                     loop(S);
                 [] ->
                     From ! {self(), {error, no_such_node}},
                     loop(S)
             end;
         {From, get_all_nodes} ->
-            AllNodeDescriptors =
-                dets:foldl(fun(NodeDescriptor, Acc) ->
-                                   [NodeDescriptor|Acc]
-                           end, [], NodeDb),
-            ?daemon_log("Extracted all (~w) nodes",
-                        [length(AllNodeDescriptors)]),
-            From ! {self(), {ok, AllNodeDescriptors}},
+            AllNds = dets:foldl(fun(Nd, Acc) -> [Nd|Acc] end, [], NodeDb),
+            ?daemon_log("Extracted all (~w) nodes", [length(AllNds)]),
+            From ! {self(), {ok, AllNds}},
             loop(S);
         %% see doc/small_simulation.jpg; return two non-random nodes
         {From, {get_random_nodes, MyNa, 2}} when Mode == simulation ->
             case get_simulated_nodes(NodeDb, MyNa) of
-                {ok, SimulatedNas, SimulatedNodeDescriptors} ->
+                {ok, SimulatedNas, SimulatedNds} ->
                     ?daemon_log(
                        "Extracted ~w simulated and non-random nodes: ~s",
                        [length(SimulatedNas),
                         net_tools:string_addresses(SimulatedNas)]),
-                    From ! {self(), {ok, SimulatedNodeDescriptors}},
+                    From ! {self(), {ok, SimulatedNds}},
                     loop(S);
                 {error, Reason} ->
                     ?daemon_log("2 random nodes could not be extracted", []),
                     From ! {self(), {error, Reason}},
                     loop(S)
             end;
-        {From, {get_random_nodes, MyNa, N}} when is_integer(N) ->
+        {From, {get_random_nodes, MyNa, N}}
+          when is_integer(N) andalso N < MaxRandomNodes ->
             case dets:info(NodeDb, size) of
                 Size when N >= Size ->
                     ?daemon_log("~w random nodes could not be extracted",
@@ -324,20 +325,21 @@ loop(#state{parent = Parent,
                     From ! {self(), {error, too_few_nodes}},
                     loop(S);
                 _Size ->
-                    RandomNodeDescriptors = get_random_nodes(NodeDb, MyNa, N),
-                    RandomNas =
-                        [RandomNodeDescriptor#node_descriptor.na ||
-                            RandomNodeDescriptor <- RandomNodeDescriptors],
+                    RandomNds = get_random_nodes(NodeDb, MyNa, N),
+                    RandomNas = [RandomNd#node_descriptor.na ||
+                                    RandomNd <- RandomNds],
                     ?daemon_log("Extracted ~w random nodes: ~s",
                                 [length(RandomNas),
                                  net_tools:string_addresses(RandomNas)]),
-                    From ! {self(), {ok, RandomNodeDescriptors}},
+                    From ! {self(), {ok, RandomNds}},
                     loop(S)
             end;
-        {From, {publish_node, #node_descriptor{na = Na} = NodeDescriptor}} ->
-            UpdatedNodeDescriptor =
-                NodeDescriptor#node_descriptor{last_updated = timelib:ugnow()},
-            ok = dets:insert(NodeDb, UpdatedNodeDescriptor),
+        {From, {get_random_nodes, _MyNa, N}} when is_integer(N) ->
+            From ! {self(), {error, {too_many_nodes, MaxRandomNodes}}},
+            loop(S);
+        {From, {publish_node, #node_descriptor{na = Na} = Nd}} ->
+            UpdatedNd = Nd#node_descriptor{last_updated = timelib:ugnow()},
+            ok = dets:insert(NodeDb, UpdatedNd),
             ?daemon_log("Node ~s (re)published",
                         [net_tools:string_address(Na)]),
             From ! {self(), {ok, NodeTTL}},
@@ -430,8 +432,8 @@ get_simulated_nodes(NodeDb, {MyIpAddress, MyPort}) ->
     NeighbourNodeNas = [{MyIpAddress, NeighbourNodePort} ||
                            NeighbourNodePort <- NeighbourNodePorts],
     case lookup_simulated_nodes(NodeDb, NeighbourNodeNas) of
-        {ok, NodeDescriptors} ->
-            {ok, NeighbourNodeNas, NodeDescriptors};
+        {ok, Nds} ->
+            {ok, NeighbourNodeNas, Nds};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -443,8 +445,8 @@ lookup_simulated_nodes(_NodeDb, [], Acc) ->
     {ok, lists:reverse(Acc)};
 lookup_simulated_nodes(NodeDb, [NeighbourNodeNa|Rest], Acc) ->
     case dets:lookup(NodeDb, NeighbourNodeNa) of
-        [NodeDescriptor] ->
-            lookup_simulated_nodes(NodeDb, Rest, [NodeDescriptor|Acc]);
+        [Nd] ->
+            lookup_simulated_nodes(NodeDb, Rest, [Nd|Acc]);
         [] ->
             {error, too_few_nodes}
     end.
@@ -462,23 +464,28 @@ init_sample(_NodeDb, _MyNa, Na, 0, _Tid) ->
 init_sample(NodeDb, MyNa, MyNa, N, Tid) ->
     init_sample(NodeDb, MyNa, dets:next(NodeDb, MyNa), N, Tid);
 init_sample(NodeDb, MyNa, Na, N, Tid) ->
-    [NodeDescriptor] = dets:lookup(NodeDb, Na),
-    true = ets:insert(Tid, {N, NodeDescriptor}),
+    [Nd] = dets:lookup(NodeDb, Na),
+    true = ets:insert(Tid, {N, Nd}),
     init_sample(NodeDb, MyNa, dets:next(NodeDb, Na), N-1, Tid).
 
 extract_node_sample(_NodeDb, _MyNa, '$end_of_table', _N, Tid, _M) ->
-    ets:foldl(fun({_, NodeDescriptor}, Acc) ->
-                      [NodeDescriptor|Acc]
-              end, [], Tid);
+    ets:foldl(fun({_, Nd}, Acc) -> [Nd|Acc] end, [], Tid);
 extract_node_sample(NodeDb, MyNa, MyNa, N, Tid, M) ->
     extract_node_sample(NodeDb, MyNa, dets:next(NodeDb, MyNa), N, Tid, M);
 extract_node_sample(NodeDb, MyNa, Na, N, Tid, M) ->
     case random:uniform(M) of
         RandomN when RandomN =< N ->
-            [NodeDescriptor] = dets:lookup(NodeDb, Na),
-            true = ets:insert(Tid, {RandomN, NodeDescriptor}),
-            extract_node_sample(NodeDb, MyNa, dets:next(NodeDb, Na), N, Tid,
-                                M+1);
+            case dets:lookup(NodeDb, Na) of
+                [Nd]
+                  when ?bit_is_clr(Nd#node_descriptor.flags,
+                                   ?F_DS_NOT_REPUBLISHED) ->
+                    true = ets:insert(Tid, {RandomN, Nd}),
+                    extract_node_sample(NodeDb, MyNa, dets:next(NodeDb, Na), N,
+                                        Tid, M+1);
+                [_Nd] ->
+                    extract_node_sample(NodeDb, MyNa, dets:next(NodeDb, Na), N,
+                                        Tid, M)
+            end;
         _ ->
             extract_node_sample(NodeDb, MyNa, dets:next(NodeDb, Na), N, Tid,
                                 M+1)

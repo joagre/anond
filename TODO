@@ -24,6 +24,8 @@ Directory server
 ----------------
 N node scriptor EXPERIMENTAL flag, get_publicKey, flags?
 get_node(). all param in records?
+
+
 * Implement firewall UDP hole punching:
 http://www.h-online.com/security/features/How-Skype-Co-get-round-firewalls-747197.html
 * Make it possible to register a "domain"-name for a bunch of overlay
@@ -41,6 +43,7 @@ N Start to use the PKI to encrypt tunnel traffic
 N
 N Integrate Patrik's psp code and authentication of path costs code
 N Many oas per na
+N TCP node punching to directory server
 * Limit download and upload rate in B/s
 * Use many overlay addresses and pick new ones now and then
 * Pick new neighbour nodes now and then when needed(TM)
@@ -48,6 +51,7 @@ N Many oas per na
 d3.js
 -----
 * Leaks memory
+* Try to normalize the path-cost <-> pixel resolution
 * Does it actually work in all cases when nodes come and go?
 
 DNS
