@@ -56,8 +56,8 @@ start_link() ->
                                 ignore;
                             [] ->
                                 not_found;
-                            [NodeDescriptor] ->
-                                NodeDescriptor#node_descriptor.public_key
+                            [Nd] ->
+                                Nd#node_descriptor.public_key
                         end
                 end}],
     ExperimentalApi = ?config(['directory-server', 'experimental-api']),
@@ -74,8 +74,8 @@ ds_handler(_MyNa, <<"get-node">>, [{<<"na">>, Na}], _S) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
             case ds_serv:get_node(DecodedNa) of
-                {ok, NodeDescriptor} ->
-                    {ok, ds_jsonrpc:encode_node_descriptor(NodeDescriptor)};
+                {ok, Nd} ->
+                    {ok, ds_jsonrpc:encode_node_descriptor(Nd)};
                 {error, no_such_node} ->
                     JsonError = #json_error{
                       code = ?DS_JSONRPC_UNKNOWN_NODE,
@@ -93,13 +93,13 @@ ds_handler(_MyNa, <<"get-node">>, [{<<"na">>, Na}], _S) ->
 %% experimental api
 ds_handler(_MyNa, <<"get-all-nodes">>, undefined,
            #state{experimental_api = true}) ->
-    {ok, NodeDescriptors} = ds_serv:get_all_nodes(),
-    {ok, ds_jsonrpc:encode_node_descriptors(NodeDescriptors)};
+    {ok, Nds} = ds_serv:get_all_nodes(),
+    {ok, ds_jsonrpc:encode_node_descriptors(Nds)};
 ds_handler(MyNa, <<"get-random-nodes">>, [{<<"n">>, N}], _S)
   when is_integer(N) ->
     case ds_serv:get_random_nodes(MyNa, N) of
-        {ok, NodeDescriptors} ->
-            {ok, ds_jsonrpc:encode_node_descriptors(NodeDescriptors)};
+        {ok, Nds} ->
+            {ok, ds_jsonrpc:encode_node_descriptors(Nds)};
         {error, too_few_nodes} ->
             {error, #json_error{
                code = ?DS_JSONRPC_TOO_FEW_NODES}};
@@ -108,22 +108,19 @@ ds_handler(MyNa, <<"get-random-nodes">>, [{<<"n">>, N}], _S)
                code = ?DS_JSONRPC_TOO_MANY_NODES,
                data = MaxRandomNodes}}
     end;
-ds_handler(MyNa, <<"publish-node">>, PublicKey, _S) when is_binary(PublicKey) ->
-    NodeDescriptor= #node_descriptor{na = MyNa,
-                                     public_key = base64:decode(PublicKey)},
-    ds_serv:publish_node(NodeDescriptor);
-ds_handler(_MyNa, <<"unpublish-node">>, [{<<"na">>, Na}], _S) ->
-    case node_jsonrpc:decode_na(Na) of
-        {ok, DecodedNa} ->
-            ok = ds_serv:unpublish_node(DecodedNa),
-            {ok, true};
+ds_handler(MyNa, <<"publish-node">>, Nd, _S) ->
+    case ds_jsonrpc:decode_node_descriptor(Nd) of
+        {ok, DecodedNd} ->
+            ds_serv:publish_node(DecodedNd#node_descriptor{na = MyNa});
         {error, Reason} ->
             JsonError = #json_error{
-              code = ?JSONRPC_INVALID_PARAMS,
-              message = ?l2b(ds_jsonrpc:format_error(Reason)),
-              data = <<"na">>},
+              code = ?DS_JSONRPC_INVALID_NODE_DESCRIPTOR,
+              message = ?l2b(ds_jsonrpc:format_error(Reason))},
             {error, JsonError}
     end;
+ds_handler(MyNa, <<"unpublish-node">>, undefined, _S) ->
+    ok = ds_serv:unpublish_node(MyNa),
+    {ok, true};
 ds_handler(_MyNa, <<"published-nodes">>, [{<<"nas">>, Nas}], _S) ->
     case node_jsonrpc:decode_nas(Nas) of
         {ok, DecodedNas} ->
@@ -177,8 +174,8 @@ ds_handler(MyNa, <<"reserved-oas">>, undefined,
 %% experimental api
 ds_handler(_MyNa, <<"get-network-topology">>, undefined,
            #state{experimental_api = true}) ->
-    {ok, NodeDescriptors} = ds_serv:get_all_nodes(),
-    {ok, get_network_topology(NodeDescriptors)};
+    {ok, Nds} = ds_serv:get_all_nodes(),
+    {ok, get_network_topology(Nds)};
 ds_handler(_MyNa, Method, Params, _S) ->
     ?error_log({invalid_request, Method, Params}),
     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},

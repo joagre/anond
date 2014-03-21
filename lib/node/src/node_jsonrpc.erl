@@ -3,7 +3,6 @@
 %%% external exports
 -export([encode_nas/1, encode_na/1, decode_nas/1, decode_na/1]).
 -export([encode_oas/1, encode_oa/1, decode_oas/1, decode_oa/1]).
--export([decode/2]).
 
 %%% internal exports
 
@@ -42,7 +41,7 @@ encode_na({IpAddress, Port}) ->
 -spec decode_nas([binary()]) -> {'ok', [na()]} | {'error', 'einval'}.
 
 decode_nas(Nas) ->
-    decode(Nas, fun decode_na/1).
+    jsonrpc:decode(Nas, fun decode_na/1).
 
 %%%
 %%% exported: decode_na
@@ -91,7 +90,7 @@ encode_oa(Oa) ->
 -spec decode_oas([binary()]) -> {'ok', [oa()]} | {'error', 'einval'}.
 
 decode_oas(Oas) ->
-    decode(Oas, fun decode_oa/1).
+    jsonrpc:decode(Oas, fun decode_oa/1).
 
 %%%
 %%% exported: decode_oa
@@ -101,22 +100,3 @@ decode_oas(Oas) ->
 
 decode_oa(Oa) ->
     inet:parse_address(?b2l(Oa)).
-
-%%%
-%%% exported: decode
-%%%
-
--spec decode(list(), fun()) -> {'ok', [any()]} | {'error', any()}.
-
-decode(List, F) ->
-    decode(List, F, []).
-
-decode([], _F, Acc) ->
-    {ok, lists:reverse(Acc)};
-decode([Entity|Rest], F, Acc) ->
-    case F(Entity) of
-        {ok, MappedEntity} ->
-            decode(Rest, F, [MappedEntity|Acc]);
-        {error, Reason} ->
-            {error, Reason}
-    end.

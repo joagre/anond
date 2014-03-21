@@ -16,7 +16,7 @@
 -export([housekeeping/3]).
 -export([get_number_of_nodes/3, get_node/4, get_all_nodes/3,
          get_random_nodes/4]).
--export([publish_node/4, unpublish_node/4, published_nodes/4]).
+-export([publish_node/4, unpublish_node/3, published_nodes/4]).
 -export([reserve_oa/4, reserved_oas/4]).
 -export([encode_node_descriptors/1, encode_node_descriptor/1,
          decode_node_descriptors/1, decode_node_descriptor/1]).
@@ -84,8 +84,8 @@ get_number_of_nodes(MyIpAddressPort, IpAddressPort, PrivateKey) ->
 get_node(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->
     case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"get-node">>,
                       PrivateKey, [{<<"na">>, node_jsonrpc:encode_na(Na)}]) of
-        {ok, NodeDescriptor}->
-            decode_node_descriptor(NodeDescriptor);
+        {ok, Nd}->
+            decode_node_descriptor(Nd);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -102,8 +102,8 @@ get_node(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->
 get_all_nodes(MyIpAddressPort, IpAddressPort, PrivateKey) ->
     case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"get-all-nodes">>,
                       PrivateKey) of
-        {ok, NodeDescriptors}->
-            decode_node_descriptors(NodeDescriptors);
+        {ok, Nds}->
+            decode_node_descriptors(Nds);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -120,8 +120,8 @@ get_all_nodes(MyIpAddressPort, IpAddressPort, PrivateKey) ->
 get_random_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, N) ->
     case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"get-random-nodes">>,
                       PrivateKey, [{<<"n">>, N}]) of
-        {ok, NodeDescriptors}->
-            decode_node_descriptors(NodeDescriptors);
+        {ok, Nds} ->
+            decode_node_descriptors(Nds);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -131,25 +131,25 @@ get_random_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, N) ->
 %%%
 
 -spec publish_node(httplib:ip_address_port(), httplib:ip_address_port(),
-                   node_crypto:pki_key(), node_crypto:pki_key()) ->
+                   node_crypto:pki_key(), #node_descriptor{}) ->
                           {'ok', NodeTTL :: non_neg_integer()} |
                           {'error', error_reason()}.
 
-publish_node(MyIpAddressPort, IpAddressPort, PrivateKey, PublicKey) ->
+publish_node(MyIpAddressPort, IpAddressPort, PrivateKey, Nd) ->
     jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"publish-node">>,
-                 PrivateKey, base64:encode(PublicKey)).
+                 PrivateKey, encode_node_descriptor(Nd)).
 
 %%%
 %%% exported: unpublish_node
 %%%
 
 -spec unpublish_node(httplib:ip_address_port(), httplib:ip_address_port(),
-                     node_crypto:pki_key(), na()) ->
+                     node_crypto:pki_key()) ->
                             'ok' | {'error', error_reason()}.
 
-unpublish_node(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->
+unpublish_node(MyIpAddressPort, IpAddressPort, PrivateKey) ->
     case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"unpublish-node">>,
-                      PrivateKey, [{<<"na">>, node_jsonrpc:encode_na(Na)}]) of
+                      PrivateKey) of
         {ok, true} ->
             ok;
         {error, Reason} ->
@@ -214,9 +214,8 @@ reserved_oas(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->
 
 -spec encode_node_descriptors([#node_descriptor{}]) -> jsx:json_term().
 
-encode_node_descriptors(NodeDescriptors) ->
-    [encode_node_descriptor(NodeDescriptor) ||
-        NodeDescriptor <- NodeDescriptors].
+encode_node_descriptors(Nds) ->
+    [encode_node_descriptor(Nd) || Nd <- Nds].
 
 %%%
 %%% exported: encode_node_descriptor (to be used by ds_jsonrpc_serv.erl)
@@ -224,11 +223,15 @@ encode_node_descriptors(NodeDescriptors) ->
 
 -spec encode_node_descriptor(#node_descriptor{}) -> jsx:json_term().
 
-encode_node_descriptor(NodeDescriptor) ->
-    [{<<"na">>, node_jsonrpc:encode_na(NodeDescriptor#node_descriptor.na)},
-     {<<"public-key">>,
-      base64:encode(NodeDescriptor#node_descriptor.public_key)},
-     {<<"flags">>, NodeDescriptor#node_descriptor.flags}].
+encode_node_descriptor(#node_descriptor{na = undefined, public_key = PublicKey,
+                                        flags = Flags}) ->
+    [{<<"public-key">>, base64:encode(PublicKey)},
+     {<<"flags">>, Flags}];
+encode_node_descriptor(#node_descriptor{na = Na, public_key = PublicKey,
+                                        flags = Flags}) ->
+    [{<<"na">>, node_jsonrpc:encode_na(Na)},
+     {<<"public-key">>, base64:encode(PublicKey)},
+     {<<"flags">>, Flags}].
 
 %%%
 %%% exported: decode_node_descriptors (to be used by ds_jsonrpc_serv.erl)
@@ -237,8 +240,8 @@ encode_node_descriptor(NodeDescriptor) ->
 -spec decode_node_descriptors(jsx:json_term()) -> {'ok', [#node_descriptor{}]} |
                                                   {'error', 'einval'}.
 
-decode_node_descriptors(NodeDescriptors) ->
-    node_jsonrpc:decode(NodeDescriptors, fun decode_node_descriptor/1).
+decode_node_descriptors(Nds) ->
+    jsonrpc:decode(Nds, fun decode_node_descriptor/1).
 
 %%%
 %%% exported: decode_node_descriptor (to be used by ds_jsonrpc_serv.erl)
@@ -247,10 +250,15 @@ decode_node_descriptors(NodeDescriptors) ->
 -spec decode_node_descriptor(jsx:json_term()) -> {'ok', #node_descriptor{}} |
                                                  {'error', 'einval'}.
 
+decode_node_descriptor([{<<"public-key">>, PublicKey},
+                        {<<"flags">>, Flags}])
+  when is_binary(PublicKey) andalso is_integer(Flags) ->
+    {ok, #node_descriptor{public_key = base64:decode(PublicKey),
+                          flags = Flags}};
 decode_node_descriptor([{<<"na">>, Na},
                         {<<"public-key">>, PublicKey},
                         {<<"flags">>, Flags}])
-  when is_binary(PublicKey), is_integer(Flags) ->
+  when is_binary(PublicKey) andalso is_integer(Flags) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
             {ok, #node_descriptor{na = DecodedNa,
@@ -259,5 +267,5 @@ decode_node_descriptor([{<<"na">>, Na},
         {error, Reason} ->
             {error, Reason}
     end;
-decode_node_descriptor(_NodeDescriptor) ->
+decode_node_descriptor(_Nd) ->
     {error, einval}.

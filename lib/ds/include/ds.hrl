@@ -8,6 +8,7 @@
 -define(DS_JSONRPC_TOO_FEW_NODES, 3).
 -define(DS_JSONRPC_NO_RESERVED_OAS, 4).
 -define(DS_JSONRPC_TOO_MANY_NODES, 5).
+-define(DS_JSONRPC_INVALID_NODE_DESCRIPTOR, 6).
 
 -record(node_descriptor, {
 	  na           :: na(),

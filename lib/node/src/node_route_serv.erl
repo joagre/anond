@@ -21,7 +21,7 @@
 -include_lib("util/include/shorthand.hrl").
 
 %%% constants
--define(FIVE_SECONDS_TIMEOUT, 5*1000).
+-define(FIVE_SECONDS, 5*1000).
 
 %%% records
 -record(state, {
@@ -206,9 +206,11 @@ loop(#state{parent = Parent,
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
         bootstrap ->
+            NodeDescriptor = #node_descriptor{public_key = PublicKey,
+                                              flags = 1},
             case ds_jsonrpc:publish_node(
                    LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                   PublicKey) of
+                   NodeDescriptor) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Published node address ~s",
                                 [net_tools:string_address(MyNa)]),
@@ -243,8 +245,7 @@ loop(#state{parent = Parent,
                                "Could not reserve overlay address ~s. Retrying "
                                "in five seconds...",
                                [net_tools:string_address(MyOa)]),
-                            timelib:start_timer(
-                              ?FIVE_SECONDS_TIMEOUT, bootstrap),
+                            timelib:start_timer(?FIVE_SECONDS, bootstrap),
                             loop(S)
                     end;
                 {error, Reason}->
@@ -252,13 +253,15 @@ loop(#state{parent = Parent,
                     ?daemon_log(
                        "Could not publish node address ~s. Retrying in five "
                        "seconds...", [net_tools:string_address(MyNa)]),
-                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, bootstrap),
+                    timelib:start_timer(?FIVE_SECONDS, bootstrap),
                     loop(S)
             end;
         republish_self ->
+            NodeDescriptor = #node_descriptor{public_key = PublicKey,
+                                              flags = 1},
             case ds_jsonrpc:publish_node(
                    LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                   PublicKey) of
+                   NodeDescriptor) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Republished node address ~s",
                                 [net_tools:string_address(MyNa)]),
@@ -269,7 +272,7 @@ loop(#state{parent = Parent,
                     ?daemon_log(
                        "Could not publish node address ~s. Retrying in five "
                        "seconds...", [net_tools:string_address(MyNa)]),
-                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, republish_self),
+                    timelib:start_timer(?FIVE_SECONDS, republish_self),
                     loop(S)
             end;
         refresh_peers ->
@@ -287,7 +290,7 @@ loop(#state{parent = Parent,
                     ?daemon_log(
                        "Could not refresh peers. Retrying in five seconds...",
                        []),
-                    timelib:start_timer(?FIVE_SECONDS_TIMEOUT, refresh_peers),
+                    timelib:start_timer(?FIVE_SECONDS, refresh_peers),
                     loop(S)
             end;
 	{From, stop} ->

@@ -150,7 +150,7 @@ encode_route_entry(Re) ->
                                   {'error', 'einval'}.
 
 decode_route_entries(Res) ->
-    node_jsonrpc:decode(Res, fun decode_route_entry/1).
+    jsonrpc:decode(Res, fun decode_route_entry/1).
 
 %%%
 %%% exported: decode_route_entry
@@ -220,7 +220,7 @@ encode_path_cost(PathCost) ->
 -spec decode_nodes(jsx:json_term()) -> {'ok', [#node{}]} | {'error', 'einval'}.
 
 decode_nodes(Nodes) ->
-    node_jsonrpc:decode(Nodes, fun decode_node/1).
+    jsonrpc:decode(Nodes, fun decode_node/1).
 
 %%%
 %%% exported: decode_node

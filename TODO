@@ -22,12 +22,7 @@ L Implement anond control panels for:
 
 Directory server
 ----------------
-N node scriptor EXPERIMENTAL flag, get_publicKey, flags?
-get_node(). all param in records?
-
-
-* Implement firewall UDP hole punching:
-http://www.h-online.com/security/features/How-Skype-Co-get-round-firewalls-747197.html
+* http://en.wikipedia.org/wiki/UDP_hole_punching
 * Make it possible to register a "domain"-name for a bunch of overlay
 adresses. The registration could be done through the directory
 server. Name lookups could be done towards a UDP based overlay service.
@@ -37,6 +32,8 @@ Node
 N Local -> My
 N Peer -> NeighbourNode
 N Cloak experimental json-rpc functions (all of them)
+  - add to publish_nodes flags
+
 N Start to use the PKI to encrypt tunnel traffic
   - handshake, rethinkg directory server get_node(). needed? etc
   - call ds_serv:get_node (renamed to get_public_key?)

@@ -2,6 +2,7 @@
 
 %%% external exports
 -export([call/3, call/4, call/5, call/7]).
+-export([decode/2]).
 
 %%% internal exports
 
@@ -130,3 +131,22 @@ params_if_any(Params) ->
 hmac(Message, PrivateKey) ->
     base64:encode(
       salt:crypto_sign(salt:crypto_hash(Message), PrivateKey)).
+
+%%%
+%%% exported: decode
+%%%
+
+-spec decode(list(), fun()) -> {'ok', [any()]} | {'error', any()}.
+
+decode(List, F) ->
+    decode(List, F, []).
+
+decode([], _F, Acc) ->
+    {ok, lists:reverse(Acc)};
+decode([Entity|Rest], F, Acc) ->
+    case F(Entity) of
+        {ok, MappedEntity} ->
+            decode(Rest, F, [MappedEntity|Acc]);
+        {error, Reason} ->
+            {error, Reason}
+    end.
