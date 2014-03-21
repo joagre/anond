@@ -22,9 +22,8 @@ L Implement anond control panels for:
 
 Directory server
 ----------------
-N Cleanup public keys older than a number of weeks (for inactive nodes)
-N Cloak experimental json-rpc functions, i.e. reserved-oas() and
-get_network_topology()
+N node scriptor EXPERIMENTAL flag, get_publicKey, flags?
+get_node(). all param in records?
 * Implement firewall UDP hole punching:
 http://www.h-online.com/security/features/How-Skype-Co-get-round-firewalls-747197.html
 * Make it possible to register a "domain"-name for a bunch of overlay
@@ -39,6 +38,7 @@ N Cloak experimental json-rpc functions (all of them)
 N Start to use the PKI to encrypt tunnel traffic
   - handshake, rethinkg directory server get_node(). needed? etc
   - call ds_serv:get_node (renamed to get_public_key?)
+N
 N Integrate Patrik's psp code and authentication of path costs code
 N Many oas per na
 * Limit download and upload rate in B/s
@@ -47,6 +47,7 @@ N Many oas per na
 
 d3.js
 -----
+* Leaks memory
 * Does it actually work in all cases when nodes come and go?
 
 DNS

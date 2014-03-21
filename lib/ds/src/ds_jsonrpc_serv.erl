@@ -15,7 +15,7 @@
 -export([start_link/0]).
 
 %%% internal exports
--export([ds_handler/3]).
+-export([ds_handler/4]).
 
 %%% include files
 -include_lib("ds/include/ds.hrl").
@@ -29,6 +29,9 @@
 %%% constants
 
 %%% records
+-record(state, {
+	  experimental_support :: boolean()
+         }).
 
 %%% types
 
@@ -40,7 +43,7 @@
 
 start_link() ->
     {IpAddress, Port} = ?config(['directory-server', listen]),
-    CertFile = ?config(['directory-server', 'json-rpc-certificate']),
+    JsonRpcCertificate = ?config(['directory-server', 'json-rpc-certificate']),
     Docroot = filename:join(code:priv_dir(ds), "docroot"),
     Options = [{lookup_public_key,
                 fun(_Na, <<"reserved-oas">>) ->
@@ -57,15 +60,17 @@ start_link() ->
                                 NodeDescriptor#node_descriptor.public_key
                         end
                 end}],
-    jsonrpc_serv:start_link(Options, IpAddress, Port, CertFile, [],
-                            {?MODULE, ds_handler, []}, Docroot).
+    ExperimentalSupport = ?config(['directory-server', 'experimental-support']),
+    S = #state{experimental_support = ExperimentalSupport},
+    jsonrpc_serv:start_link(Options, IpAddress, Port, JsonRpcCertificate, [],
+                            {?MODULE, ds_handler, [S]}, Docroot).
 
-ds_handler(_MyNa, <<"housekeeping">>, undefined) ->
+ds_handler(_MyNa, <<"housekeeping">>, undefined, _S) ->
     ok = ds_serv:housekeeping(),
     {ok, true};
-ds_handler(_MyNa, <<"get-number-of-nodes">>, undefined) ->
+ds_handler(_MyNa, <<"get-number-of-nodes">>, undefined, _S) ->
     ds_serv:get_number_of_nodes();
-ds_handler(_MyNa, <<"get-node">>, [{<<"na">>, Na}]) ->
+ds_handler(_MyNa, <<"get-node">>, [{<<"na">>, Na}], _S) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
             case ds_serv:get_node(DecodedNa) of
@@ -85,10 +90,10 @@ ds_handler(_MyNa, <<"get-node">>, [{<<"na">>, Na}]) ->
               data = <<"na">>},
             {error, JsonError}
     end;
-ds_handler(_MyNa, <<"get-all-nodes">>, undefined) ->
+ds_handler(_MyNa, <<"get-all-nodes">>, undefined, _S) ->
     {ok, NodeDescriptors} = ds_serv:get_all_nodes(),
     {ok, ds_jsonrpc:encode_node_descriptors(NodeDescriptors)};
-ds_handler(MyNa, <<"get-random-nodes">>, [{<<"n">>, N}])
+ds_handler(MyNa, <<"get-random-nodes">>, [{<<"n">>, N}], _S)
   when is_integer(N) ->
     case ds_serv:get_random_nodes(MyNa, N) of
         {ok, NodeDescriptors} ->
@@ -97,11 +102,11 @@ ds_handler(MyNa, <<"get-random-nodes">>, [{<<"n">>, N}])
             {error, #json_error{
                code = ?DS_JSONRPC_TOO_FEW_NODES}}
     end;
-ds_handler(MyNa, <<"publish-node">>, PublicKey) when is_binary(PublicKey) ->
+ds_handler(MyNa, <<"publish-node">>, PublicKey, _S) when is_binary(PublicKey) ->
     NodeDescriptor= #node_descriptor{na = MyNa,
                                      public_key = base64:decode(PublicKey)},
     ds_serv:publish_node(NodeDescriptor);
-ds_handler(_MyNa, <<"unpublish-node">>, [{<<"na">>, Na}]) ->
+ds_handler(_MyNa, <<"unpublish-node">>, [{<<"na">>, Na}], _S) ->
     case node_jsonrpc:decode_na(Na) of
         {ok, DecodedNa} ->
             ok = ds_serv:unpublish_node(DecodedNa),
@@ -113,7 +118,7 @@ ds_handler(_MyNa, <<"unpublish-node">>, [{<<"na">>, Na}]) ->
               data = <<"na">>},
             {error, JsonError}
     end;
-ds_handler(_MyNa, <<"published-nodes">>, [{<<"nas">>, Nas}]) ->
+ds_handler(_MyNa, <<"published-nodes">>, [{<<"nas">>, Nas}], _S) ->
     case node_jsonrpc:decode_nas(Nas) of
         {ok, DecodedNas} ->
             {ok, PublishedNas} = ds_serv:published_nodes(DecodedNas),
@@ -125,7 +130,7 @@ ds_handler(_MyNa, <<"published-nodes">>, [{<<"nas">>, Nas}]) ->
               data = <<"na">>},
             {error, JsonError}
     end;
-ds_handler(MyNa, <<"reserve-oa">>, [{<<"oa">>, Oa}]) ->
+ds_handler(MyNa, <<"reserve-oa">>, [{<<"oa">>, Oa}], _S) ->
     case node_jsonrpc:decode_oa(Oa) of
         {ok, DecodedOa} ->
             case ds_serv:reserve_oa(DecodedOa, MyNa) of
@@ -150,8 +155,9 @@ ds_handler(MyNa, <<"reserve-oa">>, [{<<"oa">>, Oa}]) ->
               data = <<"oa">>},
             {error, JsonError}
     end;
-%% experimental api (must be restricted)
-ds_handler(MyNa, <<"reserved-oas">>, undefined) ->
+%% experimental api
+ds_handler(MyNa, <<"reserved-oas">>, undefined,
+           #state{experimental_support = true}) ->
     case ds_serv:reserved_oas(MyNa) of
         {ok, ReservedOas} ->
             {ok, node_jsonrpc:encode_oas(ReservedOas)};
@@ -162,11 +168,12 @@ ds_handler(MyNa, <<"reserved-oas">>, undefined) ->
               data = node_jsonrpc:encode_na(MyNa)},
             {error, JsonError}
     end;
-%% experimental api (must be restricted)
-ds_handler(_MyNa, <<"get-network-topology">>, undefined) ->
+%% experimental api
+ds_handler(_MyNa, <<"get-network-topology">>, undefined,
+           #state{experimental_support = true}) ->
     {ok, NodeDescriptors} = ds_serv:get_all_nodes(),
     {ok, get_network_topology(NodeDescriptors)};
-ds_handler(_MyNa, Method, Params) ->
+ds_handler(_MyNa, Method, Params, _S) ->
     ?error_log({invalid_request, Method, Params}),
     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
     {error, JsonError}.

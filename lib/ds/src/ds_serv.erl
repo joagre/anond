@@ -16,6 +16,7 @@
 -include_lib("ds/include/ds.hrl").
 -include_lib("node/include/node.hrl").
 -include_lib("util/include/config.hrl").
+-include_lib("util/include/bits.hrl").
 -include_lib("util/include/log.hrl").
 -include_lib("util/include/shorthand.hrl").
 
@@ -24,15 +25,16 @@
 
 %%% records
 -record(state, {
-	  parent           :: pid(),
-	  node_db          :: atom(),
-          oa_db            :: ets:tid(),
+	  parent            :: pid(),
+	  node_db           :: atom(),
+          oa_db             :: ets:tid(),
           %% anond.conf parameters
-          mode                  :: common_config_jsonrpc_serv:mode(),
-          db_path               :: binary(),
-          db_clear_on_start     :: boolean(),
-          node_ttl              :: non_neg_integer(),
-          max_oas_per_node      :: non_neg_integer()
+          mode              :: common_config_jsonrpc_serv:mode(),
+          db_path           :: binary(),
+          db_clear_on_start :: boolean(),
+          node_ttl          :: non_neg_integer(),
+          hard_node_ttl     :: non_neg_integer(),
+          max_oas_per_node  :: non_neg_integer()
 	 }).
 
 %%% types
@@ -214,6 +216,7 @@ loop(#state{parent = Parent,
             db_path = _DbPath,
             db_clear_on_start = _DbCLearOnStart,
             node_ttl = NodeTTL,
+            hard_node_ttl = HardNodeTTL,
             max_oas_per_node = MaxOasPerNode} = S) ->
     receive
         config_updated ->
@@ -227,7 +230,7 @@ loop(#state{parent = Parent,
                       Acc) ->
                           Delta = timelib:ugnow_delta({minus, LastUpdated}),
                           if
-                              Delta > NodeTTL ->
+                              Delta > HardNodeTTL ->
                                   [Na|Acc];
                               true ->
                                   []
@@ -239,6 +242,30 @@ loop(#state{parent = Parent,
                                   ?daemon_log("Removed stale node ~s",
                                               [net_tools:string_address(Na)])
                           end, StaleNas),
+            NotRepublishedNas =
+                dets:foldl(
+                  fun(#node_descriptor{na = Na, last_updated = LastUpdated},
+                      Acc) ->
+                          Delta = timelib:ugnow_delta({minus, LastUpdated}),
+                          if
+                              Delta > NodeTTL ->
+                                  [Na|Acc];
+                              true ->
+                                  []
+                          end
+                  end, [], NodeDb),
+            lists:foreach(fun(Na) ->
+                                  [NodeDescriptor] = dets:lookup(NodeDb, Na),
+                                  UpdatedNodeDescriptor =
+                                      NodeDescriptor#node_descriptor{
+                                        flags = ?bit_set(
+                                                   NodeDescriptor#node_descriptor.flags,
+                                                   ?F_DS_NOT_REPUBLISHED)},
+                                  ok = dets:insert(NodeDb, UpdatedNodeDescriptor),
+                                  true = ets:match_delete(OaDb, {'_', Na}),
+                                  ?daemon_log("Marked node ~s as not republished",
+                                              [net_tools:string_address(Na)])
+                          end, NotRepublishedNas),
             if
                 Repeat ->
                     timelib:start_timer(?TEN_MINUTES, {housekeeping, true}),
@@ -387,9 +414,11 @@ read_config(S) ->
     DbPath = ?config(['directory-server', db, path]),
     DbClearOnStart = ?config(['directory-server', db, 'clear-on-start']),
     NodeTTL = ?config(['directory-server', 'node-ttl']),
+    HardNodeTTL = ?config(['directory-server', 'hard-node-ttl']),
     MaxOasPerNode = ?config(['directory-server', 'max-oas-per-node']),
     S#state{mode = Mode, db_path = DbPath, db_clear_on_start = DbClearOnStart,
-            node_ttl = NodeTTL, max_oas_per_node = MaxOasPerNode}.
+            node_ttl = NodeTTL, hard_node_ttl = HardNodeTTL,
+            max_oas_per_node = MaxOasPerNode}.
 
 %%%
 %%% get_random_nodes

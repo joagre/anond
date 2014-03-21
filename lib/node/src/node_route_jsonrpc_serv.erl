@@ -35,13 +35,13 @@
 
 start_link({IpAddress, Port} = Na, NodeInstanceSup) ->
     NodeInstance = ?config([nodes, {'node-address', Na}]),
-    {value, {'json-rpc-certificate', CertFile}} =
+    {value, {'json-rpc-certificate', JsonRpcCertificate}} =
         lists:keysearch('json-rpc-certificate', 1, NodeInstance),
     %% I would prefer to use NodeRouteServ instead of NodeInstanceSup
     %% as handler function argument but asking for it here would lead
     %% to a deadlock. I could add support for some sort of delayed
     %% processing in net_serv.erl but I will not.
-    jsonrpc_serv:start_link([], IpAddress, Port, CertFile, [],
+    jsonrpc_serv:start_link([], IpAddress, Port, JsonRpcCertificate, [],
                             {?MODULE, node_handler, [NodeInstanceSup]},
                             undefined).
 
