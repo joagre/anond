@@ -2,7 +2,7 @@
 
 %%% external exports
 -export([start_link/2, stop/1, stop/2]).
--export([updated_peer_nas/2]).
+-export([updated_neighbour_nas/2]).
 -export([echo_reply/2]).
 
 %%% internal exports
@@ -27,7 +27,7 @@
           node_db                           :: node_db(),
           route_db                          :: route_db(),
           node_route_serv                   :: pid(),
-          peer_nas = []                     :: [na()],
+          neighbour_nas = []                :: [na()],
           path_costs = []                   :: [{{inet:port_number(),
                                                   inet:port_number()},
                                                  path_cost()}],
@@ -72,15 +72,15 @@ stop(Pid, Timeout) ->
     serv:call(Pid, stop, Timeout).
 
 %%%
-%%% exported: updated_peer_nas
+%%% exported: updated_neighbour_nas
 %%%
 
--spec updated_peer_nas(pid() | 'undefined', [na()]) -> 'ok'.
+-spec updated_neighbour_nas(pid() | 'undefined', [na()]) -> 'ok'.
 
-updated_peer_nas(undefined, _UpdatedPeerNas) ->
+updated_neighbour_nas(undefined, _UpdatedNeighbourNas) ->
     ok;
-updated_peer_nas(NodePathCostServ, UpdatedPeerNas) ->
-    NodePathCostServ ! {updated_peer_nas, UpdatedPeerNas},
+updated_neighbour_nas(NodePathCostServ, UpdatedNeighbourNas) ->
+    NodePathCostServ ! {updated_neighbour_nas, UpdatedNeighbourNas},
     ok.
 
 %%%
@@ -118,7 +118,7 @@ loop(#state{parent = Parent,
             node_db = NodeDb,
             route_db = RouteDb,
             node_route_serv = NodeRouteServ,
-            peer_nas = PeerNas,
+            neighbour_nas = NeighbourNas,
             path_costs = Pcs,
             unique_id = UniqueId,
             mode = Mode,
@@ -132,36 +132,37 @@ loop(#state{parent = Parent,
         config_updated ->
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
-        {updated_peer_nas, UpdatedPeerNas} ->
-            loop(S#state{peer_nas = UpdatedPeerNas});
-        measure when PeerNas == [] ->
+        {updated_neighbour_nas, UpdatedNeighbourNas} ->
+            loop(S#state{neighbour_nas = UpdatedNeighbourNas});
+        measure when NeighbourNas == [] ->
             timelib:start_timer(DelayBetweenMeasurements, measure),
             loop(S);
         measure ->
-            PeerNa = hd(PeerNas),
-            RotatedPeerNas = rotate_peer_nas(PeerNas),
+            NeighbourNa = hd(NeighbourNas),
+            RotatedNeighbourNas = rotate_neighbour_nas(NeighbourNas),
             case Mode of
                 normal ->
                     Pc = measure_path_cost(
                            NodeDb, RouteDb, UniqueId, MyNa,
                            NumberOfEchoRequests, AcceptableNumberOfEchoReplies,
-                           DelayBetweenEchoRequests, EchoReplyTimeout, PeerNa),
+                           DelayBetweenEchoRequests, EchoReplyTimeout,
+                           NeighbourNa),
                     ok = node_route_serv:update_path_cost(
-                           NodeRouteServ, PeerNa, Pc),
+                           NodeRouteServ, NeighbourNa, Pc),
                     timelib:start_timer(DelayBetweenMeasurements, measure),
-                    loop(S#state{peer_nas = RotatedPeerNas,
+                    loop(S#state{neighbour_nas = RotatedNeighbourNas,
                                  unique_id = UniqueId+1});
                 %% see doc/small_simulation.jpg
                 simulation ->
-                    {_NaIpAddress, NaPort} = MyNa,
-                    {_PeerNaIpAddress, PeerNaPort} = PeerNa,
+                    {_MyIpAddress, MyPort} = MyNa,
+                    {_NeighbourIpAddress, NeighbourPort} = NeighbourNa,
                     {value, {_, StoredPc}} =
-                        lists:keysearch({NaPort, PeerNaPort}, 1, Pcs),
+                        lists:keysearch({MyPort, NeighbourPort}, 1, Pcs),
                     Pc = nudge_path_cost(StoredPc, ?PERCENT_NUDGE),
                     ok = node_route_serv:update_path_cost(
-                           NodeRouteServ, PeerNa, Pc),
+                           NodeRouteServ, NeighbourNa, Pc),
                     timelib:start_timer(DelayBetweenMeasurements, measure),
-                    loop(S#state{peer_nas = RotatedPeerNas})
+                    loop(S#state{neighbour_nas = RotatedNeighbourNas})
             end;
 	{From, stop} ->
 	    From ! {self(), ok};
@@ -175,18 +176,19 @@ loop(#state{parent = Parent,
 	    loop(S)
     end.
 
-rotate_peer_nas([PeerNa|Rest]) ->
-    lists:reverse([PeerNa|lists:reverse(Rest)]).
+rotate_neighbour_nas([NeighbourNa|Rest]) ->
+    lists:reverse([NeighbourNa|lists:reverse(Rest)]).
 
-measure_path_cost(NodeDb, RouteDb, UniqueId, MyNa, NumberOfEchoRequests,
-                  AcceptableNumberOfEchoReplies, DelayBetweenEchoRequests,
-                  EchoReplyTimeout, PeerNa) ->
+measure_path_cost(
+  NodeDb, RouteDb, UniqueId, MyNa, NumberOfEchoRequests,
+  AcceptableNumberOfEchoReplies, DelayBetweenEchoRequests, EchoReplyTimeout,
+  NeighbourNa) ->
     {ok, NodeSendServ} =
-        node_route:lookup_node_send_serv(NodeDb, RouteDb, PeerNa),
+        node_route:lookup_node_send_serv(NodeDb, RouteDb, NeighbourNa),
     StartTimestamp = timelib:mk_timestamp(),
     proc_lib:spawn(?MODULE, send_echo_requests,
                    [UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
-                    PeerNa, NodeSendServ, StartTimestamp]),
+                    NeighbourNa, NodeSendServ, StartTimestamp]),
     EchoReplyLatencies =
         wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp),
     case length(EchoReplyLatencies) of
@@ -198,22 +200,22 @@ measure_path_cost(NodeDb, RouteDb, UniqueId, MyNa, NumberOfEchoRequests,
                             0, EchoReplyLatencies)/NumberOfEchoReplies,
             trunc(AverageEchoReplyLatency);
         NumberOfEchoReplies ->
-            {NaIpAddress, _NaPort} = MyNa,
-            {PeerNaIpAddress, _PeerNaPort} = PeerNa,
+            {MyIpAddress, _MyPort} = MyNa,
+            {NeighbourIpAddress, _NeighbourPort} = NeighbourNa,
             PacketLoss = trunc(NumberOfEchoReplies/NumberOfEchoRequests*100),
             ?daemon_log("Echo requests sent from ~s to ~s resulted in more "
                         "than ~w% packet loss",
-                        [net_tools:string_address(NaIpAddress),
-                         net_tools:string_address(PeerNaIpAddress),
+                        [net_tools:string_address(MyIpAddress),
+                         net_tools:string_address(NeighbourIpAddress),
                          PacketLoss]),
             -1
     end.
 
-send_echo_requests(_UniqueId, 0, _DelayBetweenEchoRequests, _PeerNa,
+send_echo_requests(_UniqueId, 0, _DelayBetweenEchoRequests, _NeighbourNa,
                    _NodeSendServ, _StartTimestamp) ->
     ok;
 send_echo_requests(UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
-                   PeerNa, NodeSendServ, StartTimestamp) ->
+                   NeighbourNa, NodeSendServ, StartTimestamp) ->
     EchoRequest = #echo_request{
       sequence_number = NumberOfEchoRequests,
       unique_id = UniqueId,
@@ -221,7 +223,7 @@ send_echo_requests(UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
     ok = node_send_serv:send(NodeSendServ, {?MODULE, EchoRequest}),
     timer:sleep(DelayBetweenEchoRequests),
     send_echo_requests(UniqueId, NumberOfEchoRequests-1,
-                       DelayBetweenEchoRequests, PeerNa, NodeSendServ,
+                       DelayBetweenEchoRequests, NeighbourNa, NodeSendServ,
                        StartTimestamp).
 
 wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp) ->

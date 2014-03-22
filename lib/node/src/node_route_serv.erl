@@ -25,24 +25,25 @@
 
 %%% records
 -record(state, {
-          parent                :: pid(),
-          node_db               :: node_db(),
-          route_db              :: route_db(),
-          psp_db                :: node_psp:psp_db(),
-          ttl                   :: non_neg_integer(),
-          peer_nas = []         :: [na()],
-          node_instance_sup     :: supervisor:child(),
-          node_path_cost_serv   :: pid(),
+          parent                     :: pid(),
+          node_db                    :: node_db(),
+          route_db                   :: route_db(),
+          psp_db                     :: node_psp:psp_db(),
+          ttl                        :: non_neg_integer(),
+          neighbour_nas = []         :: [na()],
+          node_instance_sup          :: supervisor:child(),
+          node_path_cost_serv        :: pid(),
           %% anond.conf parameters
-          directory_server      :: {inet:ip4_address(), inet:port_number()},
-          my_na                 :: na(),
-          my_oa                 :: oa(),
-	  public_key            :: node_crypto:pki_key(),
-	  private_key           :: node_crypto:pki_key(),
-          number_of_peers       :: non_neg_integer(),
-          refresh_peers_timeout :: non_neg_integer(),
-          recalc_timeout        :: non_neg_integer(),
-          auto_recalc           :: boolean()
+          directory_server           :: {inet:ip4_address(),
+                                         inet:port_number()},
+          my_na                      :: na(),
+          my_oa                      :: oa(),
+	  public_key                 :: node_crypto:pki_key(),
+	  private_key                :: node_crypto:pki_key(),
+          number_of_neighbours       :: non_neg_integer(),
+          refresh_neighbours_timeout :: non_neg_integer(),
+          recalc_timeout             :: non_neg_integer(),
+          auto_recalc                :: boolean()
 	 }).
 
 %%% types
@@ -189,16 +190,16 @@ loop(#state{parent = Parent,
 	    route_db = RouteDb,
             psp_db = PspDb,
             ttl = _TTL,
-            peer_nas = PeerNas,
+            neighbour_nas = NeighbourNas,
             node_instance_sup = NodeInstanceSup,
             node_path_cost_serv = NodePathCostServ,
             directory_server = DsIpAddressPort,
-            my_na = MyNa = LocalIpAddressPort,
+            my_na = MyNa,
 	    my_oa = MyOa,
 	    public_key = PublicKey,
 	    private_key = PrivateKey,
-            number_of_peers = NumberOfPeers,
-            refresh_peers_timeout = RefreshPeersTimeout,
+            number_of_neighbours = NumberOfNeighbours,
+            refresh_neighbours_timeout = RefreshNeighboursTimeout,
             recalc_timeout = RecalcTimeout,
             auto_recalc = AutoRecalc} = S) ->
     receive
@@ -209,14 +210,12 @@ loop(#state{parent = Parent,
             NodeDescriptor = #node_descriptor{public_key = PublicKey,
                                               flags = 1},
             case ds_jsonrpc:publish_node(
-                   LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                   NodeDescriptor) of
+                   MyNa, DsIpAddressPort, PrivateKey, NodeDescriptor) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Published node address ~s",
                                 [net_tools:string_address(MyNa)]),
                     case ds_jsonrpc:reserve_oa(
-                           LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                           MyOa) of
+                           MyNa, DsIpAddressPort, PrivateKey, MyOa) of
                         ok ->
                             ?daemon_log("Reserved overlay address ~s",
                                         [net_tools:string_address(MyOa)]),
@@ -226,7 +225,7 @@ loop(#state{parent = Parent,
                                              path_cost = 0, psp = Psp},
                             got_new =
                                 node_route:update_route_entry(RouteDb, Re),
-                            self() ! refresh_peers,
+                            self() ! refresh_neighbours,
                             timelib:start_timer(trunc(UpdatedTTL/2),
                                                 republish_self),
                             if
@@ -260,8 +259,7 @@ loop(#state{parent = Parent,
             NodeDescriptor = #node_descriptor{public_key = PublicKey,
                                               flags = 1},
             case ds_jsonrpc:publish_node(
-                   LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-                   NodeDescriptor) of
+                   MyNa, DsIpAddressPort, PrivateKey, NodeDescriptor) of
                 {ok, UpdatedTTL} ->
                     ?daemon_log("Republished node address ~s",
                                 [net_tools:string_address(MyNa)]),
@@ -275,30 +273,33 @@ loop(#state{parent = Parent,
                     timelib:start_timer(?FIVE_SECONDS, republish_self),
                     loop(S)
             end;
-        refresh_peers ->
-            ?daemon_log("Peer refresh started", []),
-            case refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
-                               DsIpAddressPort, MyNa, PrivateKey, NumberOfPeers,
-                               AutoRecalc) of
-                {ok, UpdatedPeerNas} ->
-                    timelib:start_timer(RefreshPeersTimeout, refresh_peers),
-                    ok = node_path_cost_serv:updated_peer_nas(
-                           NodePathCostServ, UpdatedPeerNas),
-                    loop(S#state{peer_nas = UpdatedPeerNas});
+        refresh_neighbours ->
+            ?daemon_log("Neighbour refresh started", []),
+            case refresh_neighbours(
+                   NodeDb, RouteDb, PspDb, NeighbourNas, NodeInstanceSup,
+                   DsIpAddressPort, MyNa, PrivateKey, NumberOfNeighbours,
+                   AutoRecalc) of
+                {ok, UpdatedNeighbourNas} ->
+                    timelib:start_timer(RefreshNeighboursTimeout,
+                                        refresh_neighbours),
+                    ok = node_path_cost_serv:updated_neighbour_nas(
+                           NodePathCostServ, UpdatedNeighbourNas),
+                    loop(S#state{neighbour_nas = UpdatedNeighbourNas});
                 {error, Reason} ->
                     ?dbg_log(Reason),
                     ?daemon_log(
-                       "Could not refresh peers. Retrying in five seconds...",
-                       []),
-                    timelib:start_timer(?FIVE_SECONDS, refresh_peers),
+                       "Could not refresh neighbours. "
+                       "Retrying in five seconds...", []),
+                    timelib:start_timer(?FIVE_SECONDS, refresh_neighbours),
                     loop(S)
             end;
 	{From, stop} ->
 	    ok = node_route:delete_node_db(NodeDb),
 	    ok = node_route:delete_route_db(RouteDb),
 	    From ! {self(), ok};
-        {handshake, {node_send_serv, PeerNa, NodeSendServ}} ->
-            ok = node_route:add_node_send_serv(NodeDb, PeerNa, NodeSendServ),
+        {handshake, {node_send_serv, NeighbourNa, NodeSendServ}} ->
+            ok = node_route:add_node_send_serv(
+                   NodeDb, NeighbourNa, NodeSendServ),
             loop(S);
         {From, {handshake, node_recv_serv}} ->
 	    From ! {self(), {ok, NodeDb, RouteDb}},
@@ -317,11 +318,11 @@ loop(#state{parent = Parent,
 	    loop(S);
         #route_entry{na = ViaNa} = Re ->
             case handle_route_entry(
-                   NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
+                   NodeDb, RouteDb, PspDb, NeighbourNas, NodeInstanceSup,
                    NodePathCostServ, DsIpAddressPort, MyNa, MyOa, PrivateKey,
                    Re) of
-                {ok, UpdatedPeerNas} ->
-                    loop(S#state{peer_nas = UpdatedPeerNas});
+                {ok, UpdatedNeighbourNas} ->
+                    loop(S#state{neighbour_nas = UpdatedNeighbourNas});
                 {error, Reason} ->
                     ?dbg_log(Reason),
                     ?daemon_log("Discard route entry from ~s",
@@ -349,8 +350,8 @@ loop(#state{parent = Parent,
                 true ->
                     loop(S)
             end;
-	{path_cost, PeerNa, Pc}  ->
-	    ok = node_route:update_path_cost(NodeDb, PeerNa, Pc),
+	{path_cost, NeighbourNa, Pc}  ->
+	    ok = node_route:update_path_cost(NodeDb, NeighbourNa, Pc),
 	    loop(S);
 	{'EXIT', Parent, Reason} ->
 	    ok = node_route:delete_node_db(NodeDb),
@@ -383,10 +384,10 @@ read_config(S, [{'public-key', Value}|Rest]) ->
 read_config(S, [{'private-key', Value}|Rest]) ->
     Key = node_crypto:read_pki_key(Value),
     read_config(S#state{private_key = Key}, Rest);
-read_config(S, [{'number-of-peers', Value}|Rest]) ->
-    read_config(S#state{number_of_peers = Value}, Rest);
-read_config(S, [{'refresh-peers-timeout', Value}|Rest]) ->
-    read_config(S#state{refresh_peers_timeout = Value}, Rest);
+read_config(S, [{'number-of-neighbours', Value}|Rest]) ->
+    read_config(S#state{number_of_neighbours = Value}, Rest);
+read_config(S, [{'refresh-neighbours-timeout', Value}|Rest]) ->
+    read_config(S#state{refresh_neighbours_timeout = Value}, Rest);
 read_config(S, [{'recalc-timeout', Value}|Rest]) ->
     read_config(S#state{recalc_timeout = Value}, Rest);
 read_config(S, [{'auto-recalc', Value}|Rest]) ->
@@ -397,133 +398,140 @@ read_config(S, [_|Rest]) ->
     read_config(S, Rest).
 
 %%%
-%%% refresh_peers
+%%% refresh_neighbours
 %%%
 
-refresh_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup, DsIpAddressPort,
-              MyNa = LocalIpAddressPort, PrivateKey,
-              NumberOfPeers, AutoRecalc) ->
-    ?daemon_log("Known peers: ~s", [net_tools:string_addresses(PeerNas)]),
-    case ds_jsonrpc:published_nodes(LocalIpAddressPort, DsIpAddressPort,
-                                    PrivateKey, PeerNas) of
-        {ok, PublishedPeerNas} ->
-            ?daemon_log("Still published peers: ~s",
-                        [net_tools:string_addresses(PublishedPeerNas)]),
+refresh_neighbours(
+  NodeDb, RouteDb, PspDb, NeighbourNas, NodeInstanceSup, DsIpAddressPort,
+  MyNa, PrivateKey, NumberOfNeighbours, AutoRecalc) ->
+    ?daemon_log("Known neighbours: ~s",
+                [net_tools:string_addresses(NeighbourNas)]),
+    case ds_jsonrpc:published_nodes(
+           MyNa, DsIpAddressPort, PrivateKey, NeighbourNas) of
+        {ok, PublishedNeighbourNas} ->
+            ?daemon_log("Still published neighbours: ~s",
+                        [net_tools:string_addresses(PublishedNeighbourNas)]),
             UnreachableNodes = node_route:unreachable_nodes(NodeDb),
-            UnreachablePeerNas = [Node#node.na || Node <- UnreachableNodes],
-            ?daemon_log("Unreachable peers: ~s",
-                        [net_tools:string_addresses(UnreachablePeerNas)]),
-            RemainingPeerNas = PublishedPeerNas--UnreachablePeerNas,
-            ?daemon_log("Remaining published and reachable peers: ~s",
-                        [net_tools:string_addresses(RemainingPeerNas)]),
-            case NumberOfPeers-length(RemainingPeerNas) of
-                NumberOfMissingPeers when NumberOfMissingPeers > 0 ->
-                    ?daemon_log("Need ~w additional peers...",
-                                [NumberOfMissingPeers]),
-                    get_more_peers(NodeDb, RouteDb, PspDb, PeerNas,
-                                   NodeInstanceSup, DsIpAddressPort, MyNa,
-                                   PrivateKey, AutoRecalc, RemainingPeerNas,
-                                   NumberOfMissingPeers);
+            UnreachableNeighbourNas =
+                [Node#node.na || Node <- UnreachableNodes],
+            ?daemon_log("Unreachable neighbours: ~s",
+                        [net_tools:string_addresses(UnreachableNeighbourNas)]),
+            RemainingNeighbourNas =
+                PublishedNeighbourNas--UnreachableNeighbourNas,
+            ?daemon_log("Remaining published and reachable neighbours: ~s",
+                        [net_tools:string_addresses(RemainingNeighbourNas)]),
+            case NumberOfNeighbours-length(RemainingNeighbourNas) of
+                NumberOfMissingNeighbours when NumberOfMissingNeighbours > 0 ->
+                    ?daemon_log("Need ~w additional neighbours...",
+                                [NumberOfMissingNeighbours]),
+                    get_more_neighbours(
+                      NodeDb, RouteDb, PspDb, NeighbourNas, NodeInstanceSup,
+                      DsIpAddressPort, MyNa, PrivateKey, AutoRecalc,
+                      RemainingNeighbourNas, NumberOfMissingNeighbours);
                 _ ->
-                    {ok, RemainingPeerNas}
+                    {ok, RemainingNeighbourNas}
             end;
         {error, Reason} ->
             {error, Reason}
     end.
 
-get_more_peers(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
-               DsIpAddressPort,
-               MyNa = LocalIpAddressPort, PrivateKey,
-               AutoRecalc, RemainingPeerNas, NumberOfMissingPeers) ->
+get_more_neighbours(
+  NodeDb, RouteDb, PspDb, NeighbourNas, NodeInstanceSup, DsIpAddressPort,
+  MyNa, PrivateKey, AutoRecalc, RemainingNeighbourNas,
+  NumberOfMissingNeighbours) ->
     case ds_jsonrpc:get_random_nodes(
-           LocalIpAddressPort, DsIpAddressPort, PrivateKey,
-           NumberOfMissingPeers) of
-        {ok, NewPeers} ->
-            NewPeerNas = [NewPeer#node_descriptor.na || NewPeer <- NewPeers],
-            ?daemon_log("Found ~w new peers: ~s",
-                        [NumberOfMissingPeers,
-                         net_tools:string_addresses(NewPeerNas)]),
-            purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
-                        PeerNas),
+           MyNa, DsIpAddressPort, PrivateKey, NumberOfMissingNeighbours) of
+        {ok, NewNeighbours} ->
+            NewNeighbourNas = [NewNeighbour#node_descriptor.na ||
+                                  NewNeighbour <- NewNeighbours],
+            ?daemon_log("Found ~w new neighbours: ~s",
+                        [NumberOfMissingNeighbours,
+                         net_tools:string_addresses(NewNeighbourNas)]),
+            purge_neighbours(NodeDb, RouteDb, NodeInstanceSup,
+                             RemainingNeighbourNas, NeighbourNas),
             lists:foreach(
-              fun(#node_descriptor{na = PeerNa, public_key = PeerPublicKey}) ->
+              fun(#node_descriptor{na = NeighbourNa,
+                                   public_key = NeighbourPublicKey}) ->
                       {ok, NodeSendServ} =
                           node_send_sup:start_node_send_serv(
-                            MyNa, PeerNa, NodeInstanceSup),
+                            MyNa, NeighbourNa, NodeInstanceSup),
                       Node = #node{
-                        na = PeerNa,
-                        public_key = PeerPublicKey,
+                        na = NeighbourNa,
+                        public_key = NeighbourPublicKey,
                         flags = ?F_NODE_UPDATED,
                         node_send_serv = NodeSendServ},
                       ok = node_route:add_node(NodeDb, Node)
-              end, NewPeers),
-            UpdatedPeerNas = NewPeerNas++RemainingPeerNas,
+              end, NewNeighbours),
+            UpdatedNeighbourNas = NewNeighbourNas++RemainingNeighbourNas,
             if
                 AutoRecalc ->
-                    ok = node_route:recalc(MyNa, NodeDb, RouteDb, PspDb,
-                                           PrivateKey),
-                    {ok, UpdatedPeerNas};
+                    ok = node_route:recalc(
+                           MyNa, NodeDb, RouteDb, PspDb, PrivateKey),
+                    {ok, UpdatedNeighbourNas};
                 true ->
-                    {ok, UpdatedPeerNas}
+                    {ok, UpdatedNeighbourNas}
             end;
         {error, Reason} ->
             {error, Reason}
     end.
 
-purge_peers(_NodeDb, _RouteDb, _NodeInstanceSup, _RemainingPeerNas, []) ->
+purge_neighbours(_NodeDb, _RouteDb, _NodeInstanceSup, _RemainingNeighbourNas,
+                 []) ->
     ok;
-purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
-            [PeerNa|Rest]) ->
-    case lists:member(PeerNa, RemainingPeerNas) of
+purge_neighbours(NodeDb, RouteDb, NodeInstanceSup, RemainingNeighbourNas,
+                 [NeighbourNa|Rest]) ->
+    case lists:member(NeighbourNa, RemainingNeighbourNas) of
         false ->
-            ok = node_route:delete_node(NodeDb, PeerNa),
-            ok = node_send_sup:stop_node_send_serv(PeerNa, NodeInstanceSup),
-            ok = node_route:update_path_costs(RouteDb, PeerNa, -1),
-            purge_peers(NodeDb, RouteDb, NodeInstanceSup, RemainingPeerNas,
-                        Rest);
+            ok = node_route:delete_node(NodeDb, NeighbourNa),
+            ok = node_send_sup:stop_node_send_serv(NeighbourNa,
+                                                   NodeInstanceSup),
+            ok = node_route:update_path_costs(RouteDb, NeighbourNa, -1),
+            purge_neighbours(NodeDb, RouteDb, NodeInstanceSup,
+                             RemainingNeighbourNas, Rest);
         true ->
-            purge_peers(NodeDb, RouteDb, NodeInstanceSup,
-                        lists:delete(PeerNa, RemainingPeerNas), Rest)
+            purge_neighbours(NodeDb, RouteDb, NodeInstanceSup,
+                             lists:delete(NeighbourNa, RemainingNeighbourNas),
+                             Rest)
     end.
 
 %%%
 %%% handle incoming #route_entry{}
 %%%
 
-handle_route_entry(NodeDb, RouteDb, PspDb, PeerNas, NodeInstanceSup,
-                   NodePathCostServ, DsIpAddressPort,
-                   MyNa = LocalIpAddressPort, MyOa,
-                   PrivateKey, #route_entry{na = ViaNa, path_cost = Pc} = Re) ->
+handle_route_entry(
+  NodeDb, RouteDb, PspDb, NeighbourNas, NodeInstanceSup, NodePathCostServ,
+  DsIpAddressPort, MyNa, MyOa, PrivateKey,
+  #route_entry{na = ViaNa, path_cost = Pc} = Re) ->
     case node_route:is_member_node(NodeDb, ViaNa) of
         true ->
-            update_route_entry(RouteDb, PspDb, PeerNas, MyNa, MyOa, Re);
+            update_route_entry(RouteDb, PspDb, NeighbourNas, MyNa, MyOa, Re);
         false ->
-            case ds_jsonrpc:get_node(LocalIpAddressPort, DsIpAddressPort,
-                                     PrivateKey, ViaNa) of
+            case ds_jsonrpc:get_node(
+                   MyNa, DsIpAddressPort, PrivateKey, ViaNa) of
                 {ok, #node_descriptor{public_key = PublicKey}} ->
-                    ?daemon_log("~s adding peer ~s",
+                    ?daemon_log("~s adding neighbour ~s",
                                 [net_tools:string_address(MyOa),
                                  net_tools:string_address(ViaNa)]),
-                    UpdatedPeerNas = [ViaNa|PeerNas],
-                    ok = node_path_cost_serv:updated_peer_nas(
-                           NodePathCostServ, UpdatedPeerNas),
+                    UpdatedNeighbourNas = [ViaNa|NeighbourNas],
+                    ok = node_path_cost_serv:updated_neighbour_nas(
+                           NodePathCostServ, UpdatedNeighbourNas),
                     {ok, NodeSendServ} =
                         node_send_sup:start_node_send_serv(
                           MyNa, ViaNa, NodeInstanceSup),
                     Node = #node{na = ViaNa, public_key = PublicKey,
                                  path_cost = Pc,
                                  flags = ?F_NODE_UPDATED bor
-                                     ?F_NODE_IS_INCOMING_PEER,
+                                     ?F_NODE_IS_INCOMING_NEIGHBOUR,
                                  node_send_serv = NodeSendServ},
                     ok = node_route:add_node(NodeDb, Node),
-                    update_route_entry(RouteDb, PspDb, UpdatedPeerNas, MyNa,
-                                       MyOa, Re);
+                    update_route_entry(RouteDb, PspDb, UpdatedNeighbourNas,
+                                       MyNa, MyOa, Re);
                 {error, Reason} ->
                     {error, Reason}
             end
     end.
 
-update_route_entry(RouteDb, PspDb, UpdatedPeerNas, MyNa, MyOa,
+update_route_entry(RouteDb, PspDb, UpdatedNeighbourNas, MyNa, MyOa,
                    #route_entry{oa = DestOa, na = ViaNa, path_cost = Pc,
                                 hops = Hops, psp = Psp} = Re) ->
     PspLoop = node_psp:is_loop(PspDb, Psp),
@@ -542,7 +550,7 @@ update_route_entry(RouteDb, PspDb, UpdatedPeerNas, MyNa, MyOa,
                [net_tools:string_address(MyOa),
                 net_tools:string_address(DestOa),
                 net_tools:string_address(ViaNa), Pc]),
-            {ok, UpdatedPeerNas};
+            {ok, UpdatedNeighbourNas};
         false ->
             case node_route:update_route_entry(RouteDb, Re) of
                 {updated, #route_entry{path_cost = CurrentPc}} ->
@@ -552,21 +560,21 @@ update_route_entry(RouteDb, PspDb, UpdatedPeerNas, MyNa, MyOa,
                        [net_tools:string_address(MyOa),
                         net_tools:string_address(DestOa),
                         net_tools:string_address(ViaNa), CurrentPc, Hops, Pc]),
-                    {ok, UpdatedPeerNas};
+                    {ok, UpdatedNeighbourNas};
                 {kept, _CurrentRe} ->
                     ?daemon_log(
                        "~s kept existing route: ~s -> ~s (~w, ~w)",
                        [net_tools:string_address(MyOa),
                         net_tools:string_address(DestOa),
                         net_tools:string_address(ViaNa), Pc, Hops]),
-                    {ok, UpdatedPeerNas};
+                    {ok, UpdatedNeighbourNas};
                 got_new ->
                     ?daemon_log(
                        "~s got new route: ~s -> ~s (~w, ~w)",
                        [net_tools:string_address(MyOa),
                         net_tools:string_address(DestOa),
                         net_tools:string_address(ViaNa), Pc, Hops]),
-                    {ok, UpdatedPeerNas};
+                    {ok, UpdatedNeighbourNas};
                 {got_better,
                  #route_entry{
                    na = CurrentViaNa, path_cost = CurrentPc,
@@ -580,7 +588,7 @@ update_route_entry(RouteDb, PspDb, UpdatedPeerNas, MyNa, MyOa,
                         net_tools:string_address(DestOa),
                         net_tools:string_address(CurrentViaNa),
                         CurrentPc, CurrentHops]),
-                    {ok, UpdatedPeerNas};
+                    {ok, UpdatedNeighbourNas};
                 {got_worse,
                  #route_entry{
                    na = CurrentViaNa, path_cost = CurrentPc,
@@ -594,6 +602,6 @@ update_route_entry(RouteDb, PspDb, UpdatedPeerNas, MyNa, MyOa,
                         net_tools:string_address(DestOa),
                         net_tools:string_address(CurrentViaNa), CurrentPc,
                         CurrentHops]),
-                    {ok, UpdatedPeerNas}
+                    {ok, UpdatedNeighbourNas}
             end
     end.

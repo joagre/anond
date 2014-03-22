@@ -45,8 +45,8 @@ format_error(Reason) ->
                                {'ok', [#route_entry{}]} |
                                {'error', error_reason()}.
 
-get_route_entries(LocalIpAddressPort, IpAddressPort) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort,
+get_route_entries(MyIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort,
                       <<"get-route-entries">>) of
         {ok, Res} ->
             decode_route_entries(Res);
@@ -62,8 +62,8 @@ get_route_entries(LocalIpAddressPort, IpAddressPort) ->
                 httplib:ip_address_port()) ->
                        {'ok', [#node{}]} | {'error', error_reason()}.
 
-get_nodes(LocalIpAddressPort, IpAddressPort) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"get-nodes">>) of
+get_nodes(MyIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"get-nodes">>) of
         {ok, Nodes} ->
             decode_nodes(Nodes);
         {error, Reason} ->
@@ -78,8 +78,8 @@ get_nodes(LocalIpAddressPort, IpAddressPort) ->
                     httplib:ip_address_port()) ->
                            'ok' | {'error', error_reason()}.
 
-enable_recalc(LocalIpAddressPort, IpAddressPort) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"enable-recalc">>) of
+enable_recalc(MyIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"enable-recalc">>) of
         {ok, true} ->
             ok;
         {error, Reason} ->
@@ -94,8 +94,8 @@ enable_recalc(LocalIpAddressPort, IpAddressPort) ->
                      httplib:ip_address_port()) ->
                             'ok' | {'error', error_reason()}.
 
-disable_recalc(LocalIpAddressPort, IpAddressPort) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort,
+disable_recalc(MyIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort,
                       <<"disable-ecalc">>) of
         {ok, true} ->
             ok;
@@ -111,8 +111,8 @@ disable_recalc(LocalIpAddressPort, IpAddressPort) ->
              httplib:ip_address_port()) ->
                     'ok' | {'error', error_reason()}.
 
-recalc(LocalIpAddressPort, IpAddressPort) ->
-    case jsonrpc:call(LocalIpAddressPort, IpAddressPort, <<"recalc">>) of
+recalc(MyIpAddressPort, IpAddressPort) ->
+    case jsonrpc:call(MyIpAddressPort, IpAddressPort, <<"recalc">>) of
         {ok, true} ->
             ok;
         {error, Reason} ->

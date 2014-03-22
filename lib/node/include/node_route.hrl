@@ -30,6 +30,6 @@
 	 }).
 
 -define(F_NODE_UPDATED, (1 bsl 0)).
--define(F_NODE_IS_INCOMING_PEER, (1 bsl 1)).
+-define(F_NODE_IS_INCOMING_NEIGHBOUR, (1 bsl 1)).
 
 -endif.

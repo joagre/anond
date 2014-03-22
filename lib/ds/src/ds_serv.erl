@@ -427,24 +427,24 @@ read_config(S) ->
 %%%
 
 get_simulated_nodes(NodeDb, {MyIpAddress, MyPort}) ->
-    {value, {MyPort, NeighbourNodePorts}} =
+    {value, {MyPort, NeighbourPorts}} =
         lists:keysearch(MyPort, 1, ?NON_RANDOM_NODES),
-    NeighbourNodeNas = [{MyIpAddress, NeighbourNodePort} ||
-                           NeighbourNodePort <- NeighbourNodePorts],
-    case lookup_simulated_nodes(NodeDb, NeighbourNodeNas) of
+    NeighbourNas = [{MyIpAddress, NeighbourPort} ||
+                       NeighbourPort <- NeighbourPorts],
+    case lookup_simulated_nodes(NodeDb, NeighbourNas) of
         {ok, Nds} ->
-            {ok, NeighbourNodeNas, Nds};
+            {ok, NeighbourNas, Nds};
         {error, Reason} ->
             {error, Reason}
     end.
 
-lookup_simulated_nodes(NodeDb, NeighbourNodeNas) ->
-    lookup_simulated_nodes(NodeDb, NeighbourNodeNas, []).
+lookup_simulated_nodes(NodeDb, NeighbourNas) ->
+    lookup_simulated_nodes(NodeDb, NeighbourNas, []).
 
 lookup_simulated_nodes(_NodeDb, [], Acc) ->
     {ok, lists:reverse(Acc)};
-lookup_simulated_nodes(NodeDb, [NeighbourNodeNa|Rest], Acc) ->
-    case dets:lookup(NodeDb, NeighbourNodeNa) of
+lookup_simulated_nodes(NodeDb, [NeighbourNa|Rest], Acc) ->
+    case dets:lookup(NodeDb, NeighbourNa) of
         [Nd] ->
             lookup_simulated_nodes(NodeDb, Rest, [Nd|Acc]);
         [] ->

@@ -21,7 +21,7 @@
 %%% records
 -record(state, {
 	  parent               :: pid(),
-          peer_na              :: na(),
+          neighbour_na         :: na(),
           socket               :: gen_udp:socket(),
           cell_buffer = []     :: [binary()],
           cell_size = 0        :: non_neg_integer(),
@@ -41,8 +41,8 @@
 -spec start_link(na(), na(), supervisor:sup_ref(), supervisor:sup_ref()) ->
                         {'ok', pid()}.
 
-start_link(MyNa, PeerNa, NodeRouteServ, NodeRecvServ) ->
-    Args = [self(), MyNa, PeerNa, NodeRouteServ, NodeRecvServ],
+start_link(MyNa, NeighbourNa, NodeRouteServ, NodeRecvServ) ->
+    Args = [self(), MyNa, NeighbourNa, NodeRouteServ, NodeRecvServ],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
@@ -84,9 +84,10 @@ stop(Pid, Timeout) ->
 %%% server loop
 %%%
 
-init(Parent, MyNa, PeerNa, NodeRouteServ, NodeRecvServ) ->
+init(Parent, MyNa, NeighbourNa, NodeRouteServ, NodeRecvServ) ->
     process_flag(trap_exit, true),
-    S = read_config(#state{parent = Parent, my_na = MyNa, peer_na = PeerNa}),
+    S = read_config(#state{parent = Parent, my_na = MyNa,
+                           neighbour_na = NeighbourNa}),
     ok = config_json_serv:subscribe(),
     ok = node_route_serv:handshake(NodeRouteServ, {?MODULE, MyNa, self()}),
     {ok, Socket} = node_recv_serv:handshake(NodeRecvServ, ?MODULE),
@@ -94,7 +95,7 @@ init(Parent, MyNa, PeerNa, NodeRouteServ, NodeRecvServ) ->
     loop(S#state{socket = Socket}).
 
 loop(#state{parent = Parent,
-            peer_na = PeerNa,
+            neighbour_na = NeighbourNa,
             socket = Socket,
             cell_buffer = CellBuffer,
             cell_size = CellSize,
@@ -111,7 +112,7 @@ loop(#state{parent = Parent,
             DataSize = size(Data),
             if
                 CellSize+DataSize > MaxCellSize ->
-                    send_cell(PeerNa, Socket, CellBuffer, CellSize,
+                    send_cell(NeighbourNa, Socket, CellBuffer, CellSize,
                               MaxCellSize),
                     loop(S#state{cell_buffer = [Data],
                                  cell_size = DataSize});
@@ -133,7 +134,7 @@ loop(#state{parent = Parent,
             IpPacketSize = size(IpPacket),
             if
                 CellSize+IpPacketSize > MaxCellSize ->
-                    send_cell(PeerNa, Socket, CellBuffer, CellSize,
+                    send_cell(NeighbourNa, Socket, CellBuffer, CellSize,
                               MaxCellSize),
                     loop(S#state{cell_buffer = [IpPacket],
                                  cell_size = IpPacketSize});
@@ -162,7 +163,7 @@ loop(#state{parent = Parent,
             RouteEntrySize = size(RouteEntry),
             if
                 CellSize+RouteEntrySize > MaxCellSize ->
-                    send_cell(PeerNa, Socket, CellBuffer, CellSize,
+                    send_cell(NeighbourNa, Socket, CellBuffer, CellSize,
                               MaxCellSize),
                     loop(S#state{cell_buffer = [RouteEntry],
                                  cell_size = RouteEntrySize});
@@ -180,11 +181,11 @@ loop(#state{parent = Parent,
             %% note: echo requests are always sent without delay
             case CellSize+EchoRequestSize of
                 FinalCellSize when FinalCellSize > MaxCellSize ->
-                    send_cell(PeerNa, Socket, EchoRequest, EchoRequestSize,
+                    send_cell(NeighbourNa, Socket, EchoRequest, EchoRequestSize,
                               MaxCellSize),
                     loop(S);
                 FinalCellSize ->
-                    send_cell(PeerNa, Socket, [EchoRequest|CellBuffer],
+                    send_cell(NeighbourNa, Socket, [EchoRequest|CellBuffer],
                               FinalCellSize, MaxCellSize),
                     loop(S#state{cell_buffer = [], cell_size = 0})
             end;
@@ -201,13 +202,13 @@ loop(#state{parent = Parent,
                 CellSize == 0 ->
                     loop(S);
                 true ->
-                    send_cell(PeerNa, Socket, CellBuffer, CellSize,
+                    send_cell(NeighbourNa, Socket, CellBuffer, CellSize,
                               MaxCellSize),
                     loop(S#state{cell_buffer = [], cell_size = 0})
             end
     end.
 
-send_cell({PeerIpAddress, PeerPort}, Socket, CellBuffer, CellSize,
+send_cell({NeighbourIpAddress, NeighbourPort}, Socket, CellBuffer, CellSize,
           MaxCellSize) ->
     case MaxCellSize-CellSize of
         0 ->
@@ -219,13 +220,14 @@ send_cell({PeerIpAddress, PeerPort}, Socket, CellBuffer, CellSize,
                 [CellBuffer, <<?PADDING:8>>,
                  salt:crypto_random_bytes(PaddingSize-1)]
     end,
-    case gen_udp:send(Socket, PeerIpAddress, PeerPort, FinalCellBuffer) of
+    case gen_udp:send(Socket, NeighbourIpAddress, NeighbourPort,
+                      FinalCellBuffer) of
         ok ->
             ok;
         {error, Reason} ->
             ?daemon_log("Sending data to ~s:~w failed: ~s",
-                        [net_tools:string_address(PeerIpAddress), PeerPort,
-                         inet:format_error(Reason)])
+                        [net_tools:string_address(NeighbourIpAddress),
+                         NeighbourPort, inet:format_error(Reason)])
     end.
 
 %%%
