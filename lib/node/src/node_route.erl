@@ -288,10 +288,9 @@ send_route_entries(MyNa, RouteDb, PspDb, PrivateKey,
               end
       end, RouteDb).
 
-send_route_entry(MyNa, PspDb, NeighbourPc, NodeSendServ,
+send_route_entry(_MyNa, PspDb, NeighbourPc, NodeSendServ,
                  #route_entry{na = ReNa, path_cost = RePc,
-                              path_cost_auth = PcAuth, hops = Hops,
-                              psp = Psp} = Re,
+                              path_cost_auth = PcAuth, psp = Psp} = Re,
                  NeighbourPublicKey, PrivateKey) ->
 % patrik: like this perhaps?
 %    if
@@ -334,10 +333,12 @@ send_route_entry(MyNa, PspDb, NeighbourPc, NodeSendServ,
             {ok, UpdatedPsp} = node_psp:add_me(PspDb, Psp),
             UpdatedRe =
                 Re#route_entry{
-                  na = MyNa,
+% must be done on the remote side
+%                  na = MyNa,
                   path_cost = UpdatedPc,
                   path_cost_auth = UpdatedPcAuth,
-                  hops = [MyNa|Hops],
+% must be done on the remote side
+%                  hops = [MyNa|Hops],
                   psp = UpdatedPsp
                  },
             ok = node_send_serv:send(NodeSendServ, {node_route_serv, UpdatedRe})

@@ -350,12 +350,26 @@ loop(#state{parent = Parent,
             From ! {self(), ok},
             loop(S);
         {From, {published_nodes, Nas}} ->
-            StillPublishedNas =
-                [Na || Na <- Nas, dets:member(NodeDb, Na) == true],
+            PublishedNas =
+                lists:foldl(fun(Na, Acc) ->
+                                    case dets:lookup(NodeDb, Na) of
+                                        [] ->
+                                            Acc;
+                                        [Nd] ->
+                                            if
+                                                ?bit_is_clr(
+                                                   Nd#node_descriptor.flags,
+                                                   ?F_DS_NOT_REPUBLISHED) ->
+                                                    [Na|Acc];
+                                                true ->
+                                                    Acc
+                                            end
+                                    end
+                            end, [], Nas),
             ?daemon_log("Out of these nodes ~s, these are still published ~s",
                         [net_tools:string_addresses(Nas),
-                         net_tools:string_addresses(StillPublishedNas)]),
-            From ! {self(), {ok, StillPublishedNas}},
+                         net_tools:string_addresses(PublishedNas)]),
+            From ! {self(), {ok, PublishedNas}},
             loop(S);
         {From, {reserve_oa, Oa, Na}} ->
             case dets:lookup(NodeDb, Na) of

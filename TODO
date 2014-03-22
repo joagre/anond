@@ -5,6 +5,7 @@ L = Later
 Generic stuff
 -------------
 N Clean up in deaemon_log and dbg_log macro usage.
+N Update example curl usage in code
 L Write documentation (Use LyX)
   - A White paper
   - End-user guide (client and server users)

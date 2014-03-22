@@ -223,7 +223,7 @@ start_session(Parent, Handler, TransportModule, ListenSocket, SessionDb,
                             close(TransportModule, Socket)
                     end
             end;
-	Reason ->
+	{error, Reason} ->
             ?daemon_log("Unexpected networking problem: ~p", [Reason]),
 	    timer:sleep(?FIVE_SECONDS),
 	    Parent ! {start_session, undefined, undefined}

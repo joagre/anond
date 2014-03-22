@@ -242,9 +242,13 @@ handle_cell(
     Oa = {Oa0, Oa1, Oa2, Oa3, Oa4, Oa5, Oa6, Oa7},
     case decode_hops(Hops) of
         {ok, DecodedHops} ->
+            NeighbourNa = {NeighbourIpAddress, NeighbourPort},
             Re = #route_entry{
-              oa = Oa, na = {NeighbourIpAddress, NeighbourPort}, path_cost = Pc,
-              hops = DecodedHops, psp = Psp
+              oa = Oa,
+              na = NeighbourNa,
+              path_cost = Pc,
+              hops = [NeighbourNa|DecodedHops],
+              psp = Psp
              },
             ok = node_route_serv:route_entry(NodeRouteServ, Re),
             handle_cell(
