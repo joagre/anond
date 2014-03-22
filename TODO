@@ -23,15 +23,13 @@ L Implement anond control panels for:
 
 Directory server
 ----------------
+* Test that it all works. :-)
 * Make it possible to register a "domain"-name for a bunch of overlay
 adresses. The registration could be done through the directory
 server. Name lookups could be done towards a UDP based overlay service.
 
 Node
 ----
-N Move Hops to remote side, move reoute_entry na to remote side
-N Cloak experimental json-rpc functions (all of them)
-  - add to publish_nodes flags
 N Start to use the PKI to encrypt tunnel traffic
   - handshake, rethinkg directory server get_node(). needed? etc
   - call ds_serv:get_node (renamed to get_public_key?)
@@ -39,6 +37,8 @@ N Start to use the PKI to encrypt tunnel traffic
 N Integrate Patrik's psp code and authentication of path costs code
 N Many oas per na
 N TCP node punching to directory server
+N Chop large route entries ito 1024 packets
+* Test that it all works. :-)
 * Limit download and upload rate in B/s
 * Use many overlay addresses and pick new ones now and then
 * Pick new neighbour nodes now and then when needed(TM)

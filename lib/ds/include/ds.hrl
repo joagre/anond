@@ -18,7 +18,7 @@
 	 }).
 
 -define(F_DS_NOT_REPUBLISHED, (1 bsl 1)).
--define(F_DS_EXPERIMENTAL, (1 bsl 2)).
+-define(F_DS_EXPERIMENTAL_API, (1 bsl 2)).
 
 %% see doc/small_simulation.jpg
 -define(NON_RANDOM_NODES,

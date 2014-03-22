@@ -11,7 +11,7 @@
 -export([start_link/2]).
 
 %%% internal exports
--export([node_handler/4]).
+-export([node_handler/5]).
 
 %%% include files
 -include_lib("node/include/node.hrl").
@@ -24,6 +24,9 @@
 %%% constants
 
 %%% records
+-record(state, {
+	  experimental_api :: boolean()
+         }).
 
 %%% types
 
@@ -37,39 +40,44 @@ start_link({IpAddress, Port} = Na, NodeInstanceSup) ->
     NodeInstance = ?config([nodes, {'node-address', Na}]),
     {value, {'json-rpc-certificate', JsonRpcCertificate}} =
         lists:keysearch('json-rpc-certificate', 1, NodeInstance),
+    {value, {'experimental-api', ExperimentalApi}} =
+        lists:keysearch('experimental-api', 1, NodeInstance),
     %% I would prefer to use NodeRouteServ instead of NodeInstanceSup
     %% as handler function argument but asking for it here would lead
     %% to a deadlock. I could add support for some sort of delayed
     %% processing in net_serv.erl but I will not.
+    S = #state{experimental_api = ExperimentalApi},
     jsonrpc_serv:start_link([], IpAddress, Port, JsonRpcCertificate, [],
-                            {?MODULE, node_handler, [NodeInstanceSup]},
+                            {?MODULE, node_handler, [NodeInstanceSup, S]},
                             undefined).
 
-%% experimental api (must be restricted)
+%% experimental api
 node_handler(_MyIpAddressPort, <<"get-route-entries">>, undefined,
-             NodeInstanceSup) ->
+             NodeInstanceSup, #state{experimental_api = true}) ->
     {ok, Res} =
         node_route_serv:get_route_entries(node_route_serv(NodeInstanceSup)),
     {ok, node_route_jsonrpc:encode_route_entries(Res)};
-%% experimental api (must be restricted)
-node_handler(_MyIpAddressPort, <<"get-nodes">>, undefined, NodeInstanceSup) ->
+%% experimental api
+node_handler(_MyIpAddressPort, <<"get-nodes">>, undefined, NodeInstanceSup,
+             #state{experimental_api = true}) ->
     {ok, Nodes} = node_route_serv:get_nodes(node_route_serv(NodeInstanceSup)),
     {ok, node_route_jsonrpc:encode_nodes(Nodes)};
-%% experimental api (must be restricted)
+%% experimental api
 node_handler(_MyIpAddressPort,<<"enable-recalc">>, undefined,
-             NodeInstanceSup) ->
+             NodeInstanceSup, #state{experimental_api = true}) ->
     ok = node_route_serv:enable_recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
-%% experimental api (must be restricted)
+%% experimental api
 node_handler(_MyIpAddressPort, <<"disable-recalc">>, undefined,
-             NodeInstanceSup) ->
+             NodeInstanceSup, #state{experimental_api = true}) ->
     ok = node_route_serv:disable_recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
-%% experimental api (must be restricted)
-node_handler(_MyIpAddressPort, <<"recalc">>, undefined, NodeInstanceSup) ->
+%% experimental api
+node_handler(_MyIpAddressPort, <<"recalc">>, undefined, NodeInstanceSup,
+             #state{experimental_api = true}) ->
     ok = node_route_serv:recalc(node_route_serv(NodeInstanceSup)),
     {ok, true};
-node_handler(_MyIpAddressPort, Method, Params, _NodeInstanceSup) ->
+node_handler(_MyIpAddressPort, Method, Params, _NodeInstanceSup, _S) ->
     ?error_log({invalid_request, Method, Params}),
     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
     {error, JsonError}.

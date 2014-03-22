@@ -42,6 +42,7 @@
 -spec start_link() -> {ok, pid()}.
 
 start_link() ->
+    ExperimentalApi = ?config(['directory-server', 'experimental-api']),
     {IpAddress, Port} = ?config(['directory-server', listen]),
     JsonRpcCertificate = ?config(['directory-server', 'json-rpc-certificate']),
     Docroot = filename:join(code:priv_dir(ds), "docroot"),
@@ -60,7 +61,6 @@ start_link() ->
                                 Nd#node_descriptor.public_key
                         end
                 end}],
-    ExperimentalApi = ?config(['directory-server', 'experimental-api']),
     S = #state{experimental_api = ExperimentalApi},
     jsonrpc_serv:start_link(Options, IpAddress, Port, JsonRpcCertificate, [],
                             {?MODULE, ds_handler, [S]}, Docroot).

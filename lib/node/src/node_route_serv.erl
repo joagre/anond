@@ -34,6 +34,7 @@
           node_instance_sup          :: supervisor:child(),
           node_path_cost_serv        :: pid(),
           %% anond.conf parameters
+          experimental_api           :: boolean(),
           directory_server           :: {inet:ip4_address(),
                                          inet:port_number()},
           my_na                      :: na(),
@@ -193,6 +194,7 @@ loop(#state{parent = Parent,
             neighbour_nas = NeighbourNas,
             node_instance_sup = NodeInstanceSup,
             node_path_cost_serv = NodePathCostServ,
+            experimental_api = ExperimentalApi,
             directory_server = DsIpAddressPort,
             my_na = MyNa,
 	    my_oa = MyOa,
@@ -207,8 +209,16 @@ loop(#state{parent = Parent,
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
         bootstrap ->
-            NodeDescriptor = #node_descriptor{public_key = PublicKey,
-                                              flags = 1},
+            Flags =
+                if
+                    ExperimentalApi ->
+                        Flags = ?F_DS_EXPERIMENTAL_API;
+                    true ->
+                        Flags = 0
+                end,
+            NodeDescriptor =
+                #node_descriptor{public_key = PublicKey,
+                                 flags = Flags},
             case ds_jsonrpc:publish_node(
                    MyNa, DsIpAddressPort, PrivateKey, NodeDescriptor) of
                 {ok, UpdatedTTL} ->
@@ -256,8 +266,15 @@ loop(#state{parent = Parent,
                     loop(S)
             end;
         republish_self ->
+            Flags =
+                if
+                    ExperimentalApi ->
+                        Flags = ?F_DS_EXPERIMENTAL_API;
+                    true ->
+                        Flags = 0
+                end,
             NodeDescriptor = #node_descriptor{public_key = PublicKey,
-                                              flags = 1},
+                                              flags = Flags},
             case ds_jsonrpc:publish_node(
                    MyNa, DsIpAddressPort, PrivateKey, NodeDescriptor) of
                 {ok, UpdatedTTL} ->
@@ -372,6 +389,8 @@ read_config(S) ->
 
 read_config(S, []) ->
     S;
+read_config(S, [{'experimental-api', Value}|Rest]) ->
+    read_config(S#state{experimental_api = Value}, Rest);
 read_config(S, [{'directory-server', Value}|Rest]) ->
     read_config(S#state{directory_server = Value}, Rest);
 read_config(S, [{'overlay-addresses', [MyOa]}|Rest]) ->
