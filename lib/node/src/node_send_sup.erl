@@ -35,8 +35,8 @@ start_link() ->
 -spec start_node_send_serv(na(), na(), supervisor:sup_ref()) ->
                                   supervisor:startchild_ret().
 
-start_node_send_serv(Na, PeerNa, NodeInstanceSup) ->
-    Id = {node_send_serv, PeerNa},
+start_node_send_serv(Na, NeighbourNa, NodeInstanceSup) ->
+    Id = {node_send_serv, NeighbourNa},
     {ok, NodeSendSup} =
         node_instance_sup:lookup_child(NodeInstanceSup, node_send_sup),
     {ok, NodeRouteServ} =
@@ -45,7 +45,7 @@ start_node_send_serv(Na, PeerNa, NodeInstanceSup) ->
         node_instance_sup:lookup_child(NodeInstanceSup, node_recv_serv),
     NodeSendServChildSpec =
         {Id, {node_send_serv, start_link,
-              [Na, PeerNa, NodeRouteServ, NodeRecvServ]},
+              [Na, NeighbourNa, NodeRouteServ, NodeRecvServ]},
          permanent, 10000, worker, [node_send_serv]},
     supervisor:start_child(NodeSendSup, NodeSendServChildSpec).
 
@@ -59,10 +59,10 @@ start_node_send_serv(Na, PeerNa, NodeInstanceSup) ->
                                   'running' | 'restarting' | 'not_found' |
                                   'simple_one_for_one'}.
 
-stop_node_send_serv(PeerNa, NodeInstanceSup) ->
+stop_node_send_serv(NeighbourNa, NodeInstanceSup) ->
     {ok, NodeSendSup} =
         node_instance_sup:lookup_child(NodeInstanceSup, node_send_sup),
-    Id = {node_send_serv, PeerNa},
+    Id = {node_send_serv, NeighbourNa},
     case supervisor:terminate_child(NodeSendSup, Id) of
         ok ->
             supervisor:delete_child(NodeSendSup, Id);

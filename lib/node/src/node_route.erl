@@ -110,8 +110,8 @@ unreachable_nodes(NodeDb) ->
 
 -spec add_node_send_serv(node_db(), na(), pid()) -> 'ok'.
 
-add_node_send_serv(NodeDb, PeerNa, NodeSendServ) ->
-    case ets:lookup(NodeDb, PeerNa) of
+add_node_send_serv(NodeDb, NeighbourNa, NodeSendServ) ->
+    case ets:lookup(NodeDb, NeighbourNa) of
         [Node] ->
 	    true = ets:insert(
                      NodeDb, Node#node{node_send_serv = NodeSendServ}),
@@ -268,30 +268,31 @@ propagate_route_entries(MyNa, NodeDb, RouteDb, PspDb, PrivateKey) ->
       end, NodeDb).
 
 send_route_entries(MyNa, RouteDb, PspDb, PrivateKey,
-                   #node{na = PeerNa,
-                         public_key = PeerPublicKey,
-                         path_cost = PeerPc,
-                         flags = PeerFlags,
+                   #node{na = NeighbourNa,
+                         public_key = NeighbourPublicKey,
+                         path_cost = NeighbourPc,
+                         flags = NeighbourFlags,
                          node_send_serv = NodeSendServ}) ->
     foreach_route_entry(
       fun(#route_entry{na = ReNa, flags = ReFlags} = Re) ->
               if
-                  PeerNa /= ReNa andalso
-                  PeerPc /= undefined andalso
-                  (?bit_is_set(PeerFlags, ?F_NODE_UPDATED) orelse
+                  NeighbourNa /= ReNa andalso
+                  NeighbourPc /= undefined andalso
+                  (?bit_is_set(NeighbourFlags, ?F_NODE_UPDATED) orelse
                    ?bit_is_set(ReFlags, ?F_RE_UPDATED)) ->
-                      send_route_entry(MyNa, PspDb, PeerPc, NodeSendServ, Re,
-                                       PeerPublicKey, PrivateKey);
+                      send_route_entry(
+                        MyNa, PspDb, NeighbourPc, NodeSendServ, Re,
+                        NeighbourPublicKey, PrivateKey);
                   true ->
                       ok
               end
       end, RouteDb).
 
-send_route_entry(MyNa, PspDb, PeerPc, NodeSendServ,
+send_route_entry(MyNa, PspDb, NeighbourPc, NodeSendServ,
                  #route_entry{na = ReNa, path_cost = RePc,
                               path_cost_auth = PcAuth, hops = Hops,
                               psp = Psp} = Re,
-                 PeerPublicKey, PrivateKey) ->
+                 NeighbourPublicKey, PrivateKey) ->
 % patrik: like this perhaps?
 %    if
 %        ReNa == MyNa ->
@@ -299,7 +300,7 @@ send_route_entry(MyNa, PspDb, PeerPc, NodeSendServ,
 %            %% of type node_path_cost_auth:auth(). It could perhaps be:
 %            %% auth() :: {costs(), signature(), r0_hash()}
 %            {ok, NewPcAuth} =
-%                node_path_cost_auth:new(PeerPublicKey, PrivateKey);
+%                node_path_cost_auth:new(NeighbourPublicKey, PrivateKey);
 %        true ->
 %            %% Verify r0
 %            case node_path_cost_auth:verify_r0(PcAuth) of
@@ -317,17 +318,17 @@ send_route_entry(MyNa, PspDb, PeerPc, NodeSendServ,
                         [net_tools:string_address(ReNa)]);
         true ->
             if
-                PeerPc == -1 orelse RePc == -1 ->
+                NeighbourPc == -1 orelse RePc == -1 ->
                     UpdatedPc = -1,
 % patrik: and like this
 %                    {ok, UpdatedPcAuth} =
 %                        node_path_cost:add_cost(NewPcAuth, 256),
                     UpdatedPcAuth = PcAuth;
                 true ->
-                    UpdatedPc = RePc+PeerPc,
+                    UpdatedPc = RePc+NeighbourPc,
 % patrik: and like this
 %                    {ok, UpdatedPcAuth} =
-%                        node_path_cost:add_cost(NewPcAuth, PeerPc div 10)
+%                        node_path_cost:add_cost(NewPcAuth, NeighbourPc div 10)
                     UpdatedPcAuth = PcAuth
             end,
             {ok, UpdatedPsp} = node_psp:add_me(PspDb, Psp),
@@ -370,8 +371,8 @@ clear_route_entry_flags(RouteDb) ->
 
 -spec update_path_cost(node_db(), na(), path_cost()) -> ok.
 
-update_path_cost(NodeDb, PeerNa, UpdatedPc) ->
-    case ets:lookup(NodeDb, PeerNa) of
+update_path_cost(NodeDb, NeighbourNa, UpdatedPc) ->
+    case ets:lookup(NodeDb, NeighbourNa) of
         [#node{path_cost = Pc} = Node]
           when Pc /= UpdatedPc ->
             UpdatedFlags = ?bit_set(Node#node.flags, ?F_NODE_UPDATED),
@@ -389,9 +390,9 @@ update_path_cost(NodeDb, PeerNa, UpdatedPc) ->
 
 -spec update_path_costs(route_db(), na(), path_cost()) -> ok.
 
-update_path_costs(RouteDb, PeerNa, UpdatedPc) ->
+update_path_costs(RouteDb, NeighbourNa, UpdatedPc) ->
     foreach_route_entry(
-      fun(#route_entry{na = ReNa} = Re) when ReNa == PeerNa ->
+      fun(#route_entry{na = ReNa} = Re) when ReNa == NeighbourNa ->
               UpdatedFlags = ?bit_set(Re#route_entry.flags, ?F_RE_UPDATED),
               true = ets:insert(RouteDb,
                                 Re#route_entry{path_cost = UpdatedPc,
