@@ -24,7 +24,7 @@
 %%% records
 -record(state, {
 	  parent           :: pid(),
-          net_serv         :: pid(),
+          tcp_serv         :: pid(),
           config_filename  :: file:filename(),
           json_schema      :: json_schema(),
 	  json_term        :: json_term(),
@@ -35,7 +35,7 @@
 -type error_reason() ::
         'already_started' |
         {'config', config_error_reason()} |
-        {'net_serv', net_serv:error_reason()} |
+        {'tcp_serv', tcp_serv:error_reason()} |
         {'posix', inet:posix()}.
 -type config_error_reason() ::
         'bad_json' |
@@ -62,12 +62,12 @@
 -spec start_link(ConfigFilename :: file:filename(),
                  JsonSchema :: json_schema(),
                  ControlAddressPortPath :: json_path(),
-                 net_serv:handler()) ->
+                 tcp_serv:handler()) ->
                         {'ok', pid()} |
                         {'error',
                          'already_started'|
                          {'config', config_error_reason()} |
-                         {'net_serv', net_serv:error_reason()}}.
+                         {'tcp_serv', tcp_serv:error_reason()}}.
 
 start_link(ConfigFilename, JsonSchema, ControlAddressPortPath, Handler) ->
     Args =
@@ -145,8 +145,8 @@ tcp_send(Address, Port, Message) ->
 
 format_error(already_started) ->
     "Already started";
-format_error({net_serv, Reason}) ->
-    net_serv:format_error(Reason);
+format_error({tcp_serv, Reason}) ->
+    tcp_serv:format_error(Reason);
 format_error({posix, Reason}) ->
     inet:format_error(Reason);
 format_error({config, bad_json}) ->
@@ -241,18 +241,18 @@ init(Parent, ConfigFilename, JsonSchema, ControlListenPath, Handler) ->
                     {IpAddress, Port} =
                         json_lookup(JsonTerm, ControlListenPath),
                     TransportOptions = [{packet, 2}, {ip, IpAddress}, binary],
-                    case net_serv:start_link(
+                    case tcp_serv:start_link(
                            Port, [], gen_tcp, TransportOptions, Handler) of
-                        {ok, NetServ} ->
+                        {ok, TcpServ} ->
                             S = #state{parent = Parent,
-                                       net_serv = NetServ,
+                                       tcp_serv = TcpServ,
                                        config_filename = ConfigFilename,
                                        json_schema = JsonSchema,
                                        json_term = JsonTerm},
                             Parent ! {self(), started},
                             loop(S);
                         {error, {not_started, Reason}} ->
-                            Parent ! {self(), {net_serv, Reason}}
+                            Parent ! {self(), {tcp_serv, Reason}}
                     end;
                 {error, Reason} ->
                     Parent ! {self(), {config, Reason}}
@@ -262,7 +262,7 @@ init(Parent, ConfigFilename, JsonSchema, ControlListenPath, Handler) ->
     end.
 
 loop(#state{parent = Parent,
-            net_serv = NetServ,
+            tcp_serv = TcpServ,
             config_filename = ConfigFilename,
             json_schema = JsonSchema,
             json_term = JsonTerm,
@@ -306,7 +306,7 @@ loop(#state{parent = Parent,
             end;
 	{'EXIT', Parent, shutdown} ->
 	    exit(shutdown);
-	{'EXIT', NetServ, Reason} ->
+	{'EXIT', TcpServ, Reason} ->
 	    exit(Reason);
 	UnknownMessage ->
 	    ?error_log({unknown_message, UnknownMessage}),

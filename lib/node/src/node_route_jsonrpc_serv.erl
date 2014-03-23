@@ -45,7 +45,7 @@ start_link({IpAddress, Port} = Na, NodeInstanceSup) ->
     %% I would prefer to use NodeRouteServ instead of NodeInstanceSup
     %% as handler function argument but asking for it here would lead
     %% to a deadlock. I could add support for some sort of delayed
-    %% processing in net_serv.erl but I will not.
+    %% processing in tcp_serv.erl but I will not.
     S = #state{experimental_api = ExperimentalApi},
     jsonrpc_serv:start_link([], IpAddress, Port, JsonRpcCertificate, [],
                             {?MODULE, node_handler, [NodeInstanceSup, S]},

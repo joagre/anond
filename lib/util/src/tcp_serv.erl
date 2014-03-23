@@ -1,4 +1,4 @@
--module(net_serv).
+-module(tcp_serv).
 
 %%% external exports
 -export([start_link/5, stop/1, stop/2]).

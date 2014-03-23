@@ -29,16 +29,16 @@
 %%%
 
 -spec start_link(options(), inet:ip_address(), inet:port_number(), binary(),
-                 net_serv:options(), net_serv:handler(),
+                 tcp_serv:options(), tcp_serv:handler(),
                  binary() | 'undefined') ->
                         {ok, pid()}.
 
-start_link(Options, IpAddress, Port, CertFile, NetServOptions, Handler,
+start_link(Options, IpAddress, Port, CertFile, TcpServOptions, Handler,
            Docroot) ->
     TransportOptions =
         [{certfile, CertFile}, {packet, http_bin}, {active, false},
          {ip, IpAddress}, {reuseaddr, true}],
-    net_serv:start_link(Port, NetServOptions, ssl, TransportOptions,
+    tcp_serv:start_link(Port, TcpServOptions, ssl, TransportOptions,
                         {?MODULE, jsonrpc_handler,
                          [Options, Handler, Docroot]}).
 

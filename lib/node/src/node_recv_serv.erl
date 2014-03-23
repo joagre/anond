@@ -142,10 +142,13 @@ loop(#serv_state{parent = Parent,
                               <<?MESSAGE_ARRIVED:8>>),
             loop(S);
 	{From, stop} ->
+            gen_udp:close(Socket),
 	    From ! {self(), ok};
         {'EXIT', Parent, Reason} ->
+            gen_udp:close(Socket),
             exit(Reason);
         {'EXIT', Receiver, Reason} ->
+            gen_udp:close(Socket),
             exit(Reason);
 	UnknownMessage ->
 	    ?error_log({unknown_message, UnknownMessage}),

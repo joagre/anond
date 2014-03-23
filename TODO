@@ -34,8 +34,51 @@ N Start to use the PKI to encrypt tunnel traffic
   - handshake, rethinkg directory server get_node(). needed? etc
   - call ds_serv:get_node (renamed to get_public_key?)
   -  http://en.wikipedia.org/wiki/UDP_hole_punching
+
+
+
+A >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> DS
+  jsonrpc/ssl: publish_node(node_public_key) -> {id, ip}
+  store: {unique_id, ip} -> public_key
+A >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> DS
+  jsonrpc/ssl: get_random_nodes(unique_id, ip, n) ->
+                   [{neighbour_id, neighbour_ip, public_key}]
+A >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> DS
+  binary/cryptobox: node_handshake
+    {unique_id, ip, neighbour_b_id, neighbour_b_ip}
+  note: send until an node_handshake_ack arrives from DS
+
+
+
+A >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> DS
+  jsonrpc/ssl: publish_node(node_public_key) ->
+                   {unique_id, ds_public_key}
+
+
+A <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< DS
+
+
+    note: ds now stores the mapping:
+      unique_id -> {node_ip_address, node_public_key}
+A -> DS:
+  udp/cryptobox hail packet (signed with node_private_key)
+    note: ds now know the external UDP port for A
+    note: sends a hail packet until DS sends a hail_ack back
+DS -> A
+  hail_ack
+      unique_id -> {node_ip_address, node_port, node_public_key}
+A ->
+
+
+A:
+has been published
+1) publish
+
+
+
 N Integrate Patrik's psp code and authentication of path costs code
-N Many oas per na
+N Many oas per na (add random generation of oas as an alternative to
+static as well)
 N TCP node punching to directory server
 N Chop large route entries ito 1024 packets
 * Test that it all works. :-)
