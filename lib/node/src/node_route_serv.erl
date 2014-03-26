@@ -34,10 +34,10 @@
           node_instance_sup          :: supervisor:child(),
           node_path_cost_serv        :: pid(),
           %% anond.conf parameters
+          my_na                      :: na(),
           experimental_api           :: boolean(),
           directory_server           :: {inet:ip4_address(),
                                          inet:port_number()},
-          my_na                      :: na(),
           my_oa                      :: oa(),
 	  public_key                 :: node_crypto:pki_key(),
 	  private_key                :: node_crypto:pki_key(),
@@ -194,9 +194,9 @@ loop(#state{parent = Parent,
             neighbour_nas = NeighbourNas,
             node_instance_sup = NodeInstanceSup,
             node_path_cost_serv = NodePathCostServ,
+            my_na = MyNa,
             experimental_api = ExperimentalApi,
             directory_server = DsIpAddressPort,
-            my_na = MyNa,
 	    my_oa = MyOa,
 	    public_key = PublicKey,
 	    private_key = PrivateKey,
@@ -209,16 +209,14 @@ loop(#state{parent = Parent,
             ?daemon_log("Configuration changed...", []),
             loop(read_config(S));
         bootstrap ->
-            Flags =
-                if
-                    ExperimentalApi ->
-                        Flags = ?F_DS_EXPERIMENTAL_API;
-                    true ->
-                        Flags = 0
-                end,
+            if
+                ExperimentalApi ->
+                    Flags = ?F_DS_EXPERIMENTAL_API;
+                true ->
+                    Flags = 0
+            end,
             NodeDescriptor =
-                #node_descriptor{public_key = PublicKey,
-                                 flags = Flags},
+                #node_descriptor{public_key = PublicKey, flags = Flags},
             case ds_jsonrpc:publish_node(
                    MyNa, DsIpAddressPort, PrivateKey, NodeDescriptor) of
                 {ok, UpdatedTTL} ->
@@ -266,13 +264,12 @@ loop(#state{parent = Parent,
                     loop(S)
             end;
         republish_self ->
-            Flags =
-                if
-                    ExperimentalApi ->
-                        Flags = ?F_DS_EXPERIMENTAL_API;
-                    true ->
-                        Flags = 0
-                end,
+            if
+                ExperimentalApi ->
+                    Flags = ?F_DS_EXPERIMENTAL_API;
+                true ->
+                    Flags = 0
+            end,
             NodeDescriptor = #node_descriptor{public_key = PublicKey,
                                               flags = Flags},
             case ds_jsonrpc:publish_node(

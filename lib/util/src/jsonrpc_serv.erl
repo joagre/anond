@@ -4,7 +4,7 @@
 -export([start_link/7]).
 
 %%% internal exports
--export([jsonrpc_handler/4]).
+-export([jsonrpc_handler/5]).
 
 %%% include files
 -include_lib("kernel/include/file.hrl").
@@ -22,7 +22,8 @@
 -type options() :: [option()].
 -type option() :: {'lookup_public_key',
                    fun((httplib:ip_address_port(), binary()) ->
-                              'ignore' | 'not_found' | binary())}.
+                              'ignore' | 'not_found' | binary())} |
+                  {'transport_module', httplib:transport_module()}.
 
 %%%
 %%% exported: start_link
@@ -38,21 +39,27 @@ start_link(Options, IpAddress, Port, CertFile, TcpServOptions, Handler,
     TransportOptions =
         [{certfile, CertFile}, {packet, http_bin}, {active, false},
          {ip, IpAddress}, {reuseaddr, true}],
-    tcp_serv:start_link(Port, TcpServOptions, ssl, TransportOptions,
+    case lists:keysearch(transport_module, 1, Options) of
+        {value, {_, TransportModule}} ->
+            ok;
+        false ->
+            TransportModule = ssl
+    end,
+    tcp_serv:start_link(Port, TcpServOptions, TransportModule, TransportOptions,
                         {?MODULE, jsonrpc_handler,
-                         [Options, Handler, Docroot]}).
+                         [Options, Handler, Docroot, TransportModule]}).
 
-jsonrpc_handler(Socket, Options, Handler, Docroot) ->
-    case ssl:recv(Socket, 0) of
+jsonrpc_handler(Socket, Options, Handler, Docroot, TransportModule) ->
+    case TransportModule:recv(Socket, 0) of
         %% a jsonrpc request
         {ok, {http_request, 'POST', {abs_path, <<"/jsonrpc">>}, {1, 1}}} ->
-            ok = ssl:setopts(Socket, [{packet, httph_bin}]),
+            ok = TransportModule:setopts(Socket, [{packet, httph_bin}]),
             {ok, HeaderValues} =
-                httplib:get_headers(ssl, Socket,
+                httplib:get_headers(TransportModule, Socket,
                                     [{'content-length', <<"-1">>},
                                      {<<"content-hmac">>, not_set},
                                      {<<"my-port">>, <<"-1">>}]),
-            ok = ssl:setopts(Socket, [binary, {packet, 0}]),
+            ok = TransportModule:setopts(Socket, [binary, {packet, 0}]),
             ContentLength =
                 httplib:lookup_header_value('content-length', HeaderValues),
             ContentHMAC =
@@ -63,81 +70,90 @@ jsonrpc_handler(Socket, Options, Handler, Docroot) ->
                   when is_integer(DecodedContentLength) andalso
                        is_integer(DecodedMyPort) ->
                     handle_jsonrpc_request(
-                      Socket, Options, Handler, DecodedContentLength,
-                      ContentHMAC, DecodedMyPort);
+                      Socket, Options, Handler, TransportModule,
+                      DecodedContentLength, ContentHMAC, DecodedMyPort);
                 Error ->
                     ?error_log({Error, ContentLength, MyPort}),
                     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
-                    send(Socket, null, JsonError)
+                    send(Socket, TransportModule, null, JsonError)
                 end;
         %% a request for a file
         {ok, {http_request, 'GET', {abs_path, Path}, {1, 1}}}
           when Docroot /= undefined ->
-            ok = ssl:setopts(Socket, [{packet, httph_bin}]),
+            ok = TransportModule:setopts(Socket, [{packet, httph_bin}]),
             %% just throw away header values for now
-            {ok, _HeaderValues} = httplib:get_headers(ssl, Socket, []),
-            ok = ssl:setopts(Socket, [binary, {packet, 0}]),
-            send_file(Socket, Docroot, ?b2l(Path));
+            {ok, _HeaderValues} =
+                httplib:get_headers(TransportModule, Socket, []),
+            ok = TransportModule:setopts(Socket, [binary, {packet, 0}]),
+            send_file(Socket, Docroot, TransportModule, ?b2l(Path));
         {ok, _} ->
             JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
-            send(Socket, null, JsonError);
+            send(Socket, TransportModule, null, JsonError);
         {error, Reason} ->
             {error, Reason}
     end.
 
-handle_jsonrpc_request(Socket, _Options, _Handler, -1, _ContentHMAC, _MyPort) ->
+handle_jsonrpc_request(
+  Socket, _Options, _Handler, TransportModule, -1, _ContentHMAC, _MyPort) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content length not specified">>},
-    send(Socket, null, JsonError);
-handle_jsonrpc_request(Socket, Options, {Module, Function, Args}, ContentLength,
-                       ContentHMAC, MyPort)
-  when ContentLength < ?MAX_REQUEST_SIZE ->
-    case ssl:peername(Socket) of
+    send(Socket, TransportModule, null, JsonError);
+handle_jsonrpc_request(
+  Socket, Options, {Module, Function, Args}, TransportModule, ContentLength,
+  ContentHMAC, MyPort) when ContentLength < ?MAX_REQUEST_SIZE ->
+    case peername(TransportModule, Socket) of
         {ok, {MyIpAddress, _EphemeralPort}} ->
             ok;
         {error, _Reason} ->
             MyIpAddress = undefined
     end,
-    case recv(Socket, Options, ContentLength, ContentHMAC, MyPort,
-              MyIpAddress) of
+    case recv(Socket, Options, TransportModule, ContentLength, ContentHMAC,
+              MyPort, MyIpAddress) of
         {ok, Method, Params, Id} ->
             case apply(Module, Function,
                        [{MyIpAddress, MyPort}, Method, Params|Args]) of
                 {ok, Result} ->
-                    send(Socket, Id, Result);
+                    send(Socket, TransportModule, Id, Result);
                 {error, JsonError} when is_record(JsonError, json_error) ->
-                    send(Socket, Id, JsonError)
+                    send(Socket, TransportModule, Id, JsonError)
             end;
         invalid_json ->
             JsonError = #json_error{code = ?JSONRPC_PARSE_ERROR},
-            send(Socket, null, JsonError);
+            send(Socket, TransportModule, null, JsonError);
         invalid_signature ->
             JsonError = #json_error{
               code = ?JSONRPC_INVALID_REQUEST,
               message = <<"Invalid signature">>},
-            send(Socket, null, JsonError);
+            send(Socket, TransportModule, null, JsonError);
         {error, Reason} ->
             JsonError = #json_error{
               code = ?JSONRPC_INTERNAL_ERROR,
-              message = ?l2b(ssl:format_error(Reason))},
-            send(Socket, null, JsonError)
+              message = ?l2b(TransportModule:format_error(Reason))},
+            send(Socket, TransportModule, null, JsonError)
     end;
-handle_jsonrpc_request(Socket, _Options, _Handler, ContentLength, _ContentHMAC,
-                       _MyPort) ->
+handle_jsonrpc_request(
+  Socket, _Options, _Handler, TransportModule, ContentLength, _ContentHMAC,
+  _MyPort) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content is too large">>,
       data = ContentLength},
-    send(Socket, null, JsonError).
+    send(Socket, TransportModule, null, JsonError).
+
+peername(gen_tcp, Socket) ->
+    peername(inet, Socket);
+peername(TransportModule, Socket) ->
+    TransportModule:peername(Socket).
 
 %%%
 %%% recv
 %%%
 
-recv(Socket, Options, ContentLength, ContentHMAC, MyPort, MyIpAddress) ->
-    ok = ssl:setopts(Socket, [binary, {packet, 0}]),
-    case ssl:recv(Socket, ContentLength) of
+recv(Socket, Options, TransportModule, ContentLength, ContentHMAC, MyPort,
+     MyIpAddress) ->
+    ok = TransportModule:setopts(Socket, [binary, {packet, 0}]),
+    case TransportModule:recv(Socket, ContentLength) of
         {ok, Response} ->
             case catch jsx:decode(Response) of
                 [{<<"jsonrpc">>, <<"2.0">>},
@@ -195,7 +211,8 @@ verify_hmac(Options, ContentHMAC, MyPort, MyIpAddress, Response, Method) ->
 %%% send
 %%%
 
-send(Socket, Id, #json_error{code = Code, message = Message, data = Data}) ->
+send(Socket, TransportModule, Id,
+     #json_error{code = Code, message = Message, data = Data}) ->
     case Message of
         undefined ->
             UpdatedMessage = message(Code);
@@ -208,13 +225,13 @@ send(Socket, Id, #json_error{code = Code, message = Message, data = Data}) ->
               message_if_any(UpdatedMessage)++
               data_if_any(Data)},
          {<<"id">>, Id}],
-    send_to_client(Socket, Id, Request);
-send(Socket, Id, Result) ->
+    send_to_client(Socket, TransportModule, Id, Request);
+send(Socket, TransportModule, Id, Result) ->
     Request =
         [{<<"jsonrpc">>, <<"2.0">>},
          {<<"result">>, Result},
          {<<"id">>, Id}],
-    send_to_client(Socket, Id, Request).
+    send_to_client(Socket, TransportModule, Id, Request).
 
 message(?JSONRPC_PARSE_ERROR) ->
     <<"Invalid JSON was received by the server">>;
@@ -239,12 +256,12 @@ data_if_any(undefined) ->
 data_if_any(Data) ->
     [{<<"data">>, Data}].
 
-send_to_client(Socket, Id, Request) ->
+send_to_client(Socket, TransportModule, Id, Request) ->
     case catch jsx:encode(Request) of
         EncodedRequest when is_binary(EncodedRequest) ->
             PrettifiedRequest = jsx:prettify(EncodedRequest),
             ContentLength = ?i2l(size(PrettifiedRequest)),
-            ssl:send(
+            TransportModule:send(
               Socket,
               [<<"HTTP/1.1 200 OK\r\n">>,
                <<"Content-Type: application/json\r\n">>,
@@ -254,31 +271,31 @@ send_to_client(Socket, Id, Request) ->
         Error ->
             ?error_log({Error, Request}),
             JsonError = #json_error{code = ?JSONRPC_INTERNAL_ERROR},
-            send(Socket, Id, JsonError)
+            send(Socket, TransportModule, Id, JsonError)
     end.
 
 %%%
 %%% send_file
 %%%
 
-send_file(Socket, Docroot, "/") ->
-    send_file(Socket, Docroot, "index.html");
-send_file(Socket, Docroot, [$/|Rest]) ->
-    send_file(Socket, Docroot, Rest);
-send_file(Socket, Docroot, Path) ->
+send_file(Socket, Docroot, TransportModule, "/") ->
+    send_file(Socket, Docroot, TransportModule, "index.html");
+send_file(Socket, Docroot, TransportModule, [$/|Rest]) ->
+    send_file(Socket, Docroot, TransportModule, Rest);
+send_file(Socket, Docroot, TransportModule, Path) ->
     AbsPath = lists:takewhile(fun(C) -> C /= $? end, Path),
     case string:str(Path, "..") of
         0 ->
             FilePath = filename:join([Docroot, AbsPath]),
             case file:read_file_info(FilePath) of
                 {ok, #file_info{size = Size}} when Size /= undefined ->
-                    ok = ssl:send(
+                    ok = TransportModule:send(
                            Socket,
                            ["HTTP/1.1 200\r\n"
                             "Content-Type: ", get_mime_type(AbsPath), "\r\n",
                             "Content-Length: ", ?i2l(Size), "\r\n",
                             "Connection: close\r\n\r\n"]),
-                    httplib:send_file(ssl, Socket, FilePath);
+                    httplib:send_file(TransportModule, Socket, FilePath);
                 _ ->
                     ok
             end;

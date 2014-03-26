@@ -1,7 +1,7 @@
 -module(jsonrpc).
 
 %%% external exports
--export([call/3, call/4, call/5, call/7]).
+-export([call/3, call/4, call/5, call/7, call/8]).
 -export([decode/2]).
 
 %%% internal exports
@@ -28,23 +28,30 @@
 
 call(MyIpAddressPort, IpAddressPort, Method) ->
     call(MyIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
-         undefined, undefined).
+         undefined, undefined, ssl).
 
 call(MyIpAddressPort, IpAddressPort, Method, PrivateKey) ->
     call(MyIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
-         PrivateKey, undefined).
+         PrivateKey, undefined, ssl).
 
 call(MyIpAddressPort, IpAddressPort, Method, PrivateKey, Params) ->
-    call(MyIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
-         PrivateKey, Params).
 
--spec call(httplib:ip_address_port() | 'undefined', httplib:ip_address_port(),
-           timeout(), binary(), binary(), binary() | 'undefined',
-           jsx:json_term() | 'undefined') ->
-                  {'ok', jsx:json_term()} | {'error', error_reason()}.
+    call(MyIpAddressPort, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>, Method,
+         PrivateKey, Params, ssl).
 
 call(MyIpAddressPort, IpAddressPort, Timeout, Uri, Method, PrivateKey,
      Params) ->
+    call(MyIpAddressPort, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+         Params, ssl).
+
+-spec call(httplib:ip_address_port() | 'undefined',
+           httplib:ip_address_port(), timeout(), binary(), binary(),
+           binary() | 'undefined', jsx:json_term() | 'undefined',
+           httplib:transport_module()) ->
+                  {'ok', jsx:json_term()} | {'error', error_reason()}.
+
+call(MyIpAddressPort, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+     Params, TransportModule) ->
     Id = new_id(),
     Request =
         [{<<"jsonrpc">>, <<"2.0">>},
@@ -68,9 +75,9 @@ call(MyIpAddressPort, IpAddressPort, Timeout, Uri, Method, PrivateKey,
                         [{<<"Content-HMAC">>, hmac(EncodedRequest, PrivateKey)},
                          {<<"My-Port">>, ?i2b(MyPort)}]
                 end,
-            case httplib:post(ssl, MyIpAddress, IpAddressPort, Timeout, Uri,
-                              <<"application/json">>, EncodedRequest,
-                              ExtraHeaders) of
+            case httplib:post(TransportModule, MyIpAddress, IpAddressPort,
+                              Timeout, Uri, <<"application/json">>,
+                              EncodedRequest, ExtraHeaders) of
                 {ok, Response} ->
                     case catch jsx:decode(Response) of
                         {'EXIT', _} ->

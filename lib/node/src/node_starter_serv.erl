@@ -44,7 +44,7 @@ start_link() ->
 
 -spec stop(pid()) -> 'ok'.
 
-stop(Pid) -> 
+stop(Pid) ->
     stop(Pid, 15000).
 
 -spec stop(pid(), timeout()) -> 'ok'.
@@ -81,7 +81,7 @@ loop(#state{parent = Parent} = S) ->
 %%%
 
 read_config(#state{nas_db = NasDb} = S) ->
-    Nas = [Na || [_, {'node-address', Na}|_] <- ?config([nodes])],
+    Nas = [Na || [{'node-address', Na}|_] <- ?config([nodes])],
     StillRunningNasDb = stop_node_instances(NasDb, Nas),
     NowRunningNasDb = start_node_instances(StillRunningNasDb, Nas),
     S#state{nas_db = NowRunningNasDb}.
