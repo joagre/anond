@@ -1,7 +1,8 @@
--module(node_crypto).
+-module(cryptolib).
 
 %%% external exports
--export([generate_pki_keys/1, read_pki_key/1]).
+-export([create_sign_keypair_files/1, create_encrypt_keypair_files/1]).
+-export([read_key_file/1]).
 
 %%% internal exports
 
@@ -13,17 +14,19 @@
 %%% records
 
 %%% types
--type pki_key() :: binary().
 
 %%%
-%%% exported: generate_pki_keys
+%%% exported: create_sign_keypair_files
 %%%
 
--spec generate_pki_keys([string()]) -> 'ok'.
+-spec create_sign_keypair_files([string()]) -> 'ok'.
 
-generate_pki_keys([PublicKeyFile, PrivateKeyFile]) ->
+create_sign_keypair_files(KeyFilenames) ->
+    create_keypair_files(KeyFilenames, make_sign_keypair).
+
+create_keypair_files([PublicKeyFile, PrivateKeyFile], KeyFunction) ->
     salt_server:start_link(),
-    {PublicKey, PrivateKey} = salt_server:make_sign_keypair(),
+    {PublicKey, PrivateKey} = salt_server:KeyFunction(),
     case file:write_file(PublicKeyFile, base64:encode(PublicKey)) of
         ok ->
             case file:write_file(PrivateKeyFile, base64:encode(PrivateKey)) of
@@ -39,12 +42,21 @@ generate_pki_keys([PublicKeyFile, PrivateKeyFile]) ->
     end.
 
 %%%
-%%% exported: read_pki_key
+%%% exported: create_encrypt_keypair_files
 %%%
 
--spec read_pki_key(string()) -> pki_key().
+-spec create_encrypt_keypair_files([string()]) -> 'ok'.
 
-read_pki_key(Filename) ->
+create_encrypt_keypair_files(KeyFilenames) ->
+    create_keypair_files(KeyFilenames, make_box_keypair).
+
+%%%
+%%% exported: read_key_file
+%%%
+
+-spec read_key_file(string()) -> binary().
+
+read_key_file(Filename) ->
     case file:read_file(Filename) of
         {ok, Key} ->
             base64:decode(Key);

@@ -11,11 +11,15 @@ function usage {
     echo "$0 -k <SELF-SIGNED CERTIFICATE FILENAME>"
     echo "    Generate a self-signed SSL certificate"
     echo "$0 -j <PUBLIC KEY FILENAME> <PRIVATE KEY FILENAME>"
-    echo "    Generate a public/private node key pair"
+    echo "    Generate a public/private key pair used for signing"
+    echo "$0 -l <PUBLIC KEY FILENAME> <PRIVATE KEY FILENAME>"
+    echo "    Generate a public/private key pair used for encryption"
+    echo "$0 -h"
+    echo "    This help text"
     exit 1
 }
 
-args=options=$(getopt -u "c:sra:p:ik:j:" -- "$@")
+args=options=$(getopt -u "c:sra:p:ik:j:l:h" -- "$@")
 
 set -- $args
 
@@ -58,6 +62,9 @@ while [ $# -gt 0 ]; do
             port=" --control-port $2"
             shift
             ;;
+        -h)
+            usage
+            ;;
         -i)
             interactive="yes"
             ;;
@@ -79,7 +86,17 @@ while [ $# -gt 0 ]; do
             if [ $# -lt 3 ]; then
                 usage
             fi
-            mode="mk_key_pair"
+            mode="create_sign_keypair_files"
+            boot=" -boot ${bindir}/start_clean"
+            public_key_file="$2"
+            private_key_file="$3"
+            shift 2
+            ;;
+        -l)
+            if [ $# -lt 3 ]; then
+                usage
+            fi
+            mode="create_encrypt_keypair_files"
             boot=" -boot ${bindir}/start_clean"
             public_key_file="$2"
             private_key_file="$3"
@@ -118,6 +135,10 @@ case ${mode} in
     reload)
         exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv reload
         ;;
-    mk_key_pair)
-        exec ${erl}${shell}${pa}${boot}${address}${port} -run node_crypto generate_pki_keys ${public_key_file} ${private_key_file}
+    create_sign_keypair_files)
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run cryptolib create_sign_keypair_files ${public_key_file} ${private_key_file}
+        ;;
+    create_encrypt_keypair_files)
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run cryptolib create_encrypt_keypair_files ${public_key_file} ${private_key_file}
+        ;;
 esac

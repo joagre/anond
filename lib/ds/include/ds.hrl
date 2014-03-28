@@ -3,6 +3,8 @@
 
 -include_lib("node/include/node.hrl").
 
+-define(DS_UDPRPC_PUNCH_HOLE, 1).
+
 -define(DS_JSONRPC_PERMISSION_DENIED, 1).
 -define(DS_JSONRPC_UNKNOWN_NODE, 2).
 -define(DS_JSONRPC_TOO_FEW_NODES, 3).
@@ -12,7 +14,7 @@
 
 -record(node_descriptor, {
 	  na           :: na(),
-          public_key   :: node_crypto:pki_key(),
+          public_key   :: binary(),
           last_updated :: timelib:gsecs(),
           flags = 0    :: non_neg_integer()
 	 }).

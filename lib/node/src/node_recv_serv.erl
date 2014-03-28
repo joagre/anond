@@ -37,8 +37,8 @@
           %% anond.conf parameters
           my_na               :: na(),
           my_oa               :: oa(),
-          public_key          :: node_crypto:pki_key(),
-          private_key         :: node_crypto:pki_key()
+          public_key          :: binary,
+          private_key         :: binary()
 	 }).
 
 %%% types
@@ -344,10 +344,10 @@ read_config(S, [{'overlay-addresses', [MyOa]}|Rest]) ->
 read_config(_S, [{'overlay-addresses', _Oas}|_Rest]) ->
     throw(nyi);
 read_config(S, [{'public-key', Value}|Rest]) ->
-    Key = node_crypto:read_pki_key(Value),
+    Key = cryptolib:read_key_file(Value),
     read_config(S#receiver_state{public_key = Key}, Rest);
 read_config(S, [{'private-key', Value}|Rest]) ->
-    Key = node_crypto:read_pki_key(Value),
+    Key = cryptolib:read_key_file(Value),
     read_config(S#receiver_state{private_key = Key}, Rest);
 read_config(S, [_|Rest]) ->
     read_config(S, Rest).

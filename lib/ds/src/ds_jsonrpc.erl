@@ -48,7 +48,7 @@ format_error(Reason) ->
 %%%
 
 -spec housekeeping(httplib:ip_address_port(), httplib:ip_address_port(),
-                   node_crypto:pki_key()) ->
+                   binary()) ->
                           'ok' | {'error', error_reason()}.
 
 housekeeping(MyIpAddressPort, IpAddressPort, PrivateKey) ->
@@ -65,7 +65,7 @@ housekeeping(MyIpAddressPort, IpAddressPort, PrivateKey) ->
 %%%
 
 -spec get_number_of_nodes(httplib:ip_address_port(), httplib:ip_address_port(),
-                          node_crypto:pki_key()) ->
+                          binary()) ->
                                  {'ok', non_neg_integer()} |
                                  {'error', error_reason()}.
 
@@ -78,7 +78,7 @@ get_number_of_nodes(MyIpAddressPort, IpAddressPort, PrivateKey) ->
 %%%
 
 -spec get_node(httplib:ip_address_port(), httplib:ip_address_port(),
-               node_crypto:pki_key(), na()) ->
+               binary(), na()) ->
                       {'ok', #node_descriptor{}} | {'error', error_reason()}.
 
 get_node(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->
@@ -95,7 +95,7 @@ get_node(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->
 %%%
 
 -spec get_all_nodes(httplib:ip_address_port(), httplib:ip_address_port(),
-                    node_crypto:pki_key()) ->
+                    binary()) ->
                            {'ok', [#node_descriptor{}]} |
                            {'error', error_reason()}.
 
@@ -113,7 +113,7 @@ get_all_nodes(MyIpAddressPort, IpAddressPort, PrivateKey) ->
 %%%
 
 -spec get_random_nodes(httplib:ip_address_port(), httplib:ip_address_port(),
-                       node_crypto:pki_key(), non_neg_integer()) ->
+                       binary(), non_neg_integer()) ->
                               {'ok', [#node_descriptor{}]} |
                               {'error', error_reason()}.
 
@@ -131,7 +131,7 @@ get_random_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, N) ->
 %%%
 
 -spec publish_node(httplib:ip_address_port(), httplib:ip_address_port(),
-                   node_crypto:pki_key(), #node_descriptor{}) ->
+                   binary(), #node_descriptor{}) ->
                           {'ok', NodeTTL :: non_neg_integer()} |
                           {'error', error_reason()}.
 
@@ -144,7 +144,7 @@ publish_node(MyIpAddressPort, IpAddressPort, PrivateKey, Nd) ->
 %%%
 
 -spec unpublish_node(httplib:ip_address_port(), httplib:ip_address_port(),
-                     node_crypto:pki_key()) ->
+                     binary()) ->
                             'ok' | {'error', error_reason()}.
 
 unpublish_node(MyIpAddressPort, IpAddressPort, PrivateKey) ->
@@ -161,7 +161,7 @@ unpublish_node(MyIpAddressPort, IpAddressPort, PrivateKey) ->
 %%%
 
 -spec published_nodes(httplib:ip_address_port(), httplib:ip_address_port(),
-                      node_crypto:pki_key(), [na()]) ->
+                      binary(), [na()]) ->
                              {'ok', [na()]} | {'error', error_reason()}.
 
 published_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, Nas) ->
@@ -179,7 +179,7 @@ published_nodes(MyIpAddressPort, IpAddressPort, PrivateKey, Nas) ->
 %%%
 
 -spec reserve_oa(httplib:ip_address_port(), httplib:ip_address_port(),
-                 node_crypto:pki_key(), oa()) ->
+                 binary(), oa()) ->
                         'ok' | {'error', error_reason()}.
 
 reserve_oa(MyIpAddressPort, IpAddressPort, PrivateKey, Oa) ->
@@ -196,7 +196,7 @@ reserve_oa(MyIpAddressPort, IpAddressPort, PrivateKey, Oa) ->
 %%%
 
 -spec reserved_oas(httplib:ip_address_port(), httplib:ip_address_port(),
-                   node_crypto:pki_key(), na()) ->
+                   binary(), na()) ->
                           {'ok', [oa()]} | {'error', error_reason()}.
 
 reserved_oas(MyIpAddressPort, IpAddressPort, PrivateKey, Na) ->

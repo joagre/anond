@@ -39,8 +39,8 @@
           directory_server           :: {inet:ip4_address(),
                                          inet:port_number()},
           my_oa                      :: oa(),
-	  public_key                 :: node_crypto:pki_key(),
-	  private_key                :: node_crypto:pki_key(),
+	  public_key                 :: binary(),
+	  private_key                :: binary(),
           number_of_neighbours       :: non_neg_integer(),
           refresh_neighbours_timeout :: non_neg_integer(),
           recalc_timeout             :: non_neg_integer(),
@@ -395,10 +395,10 @@ read_config(S, [{'overlay-addresses', [MyOa]}|Rest]) ->
 read_config(_S, [{'overlay-addresses', _MyOas}|_Rest]) ->
     throw(nyi);
 read_config(S, [{'public-key', Value}|Rest]) ->
-    Key = node_crypto:read_pki_key(Value),
+    Key = cryptolib:read_key_file(Value),
     read_config(S#state{public_key = Key}, Rest);
 read_config(S, [{'private-key', Value}|Rest]) ->
-    Key = node_crypto:read_pki_key(Value),
+    Key = cryptolib:read_key_file(Value),
     read_config(S#state{private_key = Key}, Rest);
 read_config(S, [{'number-of-neighbours', Value}|Rest]) ->
     read_config(S#state{number_of_neighbours = Value}, Rest);
