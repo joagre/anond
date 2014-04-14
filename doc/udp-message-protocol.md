@@ -1,4 +1,4 @@
-                # The DS UDP Server Protocol
+# The DS UDP Server Protocol
 
 ## 1) Overview
 
@@ -26,12 +26,12 @@ Direction: `node -> directory server`
 |     16|  128|
 |     20|  160|
 |     24|  192|                                                                                               |
-|     28|  224|          0x00         |
+|     28|  224|          0x00         |                              Message ID                               |
 |     32|  256|
 |     36|  288|
 |     40|  320|
 |     44|  352|
-|     48|  384|                                    Random Bytes (45 bytes)
+|     48|  384|                                    Random Bytes (42 bytes)
 |     52|  416|
 |     56|  448|
 |     60|  480|
@@ -54,12 +54,12 @@ Direction: `directory server -> node`
 |     16|  128|
 |     20|  160|
 |     24|  192|                                                                                               |
-|     28|  224|          0x00         |
+|     28|  224|          0x00         |                              Message ID                               |
 |     32|  256|
 |     36|  288|
 |     40|  320|
 |     44|  352|
-|     48|  384|                                    Random Bytes (45 bytes)
+|     48|  384|                                    Random Bytes (42 bytes)
 |     52|  416|
 |     56|  448|
 |     60|  480|
@@ -123,7 +123,7 @@ Direction:  `node -> directory server`
 ```
 |Offsets|Octet|           0           |           1           |           2           |           3           |
 |  Octet|  Bit|00|01|02|03|04|05|06|07|08|09|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|
-|      0|    0|                                         Source Node Id                                        |
+|      0|    0|                                          Src Node Id                                          |
 |      4|   32|
 |      8|   64|
 |     12|   96|                                        Nonce (24 bytes)
@@ -131,7 +131,7 @@ Direction:  `node -> directory server`
 |     20|  160|
 |     24|  192|                                                                                               |
 |     28|  224|          0x02         |                              Message ID                               |
-|     32|  256|                                       Destination Node ID                                     |
+|     32|  256|                                          Dest Node ID                                         |
 |     36|  288|
 |     40|  320|
 |     44|  352|
@@ -159,9 +159,9 @@ Direction: `directory server -> node`
 |     20|  160|
 |     24|  192|                                                                                               |
 |     28|  224|          0x01         |                              Message ID                               |
-|     32|  256|                                         Source Node ID                                        |
-|     36|  288|                                       Source IP Address                                       |
-|     40|  320|               Source Port Number              |
+|     32|  256|                                          Src Node ID                                          |
+|     36|  288|                                         Src IP Address                                        |
+|     40|  320|                Src Port Number                |
 |     44|  352|
 |     48|  384|
 |     52|  416|
@@ -179,7 +179,7 @@ Direction: `node -> directory server`
 ```
 |Offsets|Octet|           0           |           1           |           2           |           3           |
 |  Octet|  Bit|00|01|02|03|04|05|06|07|08|09|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|
-|      0|    0|                                       Destination Node Id                                     |
+|      0|    0|                                          Dest Node Id                                         |
 |      4|   32|
 |      8|   64|
 |     12|   96|                                        Nonce (24 bytes)
@@ -187,7 +187,7 @@ Direction: `node -> directory server`
 |     20|  160|
 |     24|  192|                                                                                               |
 |     28|  224|          0x03         |                              Message ID                               |
-|     32|  256|                                         Source Node ID                                        |
+|     32|  256|                                          Src Node ID                                          |
 |     36|  288|
 |     40|  320|
 |     44|  352|
@@ -215,9 +215,9 @@ Direction: `directory server -> node`
 |     20|  160|
 |     24|  192|                                                                                               |
 |     28|  224|          0x02         |                               Message ID                              |
-|     32|  256|                                      Destination Node ID                                      |
-|     36|  288|                                     Destination IP Address                                    |
-|     40|  320|            Destination Port Number            |
+|     32|  256|                                          Dest Node ID                                         |
+|     36|  288|                                        Dest IP Address                                        |
+|     40|  320|                Dest Port Number               |
 |     44|  352|
 |     48|  384|
 |     52|  416|
