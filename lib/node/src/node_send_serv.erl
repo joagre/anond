@@ -1,11 +1,12 @@
 -module(node_send_serv).
 
 %%% external exports
--export([start_link/4, stop/1, stop/2]).
+-export([start_link/5, stop/1, stop/2]).
 -export([send/2]).
+-export([set_shared_key/2]).
 
 %%% internal exports
--export([init/5]).
+-export([init/6]).
 
 %%% include files
 -include_lib("node/include/node.hrl").
@@ -21,14 +22,15 @@
 %%% records
 -record(state, {
 	  parent               :: pid(),
+          my_node_id           :: node_id(),
           neighbour_na         :: na(),
           socket               :: gen_udp:socket(),
+          shared_key           :: binary(),
           cell_buffer = []     :: [binary()],
           cell_size = 0        :: non_neg_integer(),
           %% anond.conf parameters
           my_na                :: na(),
-          public_key           :: binary(),
-          private_key          :: binary(),
+          logging              :: boolean(),
           max_cell_size        :: non_neg_integer(),
           cell_sending_timeout :: non_neg_integer()}).
 
@@ -38,11 +40,11 @@
 %%% exported: start_link
 %%%
 
--spec start_link(na(), na(), supervisor:sup_ref(), supervisor:sup_ref()) ->
+-spec start_link(gen_udp:socket(), node_id(), na(), na(), binary()) ->
                         {'ok', pid()}.
 
-start_link(MyNa, NeighbourNa, NodeRouteServ, NodeRecvServ) ->
-    Args = [self(), MyNa, NeighbourNa, NodeRouteServ, NodeRecvServ],
+start_link(Socket, MyNodeId, MyNa, NeighbourNa, SharedKey) ->
+    Args = [self(), Socket, MyNodeId, MyNa, NeighbourNa, SharedKey],
     Pid = proc_lib:spawn_link(?MODULE, init, Args),
     receive
 	{Pid, started} ->
@@ -50,6 +52,18 @@ start_link(MyNa, NeighbourNa, NodeRouteServ, NodeRecvServ) ->
 	{Pid, Reason} ->
             {error, Reason}
     end.
+
+%%%
+%%% exported: stop
+%%%
+
+stop(Pid) ->
+    stop(Pid, 15000).
+
+-spec stop(pid(), timeout()) -> 'ok'.
+
+stop(Pid, Timeout) ->
+    serv:call(Pid, stop, Timeout).
 
 %%%
 %%% exported: send
@@ -67,53 +81,54 @@ send(NodeSendServ, Data) ->
     ok.
 
 %%%
-%%% exported: stop
+%%% exported: set_shared_key
 %%%
 
--spec stop(pid()) -> 'ok'.
+-spec set_shared_key(pid(), binary()) -> 'ok'.
 
-stop(Pid) ->
-    stop(Pid, 15000).
-
--spec stop(pid(), timeout()) -> 'ok'.
-
-stop(Pid, Timeout) ->
-    serv:call(Pid, stop, Timeout).
+set_shared_key(NodeSendServ, NewSharedKey) ->
+    NodeSendServ ! {set_shared_key, NewSharedKey},
+    ok.
 
 %%%
 %%% server loop
 %%%
 
-init(Parent, MyNa, NeighbourNa, NodeRouteServ, NodeRecvServ) ->
+init(Parent, Socket, MyNodeId, MyNa, NeighbourNa, SharedKey) ->
     process_flag(trap_exit, true),
-    S = read_config(#state{parent = Parent, my_na = MyNa,
-                           neighbour_na = NeighbourNa}),
     ok = config_json_serv:subscribe(),
-    ok = node_route_serv:handshake(NodeRouteServ, {?MODULE, MyNa, self()}),
-    {ok, Socket} = node_recv_serv:handshake(NodeRecvServ, ?MODULE),
+    S = read_config(#state{parent = Parent, my_node_id = MyNodeId,
+                           neighbour_na = NeighbourNa, my_na = MyNa,
+                           socket = Socket, shared_key = SharedKey}),
+    ok = log_serv:toggle_logging(self(), S#state.logging),
     Parent ! {self(), started},
-    loop(S#state{socket = Socket}).
+    loop(S).
 
 loop(#state{parent = Parent,
+            my_node_id = MyNodeId,
             neighbour_na = NeighbourNa,
             socket = Socket,
+            shared_key = SharedKey,
             cell_buffer = CellBuffer,
             cell_size = CellSize,
-            my_na = _MyNa,
+            my_na = MyNa,
+            logging = _Logging,
             max_cell_size = MaxCellSize,
             cell_sending_timeout = CellSendingTimeout} = S) ->
     receive
         config_updated ->
-            ?daemon_log("Configuration changed...", []),
+            ?daemon_log("Node ~w (~s) starts to update its configuration",
+                        [MyNodeId, net_tools:string_address(MyNa)]),
             loop(read_config(S));
         %% handle ip packets and echo replies from node_recv_serv
         {node_recv_serv, <<Type:8, _/binary>> = Data}
-          when Type == ?IP_PACKET orelse Type == ?ECHO_REPLY ->
+          when Type == ?NODE_CELL_IP_PACKET orelse
+               Type == ?NODE_CELL_ECHO_REPLY ->
             DataSize = size(Data),
             if
                 CellSize+DataSize > MaxCellSize ->
-                    send_cell(NeighbourNa, Socket, CellBuffer, CellSize,
-                              MaxCellSize),
+                    send_cell(MyNodeId, NeighbourNa, Socket, SharedKey,
+                              CellBuffer, CellSize, MaxCellSize),
                     loop(S#state{cell_buffer = [Data],
                                  cell_size = DataSize});
                 true ->
@@ -124,9 +139,8 @@ loop(#state{parent = Parent,
         {node_tun_serv, {DestOa0, DestOa1, DestOa2, DestOa3,
                          DestOa4, DestOa5, DestOa6, DestOa7}, Ipv6Packet} ->
             Ipv6PacketSize = size(Ipv6Packet),
-            %% note: this means that the tun device mtu should be MaxCellSize-19
             IpPacket =
-                <<?IP_PACKET:8,
+                <<?NODE_CELL_IP_PACKET:8,
                   DestOa0:16, DestOa1:16, DestOa2:16, DestOa3:16,
                   DestOa4:16, DestOa5:16, DestOa6:16, DestOa7:16,
                   Ipv6PacketSize:16,
@@ -134,8 +148,8 @@ loop(#state{parent = Parent,
             IpPacketSize = size(IpPacket),
             if
                 CellSize+IpPacketSize > MaxCellSize ->
-                    send_cell(NeighbourNa, Socket, CellBuffer, CellSize,
-                              MaxCellSize),
+                    send_cell(MyNodeId, NeighbourNa, Socket, SharedKey,
+                              CellBuffer, CellSize, MaxCellSize),
                     loop(S#state{cell_buffer = [IpPacket],
                                  cell_size = IpPacketSize});
                 true ->
@@ -145,17 +159,15 @@ loop(#state{parent = Parent,
         %% handle route entry from node_route_serv
         {node_route_serv,
          #route_entry{oa = {Oa0, Oa1, Oa2, Oa3, Oa4, Oa5, Oa6, Oa7},
-                      path_cost = Pc, hops = Hops, psp = Psp}} ->
-            EncodedHops =
-                ?l2b([<<Na0:8, Na1:8, Na2:8, Na3:8, Port:16>> ||
-                         {{Na0, Na1, Na2, Na3}, Port} <- Hops]),
+                      path_cost = Pc, hops = Hops, psp = Psp} = _Re} ->
+            EncodedHops = ?l2b([<<NodeId:32>> || NodeId <- Hops]),
             HopsSize = size(EncodedHops),
             PspSize = size(Psp),
             RouteEntry =
-                <<?ROUTE_ENTRY:8,
+                <<?NODE_CELL_ROUTE_ENTRY:8,
                   Oa0:16, Oa1:16, Oa2:16, Oa3:16,
                   Oa4:16, Oa5:16, Oa6:16, Oa7:16,
-                  Pc:16/signed-integer,
+                  Pc:16,
                   HopsSize:16,
                   EncodedHops/binary,
                   PspSize:16,
@@ -163,8 +175,8 @@ loop(#state{parent = Parent,
             RouteEntrySize = size(RouteEntry),
             if
                 CellSize+RouteEntrySize > MaxCellSize ->
-                    send_cell(NeighbourNa, Socket, CellBuffer, CellSize,
-                              MaxCellSize),
+                    send_cell(MyNodeId, NeighbourNa, Socket, SharedKey,
+                              CellBuffer, CellSize, MaxCellSize),
                     loop(S#state{cell_buffer = [RouteEntry],
                                  cell_size = RouteEntrySize});
                 true ->
@@ -176,19 +188,23 @@ loop(#state{parent = Parent,
          #echo_request{sequence_number = SeqNumber, unique_id = UniqueId,
                        timestamp = Timestamp}} ->
             EchoRequest =
-                <<?ECHO_REQUEST:8, SeqNumber:16, UniqueId:16, Timestamp:32>>,
+                <<?NODE_CELL_ECHO_REQUEST:8, SeqNumber:16, UniqueId:16,
+                  Timestamp:32>>,
             EchoRequestSize = size(EchoRequest),
             %% note: echo requests are always sent without delay
             case CellSize+EchoRequestSize of
                 FinalCellSize when FinalCellSize > MaxCellSize ->
-                    send_cell(NeighbourNa, Socket, EchoRequest, EchoRequestSize,
-                              MaxCellSize),
+                    send_cell(MyNodeId, NeighbourNa, Socket, SharedKey,
+                              EchoRequest, EchoRequestSize, MaxCellSize),
                     loop(S);
                 FinalCellSize ->
-                    send_cell(NeighbourNa, Socket, [EchoRequest|CellBuffer],
-                              FinalCellSize, MaxCellSize),
+                    send_cell(MyNodeId, NeighbourNa, Socket, SharedKey,
+                              [EchoRequest|CellBuffer], FinalCellSize,
+                              MaxCellSize),
                     loop(S#state{cell_buffer = [], cell_size = 0})
             end;
+        {set_shared_key, NewSharedKey} ->
+            loop(S#state{shared_key = NewSharedKey});
 	{From, stop} ->
 	    From ! {self(), ok};
         {'EXIT', Parent, Reason} ->
@@ -202,32 +218,37 @@ loop(#state{parent = Parent,
                 CellSize == 0 ->
                     loop(S);
                 true ->
-                    send_cell(NeighbourNa, Socket, CellBuffer, CellSize,
-                              MaxCellSize),
+                    send_cell(MyNodeId, NeighbourNa, Socket, SharedKey,
+                              CellBuffer, CellSize, MaxCellSize),
                     loop(S#state{cell_buffer = [], cell_size = 0})
             end
     end.
 
-send_cell({NeighbourIpAddress, NeighbourPort}, Socket, CellBuffer, CellSize,
-          MaxCellSize) ->
+send_cell(MyNodeId, {NeighbourIpAddress, NeighbourPort}, Socket, SharedKey,
+          CellBuffer, CellSize, MaxCellSize) ->
     case MaxCellSize-CellSize of
         0 ->
-            FinalCellBuffer = CellBuffer;
+            FinalCellBuffer = ?l2b(CellBuffer);
         PaddingSize when PaddingSize == 1 ->
-            FinalCellBuffer = [CellBuffer, <<?PADDING:8>>];
+            FinalCellBuffer = ?l2b([CellBuffer, <<?NODE_CELL_PADDING:8>>]);
         PaddingSize ->
             FinalCellBuffer =
-                [CellBuffer, <<?PADDING:8>>,
-                 salt:crypto_random_bytes(PaddingSize-1)]
+                ?l2b([CellBuffer, <<?NODE_CELL_PADDING:8>>,
+                      salt:crypto_random_bytes(PaddingSize-1)])
     end,
-    case gen_udp:send(Socket, NeighbourIpAddress, NeighbourPort,
-                      FinalCellBuffer) of
-        ok ->
-            ok;
-        {error, Reason} ->
-            ?daemon_log("Sending data to ~s:~w failed: ~s",
-                        [net_tools:string_address(NeighbourIpAddress),
-                         NeighbourPort, inet:format_error(Reason)])
+    Nonce = salt:crypto_random_bytes(24),
+    case catch salt:crypto_stream_xor(FinalCellBuffer, Nonce, SharedKey) of
+        {'EXIT', Reason} ->
+            ?error_log(Reason);
+        EncryptedCell ->
+            Message = <<MyNodeId:32, Nonce/binary, EncryptedCell/binary>>,
+            case gen_udp:send(Socket, NeighbourIpAddress, NeighbourPort,
+                              Message) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    ?error_log(Reason)
+            end
     end.
 
 %%%
@@ -240,12 +261,8 @@ read_config(S) ->
 
 read_config(S, []) ->
     S;
-read_config(S, [{'public-key', Value}|Rest]) ->
-    Key = cryptolib:read_key_file(Value),
-    read_config(S#state{public_key = Key}, Rest);
-read_config(S, [{'private-key', Value}|Rest]) ->
-    Key = cryptolib:read_key_file(Value),
-    read_config(S#state{private_key = Key}, Rest);
+read_config(S, [{'logging', Value}|Rest]) ->
+    read_config(S#state{logging = Value}, Rest);
 read_config(S, [{'max-cell-size', Value}|Rest]) ->
     read_config(S#state{max_cell_size = Value}, Rest);
 read_config(S, [{'cell-sending-timeout', Value}|Rest]) ->

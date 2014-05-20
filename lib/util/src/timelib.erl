@@ -91,7 +91,7 @@ gnow_delta(DeltaSpec) ->
 %%%
 
 -spec stop_timer(timer_ref() | 'undefined') -> boolean().
-                                                  
+
 stop_timer(undefined) ->
     true;
 stop_timer(TimerRef) ->
@@ -101,9 +101,6 @@ stop_timer(TimerRef) ->
 %%% exported: start_timer
 %%%
 
--spec start_timer(gsecs() | {N :: integer(), delta_unit()}, Msg :: any()) ->
-                         timer_ref().
-
 start_timer(Timeout, Msg) ->
     start_timer(Timeout, self(), Msg).
 
@@ -111,16 +108,16 @@ start_timer(Timeout, Msg) ->
                   Msg :: any()) ->
                          timer_ref().
 
-start_timer(Timeout, Pid, Msg) when is_integer(Timeout) -> 
+start_timer(Timeout, Pid, Msg) when is_integer(Timeout) ->
     erlang:send_after(Timeout, Pid, Msg);
 start_timer({Timeout, seconds}, Pid, Msg) ->
-    erlang:send_after(Timeout*10000, Pid, Msg);
+    erlang:send_after(Timeout*1000, Pid, Msg);
 start_timer({Timeout, minutes}, Pid, Msg) ->
-    erlang:send_after(Timeout*10000*60, Pid, Msg);
+    erlang:send_after(Timeout*1000*60, Pid, Msg);
 start_timer({Timeout, hours}, Pid, Msg) ->
-    erlang:send_after(Timeout*10000*60*60, Pid, Msg);
+    erlang:send_after(Timeout*1000*60*60, Pid, Msg);
 start_timer({Timeout, days}, Pid, Msg) ->
-    erlang:send_after(Timeout*10000*60*60*24, Pid, Msg).
+    erlang:send_after(Timeout*1000*60*60*24, Pid, Msg).
 
 %%%
 %%% exported: format_now

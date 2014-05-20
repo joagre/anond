@@ -1,17 +1,79 @@
+* Tagga gammal release
+* Checka in
+
 N = Next thing to do
 * = ?
 L = Later
 
+Generic
+-------
+N Missing na when calling get-network-topology + no_send_serv
+N Go through reloadable status in common_config_json_serv.erl
+N Update get-network-topology in udp-message-protocol.md
+N Cleanup of udp-message-protocol.md
+N Document Node-Node bit protocol in udp-message-protocol.md
+N Write json-rpc-protocol.md
+
+Directory server
+----------------
+* Make it possible to register a "domain"-name for a bunch of overlay
+  adresses. The registration could be done through the directory
+  server. Name lookups could be done towards a UDP based overlay
+  service.
+
+Node
+----
+* Integrate Patrik's psp code and authentication of path costs code
+* Many oas per na (add random generation of oas as an alternative to
+  static as well)
+* Start a node->node keepalive in node_send_server.erl
+* Limit download and upload rate in B/s
+* Use many overlay addresses and pick new ones now and then
+* Pick new neighbour nodes now and then when needed(TM)
+* Min acceptable neigbours, striving for wanted number of neighbours (bleed?)
+* unestablish_tunnels needed?
+* Split up large route entries in smaller cells
+* Add static floating number multiplicators for path costs for each node
+* Only send route entries to a neighbour if the path cost to the
+  neighbour itself or the path costvto the via node changes the total
+  path cost more than 20%?
+
+d3.js
+-----
+N Bug in incoming neighbours
+* Leaks memory
+* Try to normalize the path-cost <-> pixel resolution
+
+DNS
+---
+* Investigate how to intercept DNS traffic (port 53) on the end-user
+  machine using something such as https://gnunet.org/book/export/html/1631 and
+  http://blog.listincomprehension.com/2010/07/dns-programming-with-erlang.html.
+
+Hardware setup
+--------------
+* Buy a really big machine with 128GB RAM and setup 50 Ubuntu
+  servers. Run a bittorrent tracker on one of them and let the rest of
+  them download/seed files.
+
+Tuncer
+------
+L Do some work on tunctl/procket, i.e. add ioctl calls for all
+  "ifconfig" calls to remove the need to give root access to beam.smp,
+  e.g. it should be enough use setcap on Linux.
+L Make tuncer:read/2 work. It is broken now and I have to get IP
+  packets as messages from the TUN device.
+L Make it run on Windows
+
 Generic stuff
 -------------
-N Clean up in deaemon_log and dbg_log macro usage.
-N Update example curl usage in code
 L Write documentation (Use LyX)
-  - A White paper
-  - End-user guide (client and server users)
+  - A White paper (Use Lyx)
+  - Protocol design (UDP messaging and json-rpc)
+  - End-user guide (for client and server users)
 N Ask Per to contribute the delayed start patch to the Erlang distro.
-  _ Verify that we use it ok, i.e. for common_config_json_serv errors
-L Add package management support for:
+L Add package management/installers for (the rest has to use compile
+  from source):
   - Ubuntu
   - Mac
   - Windows
@@ -20,53 +82,3 @@ L Implement anond control panels for:
   - GTK
   - Mac
   - Windows
-
-Directory server
-----------------
-* Test that it all works. :-)
-* Make it possible to register a "domain"-name for a bunch of overlay
-adresses. The registration could be done through the directory
-server. Name lookups could be done towards a UDP based overlay service.
-
-Node
-----
-N Add PK in anond.conf for udp server
-
-N Start to use the PKI to encrypt tunnel traffic
-  - handshake, rethinkg directory server get_node(). needed? etc
-  - call ds_serv:get_node (renamed to get_public_key?)
-  -  http://en.wikipedia.org/wiki/UDP_hole_punching
-N Integrate Patrik's psp code and authentication of path costs code
-N Many oas per na (add random generation of oas as an alternative to
-static as well)
-N TCP node punching to directory server
-N Chop large route entries ito 1024 packets
-* Test that it all works. :-)
-* Limit download and upload rate in B/s
-* Use many overlay addresses and pick new ones now and then
-* Pick new neighbour nodes now and then when needed(TM)
-
-d3.js
------
-* Leaks memory
-* Try to normalize the path-cost <-> pixel resolution
-* Does it actually work in all cases when nodes come and go?
-
-DNS
----
-* Investigate how to intercept DNS traffic (port 53) on the end-user
-machine using something such as https://gnunet.org/book/export/html/1631 and
-http://blog.listincomprehension.com/2010/07/dns-programming-with-erlang.html.
-
-Hardware setup
---------------
-N Buy a really big machine with 128GB RAM and setup 50 Ubuntu
-servers. Run a bittorrent tracker on one of them and let the rest of
-them download/seed files.
-
-Tuncer
-------
-L Add ioctl calls for all "ifconfig" calls to remove the need to give
-root access to beam.smp, e.g. it should be enough use setcap on Linux
-L Make tuncer:read/2 work
-L Make it run on Windows

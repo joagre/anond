@@ -17,20 +17,20 @@
 %%% exported: print
 %%%
 
--spec print(integer(), boolean(), string(), [any()]) ->
-                   'ok' | no_return().
-
 print(Format) ->
     print(1, false, Format, []).
 
 print(Format, Args) ->
     print(1, false, Format, Args).
 
+-spec print(integer(), boolean(), string(), [any()]) ->
+                   'ok' | no_return().
+
 print(ExitStatus, HaltP, Format, Args) ->
     io:format(standard_error, Format++"~n", Args),
     case HaltP of
 	true ->
-            %% allow data on stderr to be printed 
+            %% allow data on stderr to be printed
             timer:sleep(1000),
             erlang:halt(ExitStatus);
 	_ ->

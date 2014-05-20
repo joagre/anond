@@ -544,7 +544,7 @@ string(<<X, Y, Z>>, Handler, Acc, Stack, Config)
         when X >= 16#f0, X =< 16#f4,
             Y >= 16#80, Y =< 16#bf,
             Z >= 16#80, Z =< 16#bf ->
-    incomplete(string, <<X, Y, Z>>, Handler, Acc, Stack, Config); 
+    incomplete(string, <<X, Y, Z>>, Handler, Acc, Stack, Config);
 %% surrogates
 string(<<237, X, _, Rest/binary>>, Handler, Acc, Stack, Config=#config{replaced_bad_utf8=true})
         when X >= 160 ->
@@ -932,9 +932,7 @@ maybe_done(<<?solidus>>, Handler, Stack, Config=#config{comments=true}) ->
 maybe_done(<<>>, Handler, Stack, Config) when length(Stack) > 0 ->
     incomplete(maybe_done, <<>>, Handler, Stack, Config);
 maybe_done(Bin, Handler, Stack, Config) ->
-    io:format("FJUTT: ~p~n", [Bin]),
     ?error(maybe_done, Bin, Handler, Stack, Config).
-
 
 done(<<S, Rest/binary>>, Handler, [], Config) when ?is_whitespace(S) ->
     done(Rest, Handler, [], Config);

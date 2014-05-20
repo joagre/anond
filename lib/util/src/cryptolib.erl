@@ -1,7 +1,7 @@
 -module(cryptolib).
 
 %%% external exports
--export([create_sign_keypair_files/1, create_encrypt_keypair_files/1]).
+-export([create_sign_keypair_files/1]).
 -export([read_key_file/1]).
 
 %%% internal exports
@@ -40,15 +40,6 @@ create_keypair_files([PublicKeyFile, PrivateKeyFile], KeyFunction) ->
             stderr:print(2, true, "~s: ~s",
                          [PublicKeyFile, file:format_error(Reason)])
     end.
-
-%%%
-%%% exported: create_encrypt_keypair_files
-%%%
-
--spec create_encrypt_keypair_files([string()]) -> 'ok'.
-
-create_encrypt_keypair_files(KeyFilenames) ->
-    create_keypair_files(KeyFilenames, make_box_keypair).
 
 %%%
 %%% exported: read_key_file

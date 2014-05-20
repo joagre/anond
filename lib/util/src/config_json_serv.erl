@@ -38,7 +38,7 @@
         {'tcp_serv', tcp_serv:error_reason()} |
         {'posix', inet:posix()}.
 -type config_error_reason() ::
-        'bad_json' |
+        {'bad_json', term()} |
         {'file_error', file:filename(), file:posix()} |
         {'trailing', json_path()} |
         {'expected', json_path(), json_path()} |
@@ -84,8 +84,6 @@ start_link(ConfigFilename, JsonSchema, ControlAddressPortPath, Handler) ->
 %%% exported: lookup
 %%%
 
--spec lookup(json_path()) -> json_term().
-
 lookup(JsonPath) ->
     case serv:call(?MODULE, {lookup, JsonPath}) of
         not_found ->
@@ -107,8 +105,6 @@ lookup(JsonPath, DefaultJsonValue) ->
 %%%
 %%% exported: subscribe
 %%%
-
--spec subscribe() -> 'ok'.
 
 subscribe() ->
     ?MODULE ! {subscribe, self()},
@@ -149,8 +145,8 @@ format_error({tcp_serv, Reason}) ->
     tcp_serv:format_error(Reason);
 format_error({posix, Reason}) ->
     inet:format_error(Reason);
-format_error({config, bad_json}) ->
-    "Bad JSON";
+format_error({config, {bad_json, BadJson}}) ->
+    io_lib:format("Bad JSON: ~p", [BadJson]);
 format_error({config, {file_error, Filename, Reason}}) ->
     io_lib:format("~s: ~s", [Filename, file:format_error(Reason)]);
 format_error({config, {trailing, JsonPath}}) ->
@@ -363,8 +359,8 @@ parse(ConfigFilename, JsonSchema) ->
                         throw:Reason ->
                             {error, Reason}
                     end;
-                _ ->
-                    {error, bad_json}
+                BadJson ->
+                    {error, {bad_json, BadJson}}
             end;
         {error, Reason} ->
             {error, {file_error, ConfigFilename, Reason}}
@@ -521,7 +517,7 @@ validate_value(ConfigDir, #json_type{name = writable_file, convert = Convert},
           when Type == regular orelse Type == symlink ->
             convert_value(Convert, ?l2b(ExpandedFilename), JsonPath);
         {ok, _FileInfo} ->
-            throw({not_writable_file, ExpandedFilename, JsonPath});
+            throw({not_writable_file, _FileInfo, ExpandedFilename, JsonPath});
         {error, enoent} ->
             ParentDir = filename:dirname(ExpandedFilename),
             case file:read_file_info(ParentDir) of
@@ -531,9 +527,28 @@ validate_value(ConfigDir, #json_type{name = writable_file, convert = Convert},
                     throw({not_writable_directory, ParentDir, JsonPath});
                 {error, Reason} ->
                     throw({file_error, Value, Reason, JsonPath})
-            end
+            end;
+        {error, Reason} ->
+            throw({file_error, Value, Reason, JsonPath})
     end;
 validate_value(_ConfigDir, #json_type{name = writable_file}, Value, JsonPath) ->
+    throw({file_error, Value, einval, JsonPath});
+%% writable_directory
+validate_value(ConfigDir, #json_type{name = writable_directory,
+                                     convert = Convert},
+               Value, JsonPath)
+  when is_binary(Value) ->
+    ExpandedFilename = expand_config_dir(ConfigDir, ?b2l(Value)),
+    case file:read_file_info(ExpandedFilename) of
+        {ok, #file_info{type = directory, access = read_write}} ->
+            convert_value(Convert, ?l2b(ExpandedFilename), JsonPath);
+        {ok, _FileInfo} ->
+            throw({not_writable_directory, ExpandedFilename, JsonPath});
+        {error, Reason} ->
+            throw({file_error, Value, Reason, JsonPath})
+    end;
+validate_value(_ConfigDir, #json_type{name = writable_directory}, Value,
+               JsonPath) ->
     throw({file_error, Value, einval, JsonPath});
 %% string
 validate_value(_ConfigDir, #json_type{name = string, convert = Convert}, Value,

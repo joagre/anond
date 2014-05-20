@@ -17,11 +17,11 @@
 %%% exported: call
 %%%
 
--spec call(pid() | atom(), Request :: any(), timeout()) ->
-                  {'error', any()} | any().
-
 call(Pid, Request) ->
     call(Pid, Request, infinity).
+
+-spec call(pid() | atom(), Request :: any(), timeout()) ->
+                  {'error', any()} | any().
 
 call(undefined, _Request, _Timeout) ->
     {error, not_started};

@@ -1,9 +1,9 @@
-%% Copyright (c) 2013, Patrik Winroth <patrik@bwi.se>
+%% Copyright (c) 2014, Patrik Winroth <patrik@bwi.se>
 %%
 %% Permission to use, copy, modify, and/or distribute this software for any
 %% purpose with or without fee is hereby granted, provided that the above
 %% copyright notice and this permission notice appear in all copies.
-%% 
+%%
 %% THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 %% WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
 %% MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
@@ -23,11 +23,11 @@
         , r0/1
         ]).
 
--type hash() :: <<_:256>>.
--type random_integer() :: <<_:256>>.
+-type hash() :: <<_:512>>.
+-type random_integer() :: <<_:512>>.
 -type costs() :: [{pos_integer(), hash()}].
 -type unallocated_cost() :: [random_integer()].
--opaque path_cost() :: {costs(), unallocated_cost()}.
+-type path_cost() :: {costs(), unallocated_cost()}.
 -type cost() :: non_neg_integer().
 -export_type([ path_cost/0
              , cost/0
@@ -37,21 +37,21 @@
 %%%_* API ======================================================================
 
 %% @doc Create an empty path cost vector with a Hamming weight of 256 bits.
-%% 256 bits element sizes and 256 hash output ... 128 bit security.
+%% 256 bits element sizes and 512 bits hash output ... 256 bit security.
 -spec new() -> path_cost().
 new() ->
-  V1 = [crypto:rand_bytes(32) || _ <- lists:seq(1, 256)],
+  V1 = [salt:crypto_random_bytes(64) || _ <- lists:seq(1, 256)],
   {[], V1}.
 
 %% @doc Add a path cost, in total a maximum Hamming weight of 256 is supported.
--spec add_cost(path_cost(), cost()) -> path_cost(). 
+-spec add_cost(path_cost(), cost()) -> path_cost().
 add_cost({CV, V1}, 0) ->
   {compact(CV), V1};
 add_cost({CV, V1}, Cost) when Cost > 0 ->
   add_cost(do_add_cost({CV, V1}), Cost - 1).
 
 %% @doc Given a path cost, return cost.
--spec cost(path_cost()) -> cost(). 
+-spec cost(path_cost()) -> cost().
 cost({_CV, V1}) ->
   256 - length(V1).
 
@@ -107,7 +107,7 @@ expand([]) ->
   [].
 
 hash(Xn) ->
-  crypto:hash(sha256, Xn).
+  salt:crypto_hash(Xn).
 
 %%%_* Emacs ====================================================================
 %%% Local Variables:

@@ -9,6 +9,7 @@
         'base64' |
         'readable_file' |
         'writable_file' |
+        'writable_directory' |
         'string'.
 
 -type ip_address_port() :: {inet:ip4_address(), inet:port_number()}.

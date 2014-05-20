@@ -38,11 +38,11 @@
 get_headers(TransportModule, Socket) ->
     get_headers(TransportModule, Socket, ['_'], []).
 
-get_headers(TransportModule, Socket, HeaderValues) ->
-    get_headers(TransportModule, Socket, HeaderValues, []).
-
 -spec get_headers(transport_module(), socket(), header_values()) ->
                          {'ok', header_values()}.
+
+get_headers(TransportModule, Socket, HeaderValues) ->
+    get_headers(TransportModule, Socket, HeaderValues, []).
 
 get_headers(TransportModule, Socket, HeaderValues, CollectedHeaderValues) ->
     case TransportModule:recv(Socket, 0) of
@@ -84,11 +84,11 @@ lower_case(Name) when is_list(Name) ->
 %%% exported: fmt_headers
 %%%
 
--spec fmt_headers(header_values(), SkipHeaderNames :: [header_name()]) ->
-                         iolist().
-
 fmt_headers(HeaderValues) ->
     fmt_headers(HeaderValues, []).
+
+-spec fmt_headers(header_values(), SkipHeaderNames :: [header_name()]) ->
+                         iolist().
 
 fmt_headers([], _SkipHeaderNames) ->
     [];
@@ -107,11 +107,11 @@ fmt_headers([{Name, Value}|Rest], SkipHeaderNames) ->
 %%% exported: lookup_header_value
 %%%
 
--spec lookup_header_value(header_name(), header_values(), header_value()) ->
-                                 header_value().
-
 lookup_header_value(Name, Headers) ->
     lookup_header_value(Name, Headers, '$no_default_value').
+
+-spec lookup_header_value(header_name(), header_values(), header_value()) ->
+                                 header_value().
 
 lookup_header_value(Name, Headers, DefaultValue) ->
     case lists:keysearch(Name, 1, Headers) of

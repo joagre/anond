@@ -1,11 +1,22 @@
 -ifndef(NODE_RECV_SEND_HRL).
 -define(NODE_RECV_SEND, true).
 
--define(IP_PACKET, (1 bsl 0)).
--define(ROUTE_ENTRY, (1 bsl 1)).
--define(ECHO_REQUEST, (1 bsl 2)).
--define(ECHO_REPLY, (1 bsl 3)).
--define(PADDING, (1 bsl 4)).
--define(MESSAGE_ARRIVED, (1 bsl 5)).
+-type message_id() :: 0..16777215. % 24 bits
+
+-define(LARGEST_MESSAGE_ID, 16777215). % 24 bits
+
+%% UDP message types
+-define(NODE_REGISTERED, 0).
+-define(NODE_ESTABLISH_TUNNEL, 16#1).
+-define(NODE_TUNNEL_ESTABLISHED, 16#2).
+-define(NODE_GET_NEIGHBOURS, 16#3).
+-define(NODE_GET_ROUTE_ENTRIES, 16#4).
+-define(NODE_KEEPALIVE, 16#5).
+-define(NODE_GET_NETWORK_TOPOLOGY, 16#6).
+-define(NODE_CELL_IP_PACKET, 16#7).
+-define(NODE_CELL_ROUTE_ENTRY, 16#8).
+-define(NODE_CELL_ECHO_REQUEST, 16#9).
+-define(NODE_CELL_ECHO_REPLY, 16#A).
+-define(NODE_CELL_PADDING, 16#B).
 
 -endif.

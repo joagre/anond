@@ -50,18 +50,14 @@ lookup_child(NodeInstanceSup, Id) ->
 %%%
 
 init([Na]) ->
-    NodeRouteServChildSpec =
-        {node_route_serv,
-         {node_route_serv, start_link, [Na, self()]},
-         permanent, 10000, worker, [node_route_serv]},
-    NodeRouteJsonrpcServChildSpec =
-        {node_route_jsonrpc_serv,
-         {node_route_jsonrpc_serv, start_link, [Na, self()]},
-         permanent, 10000, worker, [node_route_jsonrpc_serv]},
     NodeRecvServChildSpec =
         {node_recv_serv,
          {node_recv_serv, start_link, [Na, self()]},
          permanent, 10000, worker, [node_recv_serv]},
+    NodeRouteServChildSpec =
+        {node_route_serv,
+         {node_route_serv, start_link, [Na, self()]},
+         permanent, 10000, worker, [node_route_serv]},
     NodeSendSupChildSpec =
         {node_send_sup,
          {node_send_sup, start_link, []},
@@ -75,6 +71,5 @@ init([Na]) ->
          {node_path_cost_serv, start_link, [Na, self()]},
          permanent, brutal_kill, worker, [node_path_cost_serv]},
     {ok, {{rest_for_one, 3, 10},
-          [NodeRouteServChildSpec, NodeRouteJsonrpcServChildSpec,
-           NodeRecvServChildSpec, NodeSendSupChildSpec, NodeTunServChildSpec,
-           NodePathCostServChildSpec]}}.
+          [NodeRecvServChildSpec, NodeRouteServChildSpec, NodeSendSupChildSpec,
+           NodeTunServChildSpec, NodePathCostServChildSpec]}}.

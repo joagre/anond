@@ -21,7 +21,7 @@
 %%% types
 -type options() :: [option()].
 -type option() :: {'lookup_public_key',
-                   fun((httplib:ip_address_port(), binary()) ->
+                   fun((integer(), binary()) ->
                               'ignore' | 'not_found' | binary())} |
                   {'transport_module', httplib:transport_module()}.
 
@@ -58,22 +58,23 @@ jsonrpc_handler(Socket, Options, Handler, Docroot, TransportModule) ->
                 httplib:get_headers(TransportModule, Socket,
                                     [{'content-length', <<"-1">>},
                                      {<<"content-hmac">>, not_set},
-                                     {<<"my-port">>, <<"-1">>}]),
+                                     {<<"client-id">>, <<"-1">>}]),
             ok = TransportModule:setopts(Socket, [binary, {packet, 0}]),
             ContentLength =
                 httplib:lookup_header_value('content-length', HeaderValues),
             ContentHMAC =
                 httplib:lookup_header_value(<<"content-hmac">>, HeaderValues),
-            MyPort = httplib:lookup_header_value(<<"my-port">>, HeaderValues),
-            case catch {?b2i(ContentLength), ?b2i(MyPort)} of
-                {DecodedContentLength, DecodedMyPort}
+            ClientId =
+                httplib:lookup_header_value(<<"client-id">>, HeaderValues),
+            case catch {?b2i(ContentLength), ?b2i(ClientId)} of
+                {DecodedContentLength, DecodedClientId}
                   when is_integer(DecodedContentLength) andalso
-                       is_integer(DecodedMyPort) ->
+                       is_integer(DecodedClientId) ->
                     handle_jsonrpc_request(
                       Socket, Options, Handler, TransportModule,
-                      DecodedContentLength, ContentHMAC, DecodedMyPort);
+                      DecodedContentLength, ContentHMAC, DecodedClientId);
                 Error ->
-                    ?error_log({Error, ContentLength, MyPort}),
+                    ?error_log({Error, ContentLength, ClientId}),
                     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
                     send(Socket, TransportModule, null, JsonError)
                 end;
@@ -94,25 +95,18 @@ jsonrpc_handler(Socket, Options, Handler, Docroot, TransportModule) ->
     end.
 
 handle_jsonrpc_request(
-  Socket, _Options, _Handler, TransportModule, -1, _ContentHMAC, _MyPort) ->
+  Socket, _Options, _Handler, TransportModule, -1, _ContentHMAC, _ClientId) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content length not specified">>},
     send(Socket, TransportModule, null, JsonError);
 handle_jsonrpc_request(
   Socket, Options, {Module, Function, Args}, TransportModule, ContentLength,
-  ContentHMAC, MyPort) when ContentLength < ?MAX_REQUEST_SIZE ->
-    case peername(TransportModule, Socket) of
-        {ok, {MyIpAddress, _EphemeralPort}} ->
-            ok;
-        {error, _Reason} ->
-            MyIpAddress = undefined
-    end,
+  ContentHMAC, ClientId) when ContentLength < ?MAX_REQUEST_SIZE ->
     case recv(Socket, Options, TransportModule, ContentLength, ContentHMAC,
-              MyPort, MyIpAddress) of
+              ClientId) of
         {ok, Method, Params, Id} ->
-            case apply(Module, Function,
-                       [{MyIpAddress, MyPort}, Method, Params|Args]) of
+            case apply(Module, Function, [ClientId, Method, Params|Args]) of
                 {ok, Result} ->
                     send(Socket, TransportModule, Id, Result);
                 {error, JsonError} when is_record(JsonError, json_error) ->
@@ -134,64 +128,61 @@ handle_jsonrpc_request(
     end;
 handle_jsonrpc_request(
   Socket, _Options, _Handler, TransportModule, ContentLength, _ContentHMAC,
-  _MyPort) ->
+  _ClientId) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content is too large">>,
       data = ContentLength},
     send(Socket, TransportModule, null, JsonError).
 
-peername(gen_tcp, Socket) ->
-    peername(inet, Socket);
-peername(TransportModule, Socket) ->
-    TransportModule:peername(Socket).
-
 %%%
 %%% recv
 %%%
 
-recv(Socket, Options, TransportModule, ContentLength, ContentHMAC, MyPort,
-     MyIpAddress) ->
+recv(Socket, Options, TransportModule, ContentLength, ContentHMAC, ClientId) ->
     ok = TransportModule:setopts(Socket, [binary, {packet, 0}]),
     case TransportModule:recv(Socket, ContentLength) of
-        {ok, Response} ->
-            case catch jsx:decode(Response) of
-                [{<<"jsonrpc">>, <<"2.0">>},
-                 {<<"method">>, Method},
-                 {<<"params">>, Params},
-                 {<<"id">>, Id}] ->
-                    case verify_hmac(Options, ContentHMAC, MyPort, MyIpAddress,
-                                     Response, Method) of
-                        true ->
-                            {ok, Method, Params, Id};
-                        false ->
-                            invalid_signature
-                    end;
-                [{<<"jsonrpc">>, <<"2.0">>},
-                 {<<"method">>, Method},
-                 {<<"id">>, Id}] ->
-                    case verify_hmac(Options, ContentHMAC, MyPort, MyIpAddress,
-                                     Response, Method) of
-                        true ->
-                            {ok, Method, undefined, Id};
-                        false ->
-                            invalid_signature
-                    end;
-                Error ->
-                    ?error_log({Error, Response}),
-                    invalid_json
+        {ok, Request} ->
+            case catch jsx:decode(Request) of
+                {'EXIT', _} ->
+                    invalid_json;
+                DecodedRequest ->
+                    handle_request(Options, ContentHMAC, ClientId, Request,
+                                   jsonrpc_client:sort_properties(
+                                     DecodedRequest))
             end;
         {error, Reason} ->
             {error, Reason}
     end.
 
-verify_hmac(Options, ContentHMAC, MyPort, MyIpAddress, Response, Method) ->
+handle_request(Options, ContentHMAC, ClientId, Request,
+               [{<<"id">>, Id},
+                {<<"jsonrpc">>, <<"2.0">>},
+                {<<"method">>, Method},
+                {<<"params">>, Params}]) ->
+    case verify_hmac(Options, ContentHMAC, ClientId, Request, Method) of
+        true ->
+            {ok, Method, Params, Id};
+        false ->
+            invalid_signature
+    end;
+handle_request(Options, ContentHMAC, ClientId, Request,
+               [{<<"id">>, Id},
+                {<<"jsonrpc">>, <<"2.0">>},
+                {<<"method">>, Method}]) ->
+    case verify_hmac(Options, ContentHMAC, ClientId, Request, Method) of
+        true ->
+            {ok, Method, undefined, Id};
+        false ->
+            invalid_signature
+    end;
+handle_request(_Options, _ContentHMAC, _ClientId, _Request, _DecodedRequest) ->
+    invalid_json.
+
+verify_hmac(Options, ContentHMAC, ClientId, Request, Method) ->
     case lists:keysearch(lookup_public_key, 1, Options) of
-        {value, {lookup_public_key, _LookupPublicKey}}
-          when MyIpAddress == undefined ->
-            false;
         {value, {lookup_public_key, LookupPublicKey}} ->
-            case LookupPublicKey({MyIpAddress, MyPort}, Method) of
+            case LookupPublicKey(ClientId, Method) of
                 ignore ->
                     true;
                 not_found ->
@@ -199,7 +190,7 @@ verify_hmac(Options, ContentHMAC, MyPort, MyIpAddress, Response, Method) ->
                 _PublicKey when ContentHMAC == not_set ->
                     false;
                 PublicKey ->
-                    {ok, salt:crypto_hash(Response)} ==
+                    {ok, salt:crypto_hash(Request)} ==
                         salt:crypto_sign_open(
                           base64:decode(ContentHMAC), PublicKey)
             end;

@@ -2,8 +2,9 @@
 
 %%% external exports
 -export([start_link/1]).
+-export([toggle_logging/2]).
 -export([daemon_log/5]).
--export([dbg_log/3]).
+-export([dbg_log/4]).
 -export([format_error/1]).
 
 %%% internal exports
@@ -18,15 +19,16 @@
 
 %%% records
 -record(state, {
-          parent               :: pid(),
-          tty_available        :: boolean(),
-          read_config_callback :: read_config_callback(),
-          daemon_log_info      :: #daemon_log_info{},
-          daemon_disk_log      :: disk_log:log(),
-          dbg_log_info         :: #dbg_log_info{},
-          dbg_disk_log         :: disk_log:log(),
-          error_log_info       :: #error_log_info{}
-        }).
+          parent                  :: pid(),
+          tty_available           :: boolean(),
+          read_config_callback    :: read_config_callback(),
+          daemon_log_info         :: #daemon_log_info{},
+          daemon_disk_log         :: disk_log:log(),
+          dbg_log_info            :: #dbg_log_info{},
+          dbg_disk_log            :: disk_log:log(),
+          error_log_info          :: #error_log_info{},
+          disabled_processes = [] :: [pid()]
+         }).
 
 %%% types
 -type read_config_callback() ::
@@ -51,11 +53,22 @@ start_link(ReadConfigCallback) ->
     end.
 
 %%%
+%%% exported: toggle_logging
+%%%
+
+-spec toggle_logging(pid(), boolean()) -> 'ok'.
+
+toggle_logging(Pid, Enabled) ->
+    ?MODULE ! {toggle_logging, Pid, Enabled},
+    ok.
+
+%%%
 %%% exported: daemon_log
 %%%
 
--spec daemon_log(Pid :: pid(), Module :: atom(), Line :: integer(),
-                 Format :: string(), Args :: [any()]) -> 'ok'.
+-spec daemon_log(pid(), Module :: atom(), Line :: integer(),
+                 Format :: string(), Args :: [any()]) ->
+                        'ok'.
 
 daemon_log(Pid, Module, Line, Format, Args) ->
     ?MODULE ! {daemon_log, Pid, Module, Line, Format, Args},
@@ -65,10 +78,10 @@ daemon_log(Pid, Module, Line, Format, Args) ->
 %%% exported: dbg_log
 %%%
 
--spec dbg_log(Module :: atom(), Line :: integer(), term()) -> 'ok'.
+-spec dbg_log(pid(), Module :: atom(), Line :: integer(), term()) -> 'ok'.
 
-dbg_log(Module, Line, Term) ->
-    ?MODULE ! {dbg_log, Module, Line, Term},
+dbg_log(Pid, Module, Line, Term) ->
+    ?MODULE ! {dbg_log, Pid, Module, Line, Term},
     ok.
 
 %%%
@@ -130,18 +143,41 @@ loop(#state{parent = Parent,
             daemon_disk_log = DaemonDiskLog,
             dbg_log_info = DbgLogInfo,
             dbg_disk_log = DbgDiskLog,
-            error_log_info = _ErrorLogInfo} = S) ->
+            error_log_info = _ErrorLogInfo,
+            disabled_processes = DisabledProcesses} = S) ->
     receive
+        {toggle_logging, Pid, true} ->
+            loop(S#state{
+                   disabled_processes = lists:delete(Pid, DisabledProcesses)});
+        {toggle_logging, Pid, false} ->
+            case lists:member(Pid, DisabledProcesses) of
+                true ->
+                    loop(S);
+                false ->
+                    loop(S#state{disabled_processes = [Pid|DisabledProcesses]})
+            end;
         {daemon_log, Pid, Module, Line, Format, Args} ->
-            write_to_daemon_log(TtyAvailable, DaemonLogInfo, DaemonDiskLog,
-                                Pid, Module, Format, Args),
-            write_to_dbg_log(false, DbgLogInfo, DbgDiskLog, Module, Line,
-                             {daemon_log, Format, Args}),
-            loop(S);
-        {dbg_log, Module, Line, Term} ->
-            write_to_dbg_log(TtyAvailable, DbgLogInfo, DbgDiskLog,
-                             Module, Line, Term),
-            loop(S);
+            case lists:member(Pid, DisabledProcesses) of
+                false ->
+                    write_to_daemon_log(
+                      TtyAvailable, DaemonLogInfo, DaemonDiskLog, Pid, Module,
+                      Format, Args),
+                    write_to_dbg_log(
+                      false, DbgLogInfo, DbgDiskLog, Module, Line,
+                      {daemon_log, Format, Args}),
+                    loop(S);
+                true ->
+                    loop(S)
+            end;
+        {dbg_log, Pid, Module, Line, Term} ->
+            case lists:member(Pid, DisabledProcesses) of
+                false ->
+                    write_to_dbg_log(
+                      TtyAvailable, DbgLogInfo, DbgDiskLog, Module, Line, Term),
+                    loop(S);
+                true ->
+                    loop(S)
+            end;
         config_updated ->
             {NewDaemonLogInfo, NewDbgLogInfo, _NewErrorLogInfo} =
                 ReadConfigCallback(),

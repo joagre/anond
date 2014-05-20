@@ -1,13 +1,16 @@
--module(node_jsonrpc).
+-module(ds_jsonrpc_conversion).
 
 %%% external exports
 -export([encode_nas/1, encode_na/1, decode_nas/1, decode_na/1]).
 -export([encode_oas/1, encode_oa/1, decode_oas/1, decode_oa/1]).
+-export([encode_network_topology/1]).
 
 %%% internal exports
 
 %%% include files
--include_lib("node/include/node.hrl").
+-include_lib("ds/include/ds.hrl").
+-include_lib("node/include/node_route.hrl").
+-include_lib("util/include/bits.hrl").
 -include_lib("util/include/shorthand.hrl").
 
 %%% constants
@@ -41,7 +44,20 @@ encode_na({IpAddress, Port}) ->
 -spec decode_nas([binary()]) -> {'ok', [na()]} | {'error', 'einval'}.
 
 decode_nas(Nas) ->
-    jsonrpc:decode(Nas, fun decode_na/1).
+    decode(Nas, fun decode_na/1).
+
+decode(List, F) ->
+    decode(List, F, []).
+
+decode([], _F, Acc) ->
+    {ok, lists:reverse(Acc)};
+decode([Entity|Rest], F, Acc) ->
+    case F(Entity) of
+        {ok, MappedEntity} ->
+            decode(Rest, F, [MappedEntity|Acc]);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %%%
 %%% exported: decode_na
@@ -71,6 +87,8 @@ decode_na(Na) ->
 %%% exported: encode_oas
 %%%
 
+-spec encode_oas([oa()]) -> [binary()].
+
 encode_oas(Oas) ->
     [encode_oa(Oa) || Oa <- Oas].
 
@@ -90,7 +108,7 @@ encode_oa(Oa) ->
 -spec decode_oas([binary()]) -> {'ok', [oa()]} | {'error', 'einval'}.
 
 decode_oas(Oas) ->
-    jsonrpc:decode(Oas, fun decode_oa/1).
+    decode(Oas, fun decode_oa/1).
 
 %%%
 %%% exported: decode_oa
@@ -100,3 +118,36 @@ decode_oas(Oas) ->
 
 decode_oa(Oa) ->
     inet:parse_address(?b2l(Oa)).
+
+%%%
+%%% exported: encode_nodes
+%%%
+
+-spec encode_network_topology([{#node_descriptor{}, [#node{}],
+                                [#route_entry{}]}]) ->
+                                     jsx:json_term().
+
+encode_network_topology([]) ->
+    [];
+encode_network_topology([{NodeId, Na, Neighbours, Res}|Rest]) ->
+    [[{<<"node-id">>, NodeId},
+      {<<"na">>, ds_jsonrpc_conversion:encode_na(Na)},
+      {<<"neighbours">>, encode_neighbours(Neighbours)},
+      {<<"route-entries">>, encode_route_entries(Res)}]|
+     encode_network_topology(Rest)].
+
+encode_neighbours(Neighbours) ->
+    [encode_neighbour(Neighbour) || Neighbour <- Neighbours].
+
+encode_neighbour(Neighbour) ->
+    [{<<"node-id">>, Neighbour#node.node_id},
+     {<<"na">>, encode_na(Neighbour#node.na)},
+     {<<"path-cost">>, Neighbour#node.path_cost},
+     {<<"incoming-neighbour">>,
+      ?bit_is_set(Neighbour#node.flags, ?F_NODE_IS_INCOMING_NEIGHBOUR)}].
+
+encode_route_entries(Res) ->
+    [[{<<"path-cost">>, PathCost},
+      {<<"route">>, Hops}] ||
+        #route_entry{path_cost = PathCost, hops = Hops} <- Res,
+        Hops /= []].

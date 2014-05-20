@@ -3,7 +3,7 @@
 
 %%% external exports
 -export([start_link/0]).
--export([start_node_send_serv/3, stop_node_send_serv/2]).
+-export([start_node_send_serv/7, stop_node_send_serv/2]).
 
 %%% internal exports
 
@@ -12,6 +12,8 @@
 
 %%% include files
 -include_lib("node/include/node.hrl").
+-include_lib("util/include/log.hrl").
+-include_lib("util/include/shorthand.hrl").
 
 %%% constants
 
@@ -32,20 +34,18 @@ start_link() ->
 %%% exported: start_node_send_serv
 %%%
 
--spec start_node_send_serv(na(), na(), supervisor:sup_ref()) ->
+-spec start_node_send_serv(supervisor:sup_ref(), gen_udp:socket(), node_id(),
+                           na(), node_id(), na(), binary()) ->
                                   supervisor:startchild_ret().
 
-start_node_send_serv(Na, NeighbourNa, NodeInstanceSup) ->
-    Id = {node_send_serv, NeighbourNa},
+start_node_send_serv(NodeInstanceSup, Socket, MyNodeId, MyNa, NeighbourNodeId,
+                     NeighbourNa, SharedKey) ->
+    Id = {node_send_serv, NeighbourNodeId},
     {ok, NodeSendSup} =
         node_instance_sup:lookup_child(NodeInstanceSup, node_send_sup),
-    {ok, NodeRouteServ} =
-        node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
-    {ok, NodeRecvServ} =
-        node_instance_sup:lookup_child(NodeInstanceSup, node_recv_serv),
     NodeSendServChildSpec =
         {Id, {node_send_serv, start_link,
-              [Na, NeighbourNa, NodeRouteServ, NodeRecvServ]},
+              [Socket, MyNodeId, MyNa, NeighbourNa, SharedKey]},
          permanent, 10000, worker, [node_send_serv]},
     supervisor:start_child(NodeSendSup, NodeSendServChildSpec).
 
@@ -53,16 +53,16 @@ start_node_send_serv(Na, NeighbourNa, NodeInstanceSup) ->
 %%% exported: stop_node_send_serv
 %%%
 
--spec stop_node_send_serv(na(), supervisor:sup_ref()) ->
+-spec stop_node_send_serv(supervisor:sup_ref(), node_id()) ->
                                  'ok' |
                                  {'error',
                                   'running' | 'restarting' | 'not_found' |
                                   'simple_one_for_one'}.
 
-stop_node_send_serv(NeighbourNa, NodeInstanceSup) ->
+stop_node_send_serv(NodeInstanceSup, NeighbourNodeId) ->
     {ok, NodeSendSup} =
         node_instance_sup:lookup_child(NodeInstanceSup, node_send_sup),
-    Id = {node_send_serv, NeighbourNa},
+    Id = {node_send_serv, NeighbourNodeId},
     case supervisor:terminate_child(NodeSendSup, Id) of
         ok ->
             supervisor:delete_child(NodeSendSup, Id);

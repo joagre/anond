@@ -42,8 +42,6 @@ start_link() ->
 %%% exported: stop
 %%%
 
--spec stop(pid()) -> 'ok'.
-
 stop(Pid) ->
     stop(Pid, 15000).
 
@@ -117,7 +115,8 @@ start_node_instances(NasDb, [Na|Rest], Acc) ->
                     start_node_instances(NasDb, Rest,
                                          [{Na, NodeInstanceSup}|Acc]);
                 {error, Reason} ->
-                    ?daemon_log("Could not start node (~p)", [Reason]),
+                    ?daemon_log("Could not start node ~s (~p)",
+                                [net_tools:string_address(Na), Reason]),
                     start_node_instances(NasDb, Rest, Acc)
             end
     end.

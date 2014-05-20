@@ -12,14 +12,12 @@ function usage {
     echo "    Generate a self-signed SSL certificate"
     echo "$0 -j <PUBLIC KEY FILENAME> <PRIVATE KEY FILENAME>"
     echo "    Generate a public/private key pair used for signing"
-    echo "$0 -l <PUBLIC KEY FILENAME> <PRIVATE KEY FILENAME>"
-    echo "    Generate a public/private key pair used for encryption"
     echo "$0 -h"
     echo "    This help text"
     exit 1
 }
 
-args=options=$(getopt -u "c:sra:p:ik:j:l:h" -- "$@")
+args=options=$(getopt -u "c:sra:p:ik:j:h" -- "$@")
 
 set -- $args
 
@@ -92,16 +90,6 @@ while [ $# -gt 0 ]; do
             private_key_file="$3"
             shift 2
             ;;
-        -l)
-            if [ $# -lt 3 ]; then
-                usage
-            fi
-            mode="create_encrypt_keypair_files"
-            boot=" -boot ${bindir}/start_clean"
-            public_key_file="$2"
-            private_key_file="$3"
-            shift 2
-            ;;
         --)
             ;;
         -*)
@@ -137,8 +125,5 @@ case ${mode} in
         ;;
     create_sign_keypair_files)
         exec ${erl}${shell}${pa}${boot}${address}${port} -run cryptolib create_sign_keypair_files ${public_key_file} ${private_key_file}
-        ;;
-    create_encrypt_keypair_files)
-        exec ${erl}${shell}${pa}${boot}${address}${port} -run cryptolib create_encrypt_keypair_files ${public_key_file} ${private_key_file}
         ;;
 esac

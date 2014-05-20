@@ -38,4 +38,8 @@ init([]) ->
     DsJsonrpcServChildSpec =
         {ds_jsonrpc_serv, {ds_jsonrpc_serv, start_link, []},
          permanent, 10000, worker, [ds_jsonrpc_serv]},
-    {ok, {{one_for_one, 3, 10}, [DsServChildSpec, DsJsonrpcServChildSpec]}}.
+    DsUdpServChildSpec =
+        {ds_udp_serv, {ds_udp_serv, start_link, []},
+         permanent, 10000, worker, [ds_udp_serv]},
+    {ok, {{one_for_one, 3, 10},
+          [DsServChildSpec, DsJsonrpcServChildSpec, DsUdpServChildSpec]}}.

@@ -82,10 +82,10 @@ valid_options(ValidOptions, [Option|Rest]) ->
 %%% exported: stop
 %%%
 
--spec stop(pid() | atom(), timeout()) -> 'ok'.
-
 stop(PidOrName) ->
     stop(PidOrName, 15000).
+
+-spec stop(pid() | atom(), timeout()) -> 'ok'.
 
 stop(PidOrName, Timeout) ->
     serv:call(PidOrName, stop, Timeout).

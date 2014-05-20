@@ -1,9 +1,9 @@
-%% Copyright (c) 2013, Patrik Winroth <patrik@bwi.se>
+%% Copyright (c) 2014, Patrik Winroth <patrik@bwi.se>
 %%
 %% Permission to use, copy, modify, and/or distribute this software for any
 %% purpose with or without fee is hereby granted, provided that the above
 %% copyright notice and this permission notice appear in all copies.
-%% 
+%%
 %% THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 %% WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
 %% MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
@@ -23,22 +23,24 @@
         , add_me/2
         ]).
 
--opaque psp() :: <<_:2560>>.
--opaque psp_db() :: ets:tid().
+%% WHAT?
+%%-type psp() :: <<_:2560>>.
+-type psp() :: binary().
+-type psp_db() :: ets:tid().
 -export_type([psp/0, psp_db/0]).
 
 %%%_* API ======================================================================
-%% @doc Initializes a random 128 bit crypto key, a random string and a counter.
--spec init() -> {'ok', psp_db()}.
+%% @doc Initializes a random 256 bit crypto key, a random string and a counter.
+-spec init() -> psp_db().
 init() ->
   PspDB = init_ets(),
   reset_crypto(PspDB),
-  {ok, PspDB}.
+  PspDB.
 
 %% @doc Generate a new PSP where add_me/1 gives the only non-random entry.
--spec new(psp_db()) -> {'ok', psp()}.
+-spec new(psp_db()) -> psp().
 new(PspDB) ->
-  PSP = crypto:rand_bytes(16*20),
+  PSP = salt:crypto_random_bytes(16*20),
   add_me(PspDB, PSP).
 
 %% @doc Checks if there is an entry in the PSP that is us, i.e. we are looping.
@@ -47,13 +49,13 @@ is_loop(PspDB, PSP) ->
   [loop || <<Encrypted:128>> <= PSP, is_me(PspDB, <<Encrypted:128>>)] =/= [].
 
 %% @doc Add an entry to the PSP for this node.
--spec add_me(psp_db(), psp()) -> {'ok', psp()}.
+-spec add_me(psp_db(), psp()) -> psp().
 add_me(PspDB, PSP) ->
   <<PS:2432, _:128>> = PSP,
   Cnt = inc_cnt(PspDB),
   Str = get_key(PspDB, str),
   Me = encrypt(PspDB, <<Str/binary, Cnt:48>>),
-  {ok, <<Me/binary, PS:2432>>}.
+  <<Me/binary, PS:2432>>.
 
 %%%_* Internal =================================================================
 table() ->
@@ -70,10 +72,10 @@ is_me(PspDB, Encrypted) ->
   end.
 
 encrypt(PspDB, B) ->
-  crypto:block_encrypt(aes_cbc128, get_key(PspDB, key), get_key(PspDB, iv), B).
+  salt:crypto_stream_xor(B, get_key(PspDB, nc), get_key(PspDB, key)).
 
 decrypt(PspDB, B) ->
-  crypto:block_decrypt(aes_cbc128, get_key(PspDB, key), get_key(PspDB, iv), B).
+  salt:crypto_stream_xor(B, get_key(PspDB, nc), get_key(PspDB, key)).
 
 init_ets() ->
   ets:new(table() , [ set, public
@@ -82,12 +84,12 @@ init_ets() ->
                     ]).
 
 reset_crypto(PspDB) ->
-  IV = crypto:rand_bytes(16),  
-  Key = crypto:rand_bytes(16),
-  Str = crypto:rand_bytes(10),
-  Cnt = crypto:rand_bytes(6),
+  Key = salt:crypto_random_bytes(32),
+  Nc = salt:crypto_random_bytes(24),
+  Str = salt:crypto_random_bytes(10),
+  Cnt = salt:crypto_random_bytes(6),
   <<IntCnt:48>> = Cnt,
-  ets:insert(PspDB, [ {iv, IV}, {key, Key}
+  ets:insert(PspDB, [ {key, Key}, {nc, Nc}
                     , {str, Str}, {cnt, IntCnt}]).
 
 inc_cnt(PspDB) ->

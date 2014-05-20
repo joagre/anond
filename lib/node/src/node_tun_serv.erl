@@ -27,6 +27,7 @@
           restart_tun       :: boolean(),
           %% anond.conf parameters
           my_na             :: na(),
+          logging           :: boolean(),
           create_tun_device :: boolean(),
           my_oa             :: oa()}).
 
@@ -51,8 +52,6 @@ start_link(MyNa, NodeInstanceSup) ->
 %%% exported: stop
 %%%
 
--spec stop(pid()) -> 'ok'.
-
 stop(Pid) ->
     stop(Pid, 15000).
 
@@ -70,6 +69,9 @@ init(Parent, MyNa, NodeInstanceSup) ->
     ok = config_json_serv:subscribe(),
     S = read_config(#state{parent = Parent, my_na = MyNa}),
     Parent ! {self(), started},
+    %% Note: The supervisor will not be available until all its children
+    %% have been started, i.e. calls to node_instance_sup:lookup_child/2
+    %% must be delayed until now
     {ok, NodeRouteServ} =
         node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
     {ok, NodeRecvServ} =
@@ -79,6 +81,7 @@ init(Parent, MyNa, NodeInstanceSup) ->
     {TunFd, TunPid} =
         manage_tun_device(S#state.tun_mtu, S#state.create_tun_device,
                           S#state.my_oa),
+    ok = log_serv:toggle_logging(self(), S#state.logging),
     loop(S#state{node_db = NodeDb, route_db = RouteDb,
                  node_recv_serv = NodeRecvServ, tun_fd = TunFd,
                  tun_pid = TunPid}).
@@ -91,12 +94,14 @@ loop(#state{parent = Parent,
             tun_pid = TunPid,
             tun_mtu = _TunMtu,
             restart_tun = _RestartTun,
-            my_na = _MyNa,
+            my_na = MyNa,
+            logging = _Logging,
             create_tun_device = _CreateTunDevice,
             my_oa = MyOa} = S) ->
     receive
         config_updated ->
-            ?daemon_log("Configuration changed...", []),
+            ?daemon_log("~s starts to update its configuration",
+                        [net_tools:string_address(MyNa)]),
             UpdatedS = read_config(S),
             {UpdatedTunFd, UpdatedTunPid} =
                 manage_tun_device(
@@ -140,7 +145,7 @@ send(DestOa, NodeDb, RouteDb, Ipv6Packet) ->
             ok = node_send_serv:send(NodeSendServ,
                                      {?MODULE, DestOa, Ipv6Packet});
         {error, Reason} ->
-            ?dbg_log(Reason),
+            ?error_log(Reason),
             ok
     end.
 
@@ -154,16 +159,18 @@ read_config(S) ->
 
 read_config(S, []) ->
     S;
+read_config(S, [{'logging', Value}|Rest]) ->
+    read_config(S#state{logging = Value}, Rest);
 read_config(S, [{'create-tun-device', Value}|Rest]) ->
     read_config(S#state{create_tun_device = Value}, Rest);
 read_config(S, [{'overlay-addresses', [Oa]}|Rest]) ->
     read_config(S#state{my_oa = Oa}, Rest);
 read_config(_S, [{'overlay-addresses', _Oa}|_Rest]) ->
     throw(nyi);
-%% Note: An ip packet created by node_send_serv.erl requires an 19
-%% bytes header. See node_send_serv.erl.
+%% Note: An ip packet created by node_send_serv.erl requires an 19+28
+%% (47) bytes header. See node_send_serv.erl.
 read_config(S, [{'max-cell-size', Value}|Rest]) ->
-    TunMtu = Value-18,
+    TunMtu = Value-47,
     if
         S#state.tun_mtu == TunMtu ->
             read_config(S);

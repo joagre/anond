@@ -2,12 +2,12 @@
 
 %%% external exports
 -export([start_link/2, stop/1, stop/2]).
--export([updated_neighbour_nas/2]).
+-export([set_neighbour_node_ids/2]).
 -export([echo_reply/2]).
 
 %%% internal exports
 -export([init/3]).
--export([send_echo_requests/6]).
+-export([send_echo_requests/5]).
 
 %%% include files
 -include_lib("node/include/node.hrl").
@@ -27,14 +27,13 @@
           node_db                           :: node_db(),
           route_db                          :: route_db(),
           node_route_serv                   :: pid(),
-          neighbour_nas = []                :: [na()],
-          path_costs = []                   :: [{{inet:port_number(),
-                                                  inet:port_number()},
-                                                 path_cost()}],
+          my_node_id = 0                   :: node_id(),
+          neighbour_node_ids = []           :: [node_id()],
           unique_id = 0                     :: non_neg_integer(),
           %% anond.conf parameters
           mode                              :: common_config_json_serv:mode(),
           my_na                             :: na(),
+          logging                           :: boolean(),
           number_of_echo_requests           :: non_neg_integer(),
           acceptable_number_of_echo_replies :: non_neg_integer(),
           delay_between_echo_requests       :: timeout(),
@@ -61,8 +60,6 @@ start_link(MyNa, NodeInstanceSup) ->
 %%% exported: stop
 %%%
 
--spec stop(pid()) -> 'ok'.
-
 stop(Pid) ->
     stop(Pid, 15000).
 
@@ -72,15 +69,15 @@ stop(Pid, Timeout) ->
     serv:call(Pid, stop, Timeout).
 
 %%%
-%%% exported: updated_neighbour_nas
+%%% exported: set_neighbour_node_ids
 %%%
 
--spec updated_neighbour_nas(pid() | 'undefined', [na()]) -> 'ok'.
+-spec set_neighbour_node_ids(pid() | 'undefined', [node_id()]) -> 'ok'.
 
-updated_neighbour_nas(undefined, _UpdatedNeighbourNas) ->
+set_neighbour_node_ids(undefined, _NewNeighbourNodeIds) ->
     ok;
-updated_neighbour_nas(NodePathCostServ, UpdatedNeighbourNas) ->
-    NodePathCostServ ! {updated_neighbour_nas, UpdatedNeighbourNas},
+set_neighbour_node_ids(NodePathCostServ, NewNeighbourNodeIds) ->
+    NodePathCostServ ! {set_neighbour_node_ids, NewNeighbourNodeIds},
     ok.
 
 %%%
@@ -100,9 +97,11 @@ echo_reply(NodePathCostServ, EchoReply) ->
 init(Parent, MyNa, NodeInstanceSup) ->
     process_flag(trap_exit, true),
     ok = config_json_serv:subscribe(),
-    S = read_config(#state{parent = Parent, path_costs = ?NON_RANDOM_PATH_COSTS,
-                           my_na = MyNa}),
+    S = read_config(#state{parent = Parent, my_na = MyNa}),
     Parent ! {self(), started},
+    %% Note: The supervisor will not be available until all its children
+    %% have been started, i.e. calls to node_instance_sup:lookup_child/2
+    %% must be delayed until now
     {ok, NodeRouteServ} =
         node_instance_sup:lookup_child(NodeInstanceSup, node_route_serv),
     {ok, NodeRecvServ} =
@@ -111,6 +110,7 @@ init(Parent, MyNa, NodeInstanceSup) ->
         node_route_serv:handshake(NodeRouteServ, {?MODULE, self()}),
     ok = node_recv_serv:handshake(NodeRecvServ, {?MODULE, self()}),
     self() ! measure,
+    ok = log_serv:toggle_logging(self(), S#state.logging),
     loop(S#state{node_db = NodeDb, route_db = RouteDb,
                  node_route_serv = NodeRouteServ}).
 
@@ -118,11 +118,12 @@ loop(#state{parent = Parent,
             node_db = NodeDb,
             route_db = RouteDb,
             node_route_serv = NodeRouteServ,
-            neighbour_nas = NeighbourNas,
-            path_costs = Pcs,
+            my_node_id = MyNodeId,
+            neighbour_node_ids = NeighbourNodeIds,
             unique_id = UniqueId,
             mode = Mode,
             my_na = MyNa,
+            logging = _Logging,
             number_of_echo_requests = NumberOfEchoRequests,
             acceptable_number_of_echo_replies = AcceptableNumberOfEchoReplies,
             delay_between_echo_requests = DelayBetweenEchoRequests,
@@ -130,39 +131,44 @@ loop(#state{parent = Parent,
             echo_reply_timeout = EchoReplyTimeout} = S) ->
     receive
         config_updated ->
-            ?daemon_log("Configuration changed...", []),
+            ?daemon_log("Node ~w (~s) starts to update its configuration",
+                        [MyNodeId, net_tools:string_address(MyNa)]),
             loop(read_config(S));
-        {updated_neighbour_nas, UpdatedNeighbourNas} ->
-            loop(S#state{neighbour_nas = UpdatedNeighbourNas});
-        measure when NeighbourNas == [] ->
+        {set_neighbour_node_ids, NewNeighbourNodeIds} ->
+            loop(S#state{neighbour_node_ids = NewNeighbourNodeIds});
+        measure when NeighbourNodeIds == [] ->
             timelib:start_timer(DelayBetweenMeasurements, measure),
             loop(S);
+        measure when MyNodeId == 0 ->
+            NewMyNodeId = node_route_serv:get_my_node_id(NodeRouteServ),
+            timelib:start_timer(DelayBetweenMeasurements, measure),
+            loop(S#state{my_node_id = NewMyNodeId});
         measure ->
-            NeighbourNa = hd(NeighbourNas),
-            RotatedNeighbourNas = rotate_neighbour_nas(NeighbourNas),
+            NeighbourNodeId = hd(NeighbourNodeIds),
+            RotatedNeighbourNodeIds =
+                rotate_neighbour_node_ids(NeighbourNodeIds),
             case Mode of
                 normal ->
                     Pc = measure_path_cost(
-                           NodeDb, RouteDb, UniqueId, MyNa,
+                           NodeDb, RouteDb, UniqueId, MyNodeId,
                            NumberOfEchoRequests, AcceptableNumberOfEchoReplies,
                            DelayBetweenEchoRequests, EchoReplyTimeout,
-                           NeighbourNa),
+                           NeighbourNodeId),
                     ok = node_route_serv:update_path_cost(
-                           NodeRouteServ, NeighbourNa, Pc),
+                           NodeRouteServ, NeighbourNodeId, Pc),
                     timelib:start_timer(DelayBetweenMeasurements, measure),
-                    loop(S#state{neighbour_nas = RotatedNeighbourNas,
+                    loop(S#state{neighbour_node_ids = RotatedNeighbourNodeIds,
                                  unique_id = UniqueId+1});
                 %% see doc/small_simulation.jpg
                 simulation ->
-                    {_MyIpAddress, MyPort} = MyNa,
-                    {_NeighbourIpAddress, NeighbourPort} = NeighbourNa,
                     {value, {_, StoredPc}} =
-                        lists:keysearch({MyPort, NeighbourPort}, 1, Pcs),
+                        lists:keysearch({MyNodeId, NeighbourNodeId}, 1,
+                                        ?SIMULATED_PATH_COSTS),
                     Pc = nudge_path_cost(StoredPc, ?PERCENT_NUDGE),
                     ok = node_route_serv:update_path_cost(
-                           NodeRouteServ, NeighbourNa, Pc),
+                           NodeRouteServ, NeighbourNodeId, Pc),
                     timelib:start_timer(DelayBetweenMeasurements, measure),
-                    loop(S#state{neighbour_nas = RotatedNeighbourNas})
+                    loop(S#state{neighbour_node_ids = RotatedNeighbourNodeIds})
             end;
 	{From, stop} ->
 	    From ! {self(), ok};
@@ -170,25 +176,26 @@ loop(#state{parent = Parent,
             exit(Reason);
         %% ignore stale echo replies
         #echo_reply{} ->
+            ?dbg_log(ignore_stale_echo_reply),
             loop(S);
 	UnknownMessage ->
 	    ?error_log({unknown_message, UnknownMessage}),
 	    loop(S)
     end.
 
-rotate_neighbour_nas([NeighbourNa|Rest]) ->
-    lists:reverse([NeighbourNa|lists:reverse(Rest)]).
+rotate_neighbour_node_ids([NeighbourNodeId|Rest]) ->
+    lists:reverse([NeighbourNodeId|lists:reverse(Rest)]).
 
 measure_path_cost(
-  NodeDb, RouteDb, UniqueId, MyNa, NumberOfEchoRequests,
+  NodeDb, RouteDb, UniqueId, MyNodeId, NumberOfEchoRequests,
   AcceptableNumberOfEchoReplies, DelayBetweenEchoRequests, EchoReplyTimeout,
-  NeighbourNa) ->
+  NeighbourNodeId) ->
     {ok, NodeSendServ} =
-        node_route:lookup_node_send_serv(NodeDb, RouteDb, NeighbourNa),
+        node_route:lookup_node_send_serv(NodeDb, RouteDb, NeighbourNodeId),
     StartTimestamp = timelib:mk_timestamp(),
     proc_lib:spawn(?MODULE, send_echo_requests,
                    [UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
-                    NeighbourNa, NodeSendServ, StartTimestamp]),
+                    NodeSendServ, StartTimestamp]),
     EchoReplyLatencies =
         wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp),
     case length(EchoReplyLatencies) of
@@ -198,24 +205,28 @@ measure_path_cost(
                 lists:foldl(fun(EchoReplyLatency, Sum) ->
                                     EchoReplyLatency+Sum end,
                             0, EchoReplyLatencies)/NumberOfEchoReplies,
-            trunc(AverageEchoReplyLatency);
+            truncate_path_cost(AverageEchoReplyLatency);
         NumberOfEchoReplies ->
-            {MyIpAddress, _MyPort} = MyNa,
-            {NeighbourIpAddress, _NeighbourPort} = NeighbourNa,
             PacketLoss = trunc(NumberOfEchoReplies/NumberOfEchoRequests*100),
-            ?daemon_log("Echo requests sent from ~s to ~s resulted in more "
+            ?daemon_log("Echo requests sent from ~w to ~w resulted in more "
                         "than ~w% packet loss",
-                        [net_tools:string_address(MyIpAddress),
-                         net_tools:string_address(NeighbourIpAddress),
-                         PacketLoss]),
-            -1
+                        [MyNodeId, NeighbourNodeId, PacketLoss]),
+            ?NODE_UNREACHABLE
     end.
 
-send_echo_requests(_UniqueId, 0, _DelayBetweenEchoRequests, _NeighbourNa,
-                   _NodeSendServ, _StartTimestamp) ->
+truncate_path_cost(PathCost) ->
+    case trunc(PathCost) of
+        TruncatedPathCost when TruncatedPathCost >= ?NODE_UNREACHABLE ->
+            ?NODE_UNREACHABLE-1;
+        TruncatedPathCost ->
+            TruncatedPathCost
+    end.
+
+send_echo_requests(_UniqueId, 0, _DelayBetweenEchoRequests, _NodeSendServ,
+                   _StartTimestamp) ->
     ok;
 send_echo_requests(UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
-                   NeighbourNa, NodeSendServ, StartTimestamp) ->
+                   NodeSendServ, StartTimestamp) ->
     EchoRequest = #echo_request{
       sequence_number = NumberOfEchoRequests,
       unique_id = UniqueId,
@@ -223,8 +234,7 @@ send_echo_requests(UniqueId, NumberOfEchoRequests, DelayBetweenEchoRequests,
     ok = node_send_serv:send(NodeSendServ, {?MODULE, EchoRequest}),
     timer:sleep(DelayBetweenEchoRequests),
     send_echo_requests(UniqueId, NumberOfEchoRequests-1,
-                       DelayBetweenEchoRequests, NeighbourNa, NodeSendServ,
-                       StartTimestamp).
+                       DelayBetweenEchoRequests, NodeSendServ, StartTimestamp).
 
 wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp) ->
     wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp, []).
@@ -247,8 +257,6 @@ wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp,
             EchoReplyLatencies
     end.
 
-nudge_path_cost(-1, _Percent) ->
-    -1;
 nudge_path_cost(Pc, Percent) ->
     trunc(random:uniform(Percent)/100*Pc+Pc).
 
@@ -259,19 +267,28 @@ nudge_path_cost(Pc, Percent) ->
 read_config(S) ->
     Mode = ?config([mode]),
     NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
+    NewS = read_config(S#state{mode = Mode}, NodeInstance),
     {value, {'path-cost', PathCost}} =
         lists:keysearch('path-cost', 1, NodeInstance),
-    read_config(S#state{mode = Mode}, PathCost).
+    read_config_path_cost(NewS, PathCost).
 
 read_config(S, []) ->
     S;
-read_config(S, [{'number-of-echo-requests', Value}|Rest]) ->
-    read_config(S#state{number_of_echo_requests = Value}, Rest);
-read_config(S, [{'acceptable-number-of-echo-replies', Value}|Rest]) ->
-    read_config(S#state{acceptable_number_of_echo_replies = Value}, Rest);
-read_config(S, [{'delay-between-echo-requests', Value}|Rest]) ->
-    read_config(S#state{delay_between_echo_requests = Value}, Rest);
-read_config(S, [{'delay-between-measurements', Value}|Rest]) ->
-    read_config(S#state{delay_between_measurements = Value}, Rest);
-read_config(S, [{'echo-reply-timeout', Value}|Rest]) ->
-    read_config(S#state{echo_reply_timeout = Value}, Rest).
+read_config(S, [{'logging', Value}|Rest]) ->
+    read_config(S#state{logging = Value}, Rest);
+read_config(S, [_|Rest]) ->
+    read_config(S, Rest).
+
+read_config_path_cost(S, []) ->
+    S;
+read_config_path_cost(S, [{'number-of-echo-requests', Value}|Rest]) ->
+    read_config_path_cost(S#state{number_of_echo_requests = Value}, Rest);
+read_config_path_cost(S, [{'acceptable-number-of-echo-replies', Value}|Rest]) ->
+    read_config_path_cost(
+      S#state{acceptable_number_of_echo_replies = Value}, Rest);
+read_config_path_cost(S, [{'delay-between-echo-requests', Value}|Rest]) ->
+    read_config_path_cost(S#state{delay_between_echo_requests = Value}, Rest);
+read_config_path_cost(S, [{'delay-between-measurements', Value}|Rest]) ->
+    read_config_path_cost(S#state{delay_between_measurements = Value}, Rest);
+read_config_path_cost(S, [{'echo-reply-timeout', Value}|Rest]) ->
+    read_config_path_cost(S#state{echo_reply_timeout = Value}, Rest).
