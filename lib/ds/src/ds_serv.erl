@@ -359,6 +359,8 @@ loop(#state{parent = Parent,
             loop(S);
         %% see doc/small_simulation.jpg; return two non-random nodes
         {From, {get_random_nodes, MyNodeId, _N}} when Mode == simulation ->
+            %% NOTE: In simulation mode we always return 2 nodes,
+            %% i.e. _N is ignored.
             case get_simulated_nodes(MyNodeId) of
                 {ok, SimulatedNodeIds} ->
                     ?daemon_log(

@@ -304,9 +304,10 @@ propagate_route_entries(MyNodeId, NodeDb, RouteDb, PspDb) ->
               send_route_entries(MyNodeId, RouteDb, PspDb, Node)
       end, NodeDb).
 
-send_route_entries(_MyNodeId, _RouteDb, _PspDb,
-                   #node{node_send_serv = undefined}) ->
-    ?error_log(no_send_serv),
+send_route_entries(MyNodeId, _RouteDb, _PspDb,
+                   #node{node_id = NodeId, na = Na,
+                         node_send_serv = undefined}) ->
+    ?dbg_log({no_send_serv, MyNodeId, NodeId, Na}),
     ok;
 send_route_entries(MyNodeId, RouteDb, PspDb,
                    #node{node_id = NeighbourNodeId,

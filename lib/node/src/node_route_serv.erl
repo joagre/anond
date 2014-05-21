@@ -44,6 +44,7 @@
           node_recv_serv              :: pid(),
           node_path_cost_serv         :: pid(),
           %% anond.conf parameters
+          mode                        :: common_config_json_serv:mode(),
           my_na                       :: na(),
           logging                     :: boolean(),
           experimental_api            :: boolean(),
@@ -261,6 +262,7 @@ loop(#state{parent = Parent,
             node_instance_sup = NodeInstanceSup,
             node_recv_serv = NodeRecvServ,
             node_path_cost_serv = NodePathCostServ,
+            mode = Mode,
             my_na = {MyIpAddress, _} = MyNa,
             logging = _Logging,
             experimental_api = _ExperimentalApi,
@@ -377,11 +379,11 @@ loop(#state{parent = Parent,
             case refresh_neighbours(
                    NodeDb, RouteDb, PspDb, MyNodeId, NeighbourNodeIds,
                    NodeInstanceSup, NodeRecvServ, NodePathCostServ,
-                   DsIpAddressPort, MyNa, PrivateKey, NumberOfNeighbours,
+                   DsIpAddressPort, Mode, MyNa, PrivateKey, NumberOfNeighbours,
                    AutoRecalc) of
                 {ok, NewNeighbourNodeIds} ->
-                    timelib:start_timer(RefreshNeighboursInterval,
-                                        refresh_neighbours),
+                    timelib:start_timer(
+                      RefreshNeighboursInterval, refresh_neighbours),
                     loop(S#state{neighbour_node_ids = NewNeighbourNodeIds});
                 {error, Reason} ->
                     ?error_log(Reason),
@@ -475,8 +477,9 @@ loop(#state{parent = Parent,
 %%%
 
 read_config(S) ->
+    Mode = ?config([mode]),
     NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
-    read_config(S, NodeInstance).
+    read_config(S#state{mode = Mode}, NodeInstance).
 
 read_config(S, []) ->
     S;
@@ -530,8 +533,8 @@ set_my_node_id(SystemDb, MyNodeId) ->
 
 refresh_neighbours(
   NodeDb, RouteDb, PspDb, MyNodeId, NeighbourNodeIds, NodeInstanceSup,
-  NodeRecvServ, NodePathCostServ, DsIpAddressPort, MyNa = {MyIpAddress, _},
-  PrivateKey, NumberOfNeighbours, AutoRecalc) ->
+  NodeRecvServ, NodePathCostServ, DsIpAddressPort, Mode,
+  MyNa = {MyIpAddress, _}, PrivateKey, NumberOfNeighbours, AutoRecalc) ->
     MyNaStringAddress = net_tools:string_address(MyNa),
     ?daemon_log("Node ~w (~s) known neighbour nodes: ~w",
                 [MyNodeId, MyNaStringAddress, NeighbourNodeIds]),
@@ -552,8 +555,39 @@ refresh_neighbours(
                 PublishedNeighbourNodeIds--UnreachableNeighbourNodeIds,
             ?daemon_log("Node ~w (~s) living neighbour nodes: ~w",
                         [MyNodeId, MyNaStringAddress, LivingNeighbourNodeIds]),
-            case NumberOfNeighbours-length(LivingNeighbourNodeIds) of
-                NumberOfMissingNeighbours when NumberOfMissingNeighbours > 0 ->
+            %% NOTE: In simulation mode we always want to have the
+            %% nodes refered to in ?SIMULATED_NEIGHBOUR_NODE_IDS
+            %% (ds/include/ds.hrl) as neighbours. This means that we
+            %% are not satisfied with the number of neighbours even
+            %% though it has been satsified numerically according to
+            %% the settings in anond.conf, i.e. we do not count
+            %% incoming nodes in simulation mode. We do this to make
+            %% the simulation behave the same each time anond is started.
+            case Mode of
+                normal ->
+                    NumberOfMissingNeighbours =
+                        NumberOfNeighbours-length(LivingNeighbourNodeIds);
+                simulation ->
+                    LivingNonIncomingNeighbourNodeIds =
+                        lists:foldl(
+                          fun(LivingNeighbourNodeId, Acc) ->
+                              case node_route:lookup_node(
+                                     NodeDb, LivingNeighbourNodeId) of
+                                  [#node{flags = Flags}]
+                                    when ?bit_is_set(
+                                            Flags,
+                                            ?F_NODE_IS_INCOMING_NEIGHBOUR) ->
+                                      Acc;
+                                  [_] ->
+                                      [LivingNeighbourNodeId|Acc]
+                              end
+                          end, [], LivingNeighbourNodeIds),
+                    NumberOfMissingNeighbours =
+                        NumberOfNeighbours-
+                        length(LivingNonIncomingNeighbourNodeIds)
+            end,
+            if
+                NumberOfMissingNeighbours > 0 ->
                     ?daemon_log("Node ~w (~s) needs ~w more neighbour nodes",
                                 [MyNodeId, MyNaStringAddress,
                                  NumberOfMissingNeighbours]),
@@ -562,7 +596,7 @@ refresh_neighbours(
                       NodeInstanceSup, NodeRecvServ, NodePathCostServ,
                       DsIpAddressPort, MyNa, PrivateKey, AutoRecalc,
                       LivingNeighbourNodeIds, NumberOfMissingNeighbours);
-                _ ->
+                true ->
                     {ok, LivingNeighbourNodeIds}
             end;
         {error, Reason} ->
@@ -593,10 +627,11 @@ get_more_neighbours(
                                   Node = #node{node_id = RandomNeighbourNodeId},
                                   ok = node_route:insert_node(NodeDb, Node),
                                   [RandomNeighbourNodeId|Acc];
-                              [#node{flags = Flags}]->
-                                  NewNode = #node{
-                                    node_id = RandomNeighbourNodeId,
-                                    flags = ?bit_clr(
+                              [#node{flags = Flags} = Node]->
+                                  NewNode =
+                                      Node#node{
+                                        flags =
+                                            ?bit_clr(
                                                Flags,
                                                ?F_NODE_IS_INCOMING_NEIGHBOUR)},
                                   ok = node_route:insert_node(NodeDb, NewNode),

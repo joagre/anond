@@ -321,27 +321,21 @@ loop(#state{parent = Parent,
                "~w (~s)",
                [MyNodeId, net_tools:string_address(MyNa), SrcNodeId,
                 net_tools:string_address({SrcIpAddress, SrcPort})]),
-            case lookup_node_establish_tunnel_message(
-                   SrcNodeId, DsEstablishTunnelMessages,
-                   NodeEstablishTunnelMessages) of
-                tunnel_establishment_in_progress ->
-                    Skip = true,
-                    NewNodeEstablishTunnelMessages =
-                        NodeEstablishTunnelMessages;
+            case lists:keysearch(SrcNodeId, 1, NodeEstablishTunnelMessages) of
                 {value, {SrcNodeId, LatestMessageId}}
                   when MessageId > LatestMessageId orelse
                        MessageId-LatestMessageId+?LARGEST_MESSAGE_ID/2 < 0 ->
                     Skip = false,
                     NewNodeEstablishTunnelMessages =
-                        lists:keyreplace(SrcNodeId, 1,
-                                         NodeEstablishTunnelMessages,
-                                         {SrcNodeId, MessageId});
+                        lists:keyreplace(
+                          SrcNodeId, 1, NodeEstablishTunnelMessages,
+                          {SrcNodeId, MessageId});
                 {value, {SrcNodeId, _LatestMessageId}} ->
                     Skip = true,
                     NewNodeEstablishTunnelMessages =
-                        lists:keyreplace(SrcNodeId, 1,
-                                         NodeEstablishTunnelMessages,
-                                         {SrcNodeId, MessageId});
+                        lists:keyreplace(
+                          SrcNodeId, 1, NodeEstablishTunnelMessages,
+                          {SrcNodeId, MessageId});
                 false ->
                     Skip = false,
                     NewNodeEstablishTunnelMessages =
@@ -367,8 +361,14 @@ loop(#state{parent = Parent,
                     update_node(
                       NodeInstanceSup, NodeRouteServ, Socket, MyNodeId, MyNa,
                       SrcNodeId, SrcIpAddress, SrcPort, SharedKey),
-                    loop(S#state{node_establish_tunnel_messages =
-                                     NewNodeEstablishTunnelMessages})
+                    NewDsEstablishTunnelMessages =
+                        lists:keydelete(
+                          SrcNodeId, 1, DsEstablishTunnelMessages),
+                    loop(S#state{
+                           ds_establish_tunnel_messages =
+                               NewDsEstablishTunnelMessages,
+                           node_establish_tunnel_messages =
+                               NewNodeEstablishTunnelMessages})
             end;
         {node_tunnel_established, MessageId, DestNodeId, DestIpAddress,
          DestPort, SharedKey} ->
@@ -479,15 +479,6 @@ send_ds_establish_tunnel_messages(
     send_ds_establish_tunnel_messages(
       MyNodeId, Socket, DsSharedKey, DsIpAddress, DsPort, NextMessageId, Rest,
       [{DestNodeId, NextMessageId}|Acc]).
-
-lookup_node_establish_tunnel_message(
-  SrcNodeId, DsEstablishTunnelMessages, NodeEstablishTunnelMessages) ->
-    case lists:keymember(SrcNodeId, 1, DsEstablishTunnelMessages) of
-        true ->
-            tunnel_establishment_in_progress;
-        false ->
-            lists:keysearch(SrcNodeId, 1, NodeEstablishTunnelMessages)
-    end.
 
 update_node(NodeInstanceSup, NodeRouteServ, Socket, MyNodeId, MyNa,
             NeighbourNodeId, NeighbourIpAddress, NeighbourPort, SharedKey) ->

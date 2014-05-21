@@ -1,11 +1,12 @@
+N Go through reloadable status in common_config_json_serv.erl
+N d3.js: verify that it actually mimics the simulation + handle NODE_UNREACHABLE
+
 N = Next thing to do
 * = ?
 L = Later
 
 Generic
 -------
-N Missing na when calling get-network-topology + no_send_serv
-N Go through reloadable status in common_config_json_serv.erl
 N Update get-network-topology in udp-message-protocol.md
 N Cleanup of udp-message-protocol.md
 N Document Node-Node bit protocol in udp-message-protocol.md
@@ -28,7 +29,7 @@ Node
 * Use many overlay addresses and pick new ones now and then
 * Pick new neighbour nodes now and then when needed(TM)
 * Min acceptable neigbours, striving for wanted number of neighbours (bleed?)
-* unestablish_tunnels needed?
+* unestablish_tunnels() needed?
 * Split up large route entries in smaller cells
 * Add static floating number multiplicators for path costs for each node
 * Only send route entries to a neighbour if the path cost to the
@@ -37,7 +38,6 @@ Node
 
 d3.js
 -----
-N Bug in incoming neighbours
 * Leaks memory
 * Try to normalize the path-cost <-> pixel resolution
 
@@ -49,7 +49,7 @@ DNS
 
 Hardware setup
 --------------
-* Buy a really big machine with 128GB RAM and setup 50 Ubuntu
+N Buy a really big machine with 128GB RAM and setup 50 Ubuntu
   servers. Run a bittorrent tracker on one of them and let the rest of
   them download/seed files.
 
@@ -68,7 +68,7 @@ L Write documentation (Use LyX)
   - A White paper (Use Lyx)
   - Protocol design (UDP messaging and json-rpc)
   - End-user guide (for client and server users)
-N Ask Per to contribute the delayed start patch to the Erlang distro.
+* Ask Per to contribute the delayed start patch to the Erlang distro.
 L Add package management/installers for (the rest has to use compile
   from source):
   - Ubuntu
