@@ -351,7 +351,7 @@ send_route_entry(_MyNodeId, PspDb, NeighbourPc, NodeSendServ,
     NewPcAuth = PcAuth,
     if
         NewPcAuth == invalid_path_cost ->
-            ?daemon_log("The route entry pointing to ~s has an invalid path "
+            ?daemon_log("The route entry pointing to ~w has an invalid path "
                         "cost and will be ignored",
                         [ReNodeId]);
         true ->
@@ -359,13 +359,18 @@ send_route_entry(_MyNodeId, PspDb, NeighbourPc, NodeSendServ,
                 NeighbourPc == ?NODE_UNREACHABLE orelse
                 RePc == ?NODE_UNREACHABLE ->
                     UpdatedPc = ?NODE_UNREACHABLE,
-% patrik: and like this
+% patrik: and like this?
 %                    {ok, UpdatedPcAuth} =
 %                        node_path_cost:add_cost(NewPcAuth, 256),
                     UpdatedPcAuth = PcAuth;
                 true ->
-                    UpdatedPc = RePc+NeighbourPc,
-% patrik: and like this
+                    case RePc+NeighbourPc of
+                        AggregatedPc when AggregatedPc > ?NODE_UNREACHABLE ->
+                            UpdatedPc = ?NODE_UNREACHABLE;
+                        UpdatedPc ->
+                            ok
+                    end,
+% patrik: and like this?
 %                    {ok, UpdatedPcAuth} =
 %                        node_path_cost:add_cost(NewPcAuth, NeighbourPc div 10)
                     UpdatedPcAuth = PcAuth
