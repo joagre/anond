@@ -525,10 +525,12 @@ read_config(S) ->
     DbClearOnStart = ?config(['directory-server', db, 'clear-on-start']),
     NodeTTL = ?config(['directory-server', 'node-ttl']),
     HardNodeTTL = ?config(['directory-server', 'hard-node-ttl']),
+    MaxRandomNodes = ?config(['directory-server', 'max-random-nodes']),
     MaxOasPerNode = ?config(['directory-server', 'max-oas-per-node']),
     S#state{mode = Mode, db_directory = DbDirectory,
             db_clear_on_start = DbClearOnStart, node_ttl = NodeTTL,
-            hard_node_ttl = HardNodeTTL, max_oas_per_node = MaxOasPerNode}.
+            hard_node_ttl = HardNodeTTL, max_random_nodes = MaxRandomNodes,
+            max_oas_per_node = MaxOasPerNode}.
 
 mk_random_ds_id(normal) ->
     random:uniform(?LARGEST_NODE_ID-1)+1;

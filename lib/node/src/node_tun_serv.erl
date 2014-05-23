@@ -164,7 +164,12 @@ read_config(S, [{'logging', Value}|Rest]) ->
 read_config(S, [{'create-tun-device', Value}|Rest]) ->
     read_config(S#state{create_tun_device = Value}, Rest);
 read_config(S, [{'overlay-addresses', [Oa]}|Rest]) ->
-    read_config(S#state{my_oa = Oa}, Rest);
+    if
+        S#state.my_oa == Oa ->
+            read_config(S);
+        true ->
+            read_config(S#state{my_oa = Oa, restart_tun = true}, Rest)
+    end;
 read_config(_S, [{'overlay-addresses', _Oa}|_Rest]) ->
     throw(nyi);
 %% Note: An ip packet created by node_send_serv.erl requires an 19+28

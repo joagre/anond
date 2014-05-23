@@ -280,6 +280,7 @@ loop(#state{parent = Parent,
         config_updated ->
             ?daemon_log("Node ~w (~s) starts to update its configuration",
                         [MyNodeId, net_tools:string_address(MyNa)]),
+            ?MODULE ! {republish_self, false},
             loop(read_config(S));
         bootstrap ->
             case ds_jsonrpc_client:publish_node(
@@ -312,7 +313,7 @@ loop(#state{parent = Parent,
                               RandomRefreshNeighboursInterval,
                               refresh_neighbours),
                             timelib:start_timer(trunc(NewTTL/2),
-                                                republish_self),
+                                                {republish_self, true}),
                             if
                                 S#state.auto_recalc ->
                                     RandomRecalcInterval =
@@ -352,7 +353,7 @@ loop(#state{parent = Parent,
                     timelib:start_timer({5, seconds}, bootstrap),
                     loop(S)
             end;
-        republish_self ->
+        {republish_self, RestartTimer} ->
             case ds_jsonrpc_client:publish_node(
                    MyNodeId, MyIpAddress, DsIpAddressPort, PrivateKey,
                    MyNa, PublicKey) of
@@ -361,16 +362,23 @@ loop(#state{parent = Parent,
                                 [NewMyNodeId, net_tools:string_address(MyNa)]),
                     ok = node_recv_serv:ds_register(
                            NodeRecvServ, NewMyNodeId, NewDsId, NewSharedKey),
-                    timelib:start_timer(trunc(NewTTL/2), republish_self),
-                    loop(S#state{ds_id = NewDsId, my_node_id = NewMyNodeId,
-                                 shared_key = NewSharedKey, ttl = NewTTL});
+                    if
+                        RestartTimer ->
+                            timelib:start_timer(trunc(NewTTL/2),
+                                                {republish_self, true}),
+                            loop(S#state{ds_id = NewDsId, my_node_id = NewMyNodeId,
+                                         shared_key = NewSharedKey, ttl = NewTTL});
+                        true ->
+                            loop(S#state{ds_id = NewDsId, my_node_id = NewMyNodeId,
+                                         shared_key = NewSharedKey, ttl = NewTTL})
+                        end;
                 {error, Reason}->
                     ?error_log(Reason),
                     ?daemon_log(
                        "Node ~w (~s) could not republish itself and will retry "
                        "in 5 seconds",
                        [MyNodeId, net_tools:string_address(MyNa)]),
-                    timelib:start_timer({5, seconds}, republish_self),
+                    timelib:start_timer({5, seconds}, {republish_self, true}),
                     loop(S)
             end;
         refresh_neighbours ->

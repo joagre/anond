@@ -1,11 +1,9 @@
-N Go through reloadable status in common_config_json_serv.erl
-
 N = Next thing to do
 * = ?
 L = Later
 
-Generic
--------
+Documentation
+-------------
 N Update get-network-topology in udp-message-protocol.md
 N Cleanup of udp-message-protocol.md
 N Document Node-Node bit protocol in udp-message-protocol.md
@@ -20,11 +18,11 @@ Directory server
 
 Node
 ----
-* Integrate Patrik's psp code and authentication of path costs code
+N Integrate Patrik's psp code and authentication of path costs code
 * Many oas per na (add random generation of oas as an alternative to
   static as well)
-* Start a node->node keepalive in node_send_server.erl
-* Limit download and upload rate in B/s
+N Start a node->node keepalive in node_send_server.erl
+* Limit download and upload rate in kB/s
 * Use many overlay addresses and pick new ones now and then
 * Pick new neighbour nodes now and then when needed(TM)
 * Min acceptable neigbours, striving for wanted number of neighbours (bleed?)
@@ -37,8 +35,8 @@ Node
 
 d3.js
 -----
-* Leaks memory
-* Try to normalize the path-cost <-> pixel resolution
+* Try to normalize the path-cost <-> pixel resolution (65533 is the
+  max path cost)
 
 DNS
 ---
@@ -61,8 +59,8 @@ L Make tuncer:read/2 work. It is broken now and I have to get IP
   packets as messages from the TUN device.
 L Make it run on Windows
 
-Generic stuff
--------------
+Misc
+----
 L Write documentation (Use LyX)
   - A White paper (Use Lyx)
   - Protocol design (UDP messaging and json-rpc)
