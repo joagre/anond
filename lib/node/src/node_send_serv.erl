@@ -18,6 +18,7 @@
 -include_lib("util/include/shorthand.hrl").
 
 %%% constants
+-define(NODE_KEEPALIVE_INTERVAL, {10, seconds}).
 
 %%% records
 -record(state, {
@@ -101,6 +102,7 @@ init(Parent, Socket, MyNodeId, MyNa, NeighbourNa, SharedKey) ->
                            neighbour_na = NeighbourNa, my_na = MyNa,
                            socket = Socket, shared_key = SharedKey}),
     ok = log_serv:toggle_logging(self(), S#state.logging),
+    timelib:start_timer(?NODE_KEEPALIVE_INTERVAL, node_keepalive),
     Parent ! {self(), started},
     loop(S).
 
@@ -120,6 +122,21 @@ loop(#state{parent = Parent,
             ?daemon_log("Node ~w (~s) starts to update its configuration",
                         [MyNodeId, net_tools:string_address(MyNa)]),
             loop(read_config(S));
+        node_keepalive ->
+            NodeKeepalive = <<?NODE_KEEPALIVE:8>>,
+            NodeKeepaliveSize = size(NodeKeepalive),
+            if
+                CellSize+NodeKeepaliveSize > MaxCellSize ->
+                    send_cell(MyNodeId, NeighbourNa, Socket, SharedKey,
+                              CellBuffer, CellSize, MaxCellSize),
+                    timelib:start_timer(?NODE_KEEPALIVE_INTERVAL, node_keepalive),
+                    loop(S#state{cell_buffer = [NodeKeepalive],
+                                 cell_size = NodeKeepaliveSize});
+                true ->
+                    timelib:start_timer(?NODE_KEEPALIVE_INTERVAL, node_keepalive),
+                    loop(S#state{cell_buffer = [NodeKeepalive|CellBuffer],
+                                 cell_size = CellSize+NodeKeepaliveSize})
+            end;
         %% handle ip packets and echo replies from node_recv_serv
         {node_recv_serv, <<Type:8, _/binary>> = Data}
           when Type == ?NODE_CELL_IP_PACKET orelse

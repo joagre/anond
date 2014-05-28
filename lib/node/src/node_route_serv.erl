@@ -364,21 +364,19 @@ loop(#state{parent = Parent,
                            NodeRecvServ, NewMyNodeId, NewDsId, NewSharedKey),
                     if
                         RestartTimer ->
-                            timelib:start_timer(trunc(NewTTL/2),
-                                                {republish_self, true}),
-                            loop(S#state{ds_id = NewDsId, my_node_id = NewMyNodeId,
-                                         shared_key = NewSharedKey, ttl = NewTTL});
+                            timelib:start_timer(trunc(NewTTL/2), {republish_self, true});
                         true ->
-                            loop(S#state{ds_id = NewDsId, my_node_id = NewMyNodeId,
-                                         shared_key = NewSharedKey, ttl = NewTTL})
-                        end;
+                            ok
+                    end,
+                    loop(S#state{ds_id = NewDsId, my_node_id = NewMyNodeId,
+                                 shared_key = NewSharedKey, ttl = NewTTL});
                 {error, Reason}->
                     ?error_log(Reason),
                     ?daemon_log(
                        "Node ~w (~s) could not republish itself and will retry "
                        "in 5 seconds",
                        [MyNodeId, net_tools:string_address(MyNa)]),
-                    timelib:start_timer({5, seconds}, {republish_self, true}),
+                    timelib:start_timer({5, seconds}, {republish_self, RestartTimer}),
                     loop(S)
             end;
         refresh_neighbours ->
@@ -567,7 +565,7 @@ refresh_neighbours(
             %% nodes refered to in ?SIMULATED_NEIGHBOUR_NODE_IDS
             %% (ds/include/ds.hrl) as neighbours. This means that we
             %% are not satisfied with the number of neighbours even
-            %% though it has been satsified numerically according to
+            %% though it has been satisified numerically according to
             %% the settings in anond.conf, i.e. we do not count
             %% incoming nodes in simulation mode. We do this to make
             %% the simulation behave the same each time anond is started.

@@ -668,6 +668,13 @@ handle_ds_payload(Parent, _MyNodeId, _MyNa,
 handle_ds_payload(_Parent, MyNodeId, MyNa, UnknownPayload) ->
     ?error_log({unknown_payload, MyNodeId, MyNa, UnknownPayload}).
 
+%% ignore keepalive cells
+handle_cell(
+  NodeDb, RouteDb, NodeRouteServ, NodePathCostServ, TunFd, MyOa,
+  NeighbourNodeId, <<?NODE_KEEPALIVE:8, Rest/binary>>) ->
+    handle_cell(
+      NodeDb, RouteDb, NodeRouteServ, NodePathCostServ, TunFd, MyOa,
+      NeighbourNodeId, Rest);
 %% write ipv6 packet to tun device
 handle_cell(
   NodeDb, RouteDb, NodeRouteServ, NodePathCostServ, TunFd,

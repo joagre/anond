@@ -296,8 +296,20 @@ next_message_id(MessageId) ->
 
 missing_fragments({FragmentCounter, Fragment}, FragmentBuffer) ->
     NewFragmentBuffer =
-        lists:keysort(1, [{FragmentCounter, Fragment}|FragmentBuffer]),
+        keep_unique_fragments_only(
+          lists:keysort(1, [{FragmentCounter, Fragment}|FragmentBuffer])),
     {any_missing_fragments(NewFragmentBuffer), NewFragmentBuffer}.
+
+keep_unique_fragments_only(FragmentBuffer) ->
+    keep_unique_fragments_only(FragmentBuffer, []).
+
+keep_unique_fragments_only([], Acc) ->
+    lists:reverse(Acc);
+keep_unique_fragments_only(
+  [{FragmentCounter, _}|_], [{FragmentCounter, _}|_] = Acc) ->
+    lists:reverse(Acc); % there will be at most one duplicate
+keep_unique_fragments_only([{FragmentCounter, Fragment}|Rest], Acc) ->
+    keep_unique_fragments_only(Rest, [{FragmentCounter, Fragment}|Acc]).
 
 any_missing_fragments(FragmentBuffer) ->
     any_missing_fragments(FragmentBuffer, 0).
