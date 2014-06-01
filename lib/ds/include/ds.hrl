@@ -19,9 +19,7 @@
 -define(DS_KEEPALIVE, 16#1).
 -define(DS_ESTABLISH_TUNNEL, 16#2).
 -define(DS_TUNNEL_ESTABLISHED, 16#3).
--define(DS_NEIGHBOURS, 16#4).
--define(DS_ROUTE_ENTRIES, 16#5).
--define(DS_NETWORK_TOPOLOGY, 16#6).
+-define(DS_NETWORK_TOPOLOGY, 16#4).
 
 -record(node_descriptor, {
           node_id      :: node_id(),

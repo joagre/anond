@@ -1,6 +1,7 @@
 #!/bin/sh
 
-function usage {
+usage()
+{
     echo "Usage:"
     echo "$0 [-c CONFIG-FILENAME] [-i]"
     echo "    Start anond"
