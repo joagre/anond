@@ -58,23 +58,23 @@ jsonrpc_handler(Socket, Options, Handler, Docroot, TransportModule) ->
                 httplib:get_headers(TransportModule, Socket,
                                     [{'content-length', <<"-1">>},
                                      {<<"content-hmac">>, not_set},
-                                     {<<"client-id">>, <<"-1">>}]),
+                                     {<<"node-id">>, <<"-1">>}]),
             ok = TransportModule:setopts(Socket, [binary, {packet, 0}]),
             ContentLength =
                 httplib:lookup_header_value('content-length', HeaderValues),
             ContentHMAC =
                 httplib:lookup_header_value(<<"content-hmac">>, HeaderValues),
-            ClientId =
-                httplib:lookup_header_value(<<"client-id">>, HeaderValues),
-            case catch {?b2i(ContentLength), ?b2i(ClientId)} of
-                {DecodedContentLength, DecodedClientId}
+            NodeId =
+                httplib:lookup_header_value(<<"node-id">>, HeaderValues),
+            case catch {?b2i(ContentLength), ?b2i(NodeId)} of
+                {DecodedContentLength, DecodedNodeId}
                   when is_integer(DecodedContentLength) andalso
-                       is_integer(DecodedClientId) ->
+                       is_integer(DecodedNodeId) ->
                     handle_jsonrpc_request(
                       Socket, Options, Handler, TransportModule,
-                      DecodedContentLength, ContentHMAC, DecodedClientId);
+                      DecodedContentLength, ContentHMAC, DecodedNodeId);
                 Error ->
-                    ?error_log({Error, ContentLength, ClientId}),
+                    ?error_log({Error, ContentLength, NodeId}),
                     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
                     send(Socket, TransportModule, null, JsonError)
                 end;
@@ -95,18 +95,18 @@ jsonrpc_handler(Socket, Options, Handler, Docroot, TransportModule) ->
     end.
 
 handle_jsonrpc_request(
-  Socket, _Options, _Handler, TransportModule, -1, _ContentHMAC, _ClientId) ->
+  Socket, _Options, _Handler, TransportModule, -1, _ContentHMAC, _NodeId) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content length not specified">>},
     send(Socket, TransportModule, null, JsonError);
 handle_jsonrpc_request(
   Socket, Options, {Module, Function, Args}, TransportModule, ContentLength,
-  ContentHMAC, ClientId) when ContentLength < ?MAX_REQUEST_SIZE ->
+  ContentHMAC, NodeId) when ContentLength < ?MAX_REQUEST_SIZE ->
     case recv(Socket, Options, TransportModule, ContentLength, ContentHMAC,
-              ClientId) of
+              NodeId) of
         {ok, Method, Params, Id} ->
-            case apply(Module, Function, [ClientId, Method, Params|Args]) of
+            case apply(Module, Function, [NodeId, Method, Params|Args]) of
                 {ok, Result} ->
                     send(Socket, TransportModule, Id, Result);
                 {error, JsonError} when is_record(JsonError, json_error) ->
@@ -128,7 +128,7 @@ handle_jsonrpc_request(
     end;
 handle_jsonrpc_request(
   Socket, _Options, _Handler, TransportModule, ContentLength, _ContentHMAC,
-  _ClientId) ->
+  _NodeId) ->
     JsonError = #json_error{
       code = ?JSONRPC_INVALID_REQUEST,
       message = <<"Content is too large">>,
@@ -139,7 +139,7 @@ handle_jsonrpc_request(
 %%% recv
 %%%
 
-recv(Socket, Options, TransportModule, ContentLength, ContentHMAC, ClientId) ->
+recv(Socket, Options, TransportModule, ContentLength, ContentHMAC, NodeId) ->
     ok = TransportModule:setopts(Socket, [binary, {packet, 0}]),
     case TransportModule:recv(Socket, ContentLength) of
         {ok, Request} ->
@@ -147,7 +147,7 @@ recv(Socket, Options, TransportModule, ContentLength, ContentHMAC, ClientId) ->
                 {'EXIT', _} ->
                     invalid_json;
                 DecodedRequest ->
-                    handle_request(Options, ContentHMAC, ClientId, Request,
+                    handle_request(Options, ContentHMAC, NodeId, Request,
                                    jsonrpc_client:sort_properties(
                                      DecodedRequest))
             end;
@@ -155,34 +155,34 @@ recv(Socket, Options, TransportModule, ContentLength, ContentHMAC, ClientId) ->
             {error, Reason}
     end.
 
-handle_request(Options, ContentHMAC, ClientId, Request,
+handle_request(Options, ContentHMAC, NodeId, Request,
                [{<<"id">>, Id},
                 {<<"jsonrpc">>, <<"2.0">>},
                 {<<"method">>, Method},
                 {<<"params">>, Params}]) ->
-    case verify_hmac(Options, ContentHMAC, ClientId, Request, Method) of
+    case verify_hmac(Options, ContentHMAC, NodeId, Request, Method) of
         true ->
             {ok, Method, Params, Id};
         false ->
             invalid_signature
     end;
-handle_request(Options, ContentHMAC, ClientId, Request,
+handle_request(Options, ContentHMAC, NodeId, Request,
                [{<<"id">>, Id},
                 {<<"jsonrpc">>, <<"2.0">>},
                 {<<"method">>, Method}]) ->
-    case verify_hmac(Options, ContentHMAC, ClientId, Request, Method) of
+    case verify_hmac(Options, ContentHMAC, NodeId, Request, Method) of
         true ->
             {ok, Method, undefined, Id};
         false ->
             invalid_signature
     end;
-handle_request(_Options, _ContentHMAC, _ClientId, _Request, _DecodedRequest) ->
+handle_request(_Options, _ContentHMAC, _NodeId, _Request, _DecodedRequest) ->
     invalid_json.
 
-verify_hmac(Options, ContentHMAC, ClientId, Request, Method) ->
+verify_hmac(Options, ContentHMAC, NodeId, Request, Method) ->
     case lists:keysearch(lookup_public_key, 1, Options) of
         {value, {lookup_public_key, LookupPublicKey}} ->
-            case LookupPublicKey(ClientId, Method) of
+            case LookupPublicKey(NodeId, Method) of
                 ignore ->
                     true;
                 not_found ->

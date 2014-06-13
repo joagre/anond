@@ -99,8 +99,8 @@ ds_handler(NodeId, <<"unpublish-node">>, undefined, _S) ->
 ds_handler(_NodeId, <<"unpublish-node">>, _Params, _S) ->
     JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
     {error, JsonError};
-%%% published-nodes
-ds_handler(_NodeId, <<"published-nodes">>, NodeIds, _S)
+%%% still-published-nodes
+ds_handler(_NodeId, <<"still-published-nodes">>, NodeIds, _S)
   when is_list(NodeIds) ->
     case lists:all(fun(NodeId) when is_integer(NodeId) ->
                            true;
@@ -108,12 +108,12 @@ ds_handler(_NodeId, <<"published-nodes">>, NodeIds, _S)
                            false
                    end, NodeIds) of
         true ->
-            ds_serv:published_nodes(NodeIds);
+            ds_serv:still_published_nodes(NodeIds);
         false ->
             JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
             {error, JsonError}
     end;
-ds_handler(_NodeId, <<"published-nodes">>, _Params, _S) ->
+ds_handler(_NodeId, <<"still-published-nodes">>, _Params, _S) ->
     JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
     {error, JsonError};
 %%% reserve-oa

@@ -6,7 +6,7 @@
 -export([get_ds_id/0]).
 -export([get_number_of_nodes/0, get_node/1, get_all_nodes/0,
          get_random_nodes/2]).
--export([publish_node/1, unpublish_node/1, published_nodes/1]).
+-export([publish_node/1, unpublish_node/1, still_published_nodes/1]).
 -export([update_node/2]).
 -export([reserve_oa/2, reserved_oas/1]).
 -export([lookup_node/1]).
@@ -163,13 +163,13 @@ unpublish_node(NodeId) ->
     serv:call(?MODULE, {unpublish_node, NodeId}).
 
 %%%
-%%% exported: published_nodes
+%%% exported: still_published_nodes
 %%%
 
--spec published_nodes([node_id()]) -> {'ok', [node_id()]}.
+-spec still_published_nodes([node_id()]) -> {'ok', [node_id()]}.
 
-published_nodes(NodeIds) ->
-    serv:call(?MODULE, {published_nodes, NodeIds}).
+still_published_nodes(NodeIds) ->
+    serv:call(?MODULE, {still_published_nodes, NodeIds}).
 
 %%%
 %%% exported: update_node
@@ -435,8 +435,8 @@ loop(#state{parent = Parent,
             ?daemon_log("Node ~w has been unpublished", [NodeId]),
             From ! {self(), ok},
             loop(S);
-        {From, {published_nodes, NodeIds}} ->
-            PublishedNodeIds =
+        {From, {still_published_nodes, NodeIds}} ->
+            StillPublishedNodeIds =
                 lists:foldl(
                   fun(NodeId, Acc) ->
                           case dets:lookup(NodeDb, NodeId) of
@@ -452,7 +452,7 @@ loop(#state{parent = Parent,
                                   end
                           end
                   end, [], NodeIds),
-            From ! {self(), {ok, PublishedNodeIds}},
+            From ! {self(), {ok, StillPublishedNodeIds}},
             loop(S);
         {From, {reserve_oa, NodeId, Oa}} ->
             case dets:lookup(NodeDb, NodeId) of

@@ -544,13 +544,13 @@ refresh_neighbours(
     MyNaStringAddress = net_tools:string_address(MyNa),
     ?daemon_log("Node ~w (~s) known neighbour nodes: ~w",
                 [MyNodeId, MyNaStringAddress, NeighbourNodeIds]),
-    case ds_jsonrpc_client:published_nodes(
+    case ds_jsonrpc_client:still_published_nodes(
            MyNodeId, MyIpAddress, DsIpAddressPort, PrivateKey,
            NeighbourNodeIds) of
-        {ok, PublishedNeighbourNodeIds} ->
+        {ok, StillPublishedNeighbourNodeIds} ->
             ?daemon_log(
                "Node ~w (~s) published neighbour nodes: ~w",
-               [MyNodeId, MyNaStringAddress, PublishedNeighbourNodeIds]),
+               [MyNodeId, MyNaStringAddress, StillPublishedNeighbourNodeIds]),
             UnreachableNodes = node_route:unreachable_nodes(NodeDb),
             UnreachableNeighbourNodeIds =
                 [Node#node.node_id || Node <- UnreachableNodes],
@@ -558,7 +558,7 @@ refresh_neighbours(
                "Node ~w (~s) unreachable neighbour nodes: ~w",
                [MyNodeId, MyNaStringAddress, UnreachableNeighbourNodeIds]),
             LivingNeighbourNodeIds =
-                PublishedNeighbourNodeIds--UnreachableNeighbourNodeIds,
+                StillPublishedNeighbourNodeIds--UnreachableNeighbourNodeIds,
             ?daemon_log("Node ~w (~s) living neighbour nodes: ~w",
                         [MyNodeId, MyNaStringAddress, LivingNeighbourNodeIds]),
             %% NOTE: In simulation mode we always want to have the

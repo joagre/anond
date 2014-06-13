@@ -2,7 +2,7 @@
 
 %%% external exports
 -export([get_random_nodes/5, publish_node/6, unpublish_node/4,
-         published_nodes/5, reserve_oa/5]).
+         still_published_nodes/5, reserve_oa/5]).
 
 %%% internal exports
 
@@ -103,19 +103,21 @@ unpublish_node(NodeId, MyIpAddress, IpAddressPort, PrivateKey) ->
     end.
 
 %%%
-%%% exported: published_nodes
+%%% exported: still_published_nodes
 %%%
 
--spec published_nodes(node_id(), inet:ip_address(), httplib:ip_address_port(),
-                      binary(), [node_id()]) ->
-                             {'ok', [node_id()]} | {'error', error_reason()}.
+-spec still_published_nodes(node_id(), inet:ip_address(),
+                            httplib:ip_address_port(), binary(), [node_id()]) ->
+                                   {'ok', [node_id()]} |
+                                   {'error', error_reason()}.
 
-published_nodes(NodeId, MyIpAddress, IpAddressPort, PrivateKey, NodeIds) ->
+still_published_nodes(
+  NodeId, MyIpAddress, IpAddressPort, PrivateKey, NodeIds) ->
     case jsonrpc_client:call(
-           NodeId, MyIpAddress, IpAddressPort, <<"published-nodes">>,
+           NodeId, MyIpAddress, IpAddressPort, <<"still-published-nodes">>,
            PrivateKey, NodeIds) of
-        {ok, PublishedNodeIds} when is_list(PublishedNodeIds) ->
-            {ok, PublishedNodeIds};
+        {ok, StillPublishedNodeIds} when is_list(StillPublishedNodeIds) ->
+            {ok, StillPublishedNodeIds};
         {ok, InvalidResult} ->
             ?error_log(InvalidResult),
             {error, invalid_result};

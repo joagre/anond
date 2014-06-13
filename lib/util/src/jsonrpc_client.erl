@@ -26,21 +26,21 @@
 %%% exported: call
 %%%
 
-call(ClientId, MyIpAddress, IpAddressPort, Method) ->
-    call(ClientId, MyIpAddress, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
+call(NodeId, MyIpAddress, IpAddressPort, Method) ->
+    call(NodeId, MyIpAddress, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
          Method, undefined, undefined, ssl).
 
-call(ClientId, MyIpAddress, IpAddressPort, Method, PrivateKey) ->
-    call(ClientId, MyIpAddress, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
+call(NodeId, MyIpAddress, IpAddressPort, Method, PrivateKey) ->
+    call(NodeId, MyIpAddress, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
          Method, PrivateKey, undefined, ssl).
 
-call(ClientId, MyIpAddress, IpAddressPort, Method, PrivateKey, Params) ->
-    call(ClientId, MyIpAddress, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
+call(NodeId, MyIpAddress, IpAddressPort, Method, PrivateKey, Params) ->
+    call(NodeId, MyIpAddress, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
          Method, PrivateKey, Params, ssl).
 
-call(ClientId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
      Params) ->
-    call(ClientId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+    call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
          Params, ssl).
 
 -spec call(integer(), inet:ip_address() | 'undefined',
@@ -49,7 +49,7 @@ call(ClientId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
            httplib:transport_module()) ->
                   {'ok', jsx:json_term()} | {'error', error_reason()}.
 
-call(ClientId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
      Params, TransportModule) ->
     Id = new_id(),
     Request =
@@ -61,11 +61,11 @@ call(ClientId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
         EncodedRequest when is_binary(EncodedRequest) ->
             ExtraHeaders =
                 if
-                    ClientId == -1 ->
+                    NodeId == -1 ->
                         [];
                     true ->
                         [{<<"Content-HMAC">>, hmac(EncodedRequest, PrivateKey)},
-                         {<<"Client-ID">>, ?i2b(ClientId)}]
+                         {<<"Node-ID">>, ?i2b(NodeId)}]
                 end,
             case httplib:post(
                    TransportModule, MyIpAddress, IpAddressPort, Timeout, Uri,
