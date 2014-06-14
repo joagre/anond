@@ -51,22 +51,7 @@ start_link() ->
     S = #state{experimental_api = ExperimentalApi},
     jsonrpc_serv:start_link(Options, IpAddress, Port, JsonRpcCertificate, [],
                             {?MODULE, ds_handler, [S]}, Docroot).
-%%% get-random-nodes
-ds_handler(NodeId, <<"get-random-nodes">>, N, _S) when is_integer(N) ->
-    case ds_serv:get_random_nodes(NodeId, N) of
-        {ok, RandomNodeIds} ->
-            {ok, RandomNodeIds};
-        {error, too_few_nodes} ->
-            {error, #json_error{code = ?DS_JSONRPC_TOO_FEW_NODES}};
-        {error, {too_many_nodes, MaxRandomNodes}} ->
-            {error, #json_error{code = ?DS_JSONRPC_TOO_MANY_NODES,
-                                data = MaxRandomNodes}};
-        {error, broken_simulation} ->
-            {error, #json_error{code = ?DS_JSONRPC_BROKEN_SIMULATION}}
-    end;
-ds_handler(_NodeId, <<"get-random-nodes">>, _Params, _S) ->
-    JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
-    {error, JsonError};
+
 %%% publish-node
 ds_handler(NodeId, <<"publish-node">>, Params, _S) ->
     try
@@ -102,21 +87,20 @@ ds_handler(NodeId, <<"unpublish-node">>, undefined, _S) ->
 ds_handler(_NodeId, <<"unpublish-node">>, _Params, _S) ->
     JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
     {error, JsonError};
-%%% still-published-nodes
-ds_handler(_NodeId, <<"still-published-nodes">>, NodeIds, _S)
-  when is_list(NodeIds) ->
-    case lists:all(fun(NodeId) when is_integer(NodeId) ->
-                           true;
-                      (_) ->
-                           false
-                   end, NodeIds) of
-        true ->
-            ds_serv:still_published_nodes(NodeIds);
-        false ->
-            JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
-            {error, JsonError}
+%%% get-random-nodes
+ds_handler(NodeId, <<"get-random-nodes">>, N, _S) when is_integer(N) ->
+    case ds_serv:get_random_nodes(NodeId, N) of
+        {ok, RandomNodeIds} ->
+            {ok, RandomNodeIds};
+        {error, too_few_nodes} ->
+            {error, #json_error{code = ?DS_JSONRPC_TOO_FEW_NODES}};
+        {error, {too_many_nodes, MaxRandomNodes}} ->
+            {error, #json_error{code = ?DS_JSONRPC_TOO_MANY_NODES,
+                                data = MaxRandomNodes}};
+        {error, broken_simulation} ->
+            {error, #json_error{code = ?DS_JSONRPC_BROKEN_SIMULATION}}
     end;
-ds_handler(_NodeId, <<"still-published-nodes">>, _Params, _S) ->
+ds_handler(_NodeId, <<"get-random-nodes">>, _Params, _S) ->
     JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
     {error, JsonError};
 %%% reserve-oa
@@ -146,8 +130,24 @@ ds_handler(NodeId, <<"reserve-oa">>, Oa, _S) ->
             JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
             {error, JsonError}
     end;
+%%% still-published-nodes
+ds_handler(_NodeId, <<"still-published-nodes">>, NodeIds, _S)
+  when is_list(NodeIds) ->
+    case lists:all(fun(NodeId) when is_integer(NodeId) ->
+                           true;
+                      (_) ->
+                           false
+                   end, NodeIds) of
+        true ->
+            ds_serv:still_published_nodes(NodeIds);
+        false ->
+            JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
+            {error, JsonError}
+    end;
+ds_handler(_NodeId, <<"still-published-nodes">>, _Params, _S) ->
+    JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
+    {error, JsonError};
 %%% get-network-topology (experimental api)
-%%% curl -k -X POST -d '{"jsonrpc": "2.0", "method": "get-network-topology", "id": 1}' https://127.0.0.1:6700/jsonrpc
 ds_handler(_NodeId, <<"get-network-topology">>, undefined,
            #state{experimental_api = true}) ->
     {ok, Nds} = ds_serv:get_all_nodes(),

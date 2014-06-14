@@ -28,16 +28,16 @@ All incoming HTTP requests to the server must be signed using a
 To bootstrap the HMAC signing scheme each node initially publish its
 public signing key with a non-signed call to the `publish-node` method.
 
-The result returned from this call is a unique and `node-id` (and
-more) and the node must send it along with each HTTP request its sends
-to the server as a `Node-ID` HTTP header. After this call the DS knows
+The result returned from this call is a unique `node-id` (and more)
+and the node must send it along with each HTTP request its sends to
+the server as a `Node-ID` HTTP header. After this call the DS knows
 about the assocation between a specific `node-id` and its public
 signing key.
 
 From here on the node must sign all HTTP requests it sends to the
-server and to do this it calculates a HMAC from the body of the HTTP
-request and sends this HMAC along with the HTTP request as a base64
-encoded `Content-HMAC` HTTP header. 
+server and to do this it calculates a HMAC from the hashed body of the
+HTTP request and sends this HMAC along with the HTTP request as a
+base64 encoded `Content-HMAC` HTTP header. 
 
 There is more to this. Please read on.
 
@@ -108,7 +108,7 @@ Result:
             "description":
                 "A base64 encoded shared stream key as defined in the
                 NaCl library (http://nacl.cr.yp.to/stream.html),
-                i.e. a key suitable for encryption based on an
+                i.e. a key suitable for encryption based on a
                 Salsa20/20 encryption scheme. This shared stream key
                 is used by the node when it communicates with the DS
                 using anond's encrypted bit oriented protocol used for
@@ -135,7 +135,7 @@ Result:
                 `node-id` will not be given to any other node until a
                 server defined grace period has passed (~two weeks).",
             "type": "number",
-            "minimum": 0
+            "minimum": 900000
         }
     }
 }
