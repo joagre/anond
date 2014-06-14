@@ -18,8 +18,8 @@ The following methods are currently made available:
 * `reserve-oa`
 * `get-network-topology` (experimental)
 
-The server conforms to the (JSON-RPC 2.0
-Specification)[http://www.jsonrpc.org/specification] and uses HTTP
+The server conforms to the [JSON-RPC 2.0
+Specification](http://www.jsonrpc.org/specification) and uses HTTP
 over SSL as its transport mechanism.
 
 All incoming HTTP requests to the server must be signed using a
@@ -87,7 +87,7 @@ it produces are specified using [JSON schemas](http://json-schema.org).
                 itself when it communicates with nodes using anond's
                 encrypted and bit oriented protocol used for node
                 tunnel establishment etc. Read more about this bit
-                protocol in ds-node-udp-protocol.md.
+                protocol in ds-node-udp-protocol.md.",
             "type": "number",
             "minimum": 0,
             "maximum": 2147483647
@@ -139,6 +139,7 @@ it produces are specified using [JSON schemas](http://json-schema.org).
         }
     }
 }
+```
 
 #### Example:
 
