@@ -48,7 +48,7 @@ it produces are specified using [JSON schemas](http://json-schema.org).
 
 ### 2.1) Method: *publish-node*
 
-Params:
+#### Params:
 
 ```json
 {
@@ -72,7 +72,7 @@ Params:
 }
 ```
 
-Result:
+#### Result:
 
 ```json
 {
@@ -140,6 +140,55 @@ Result:
     }
 }
 
-Example:
+#### Example:
+
+First we generate a set of signing keys:
+
 ```
-$ curl 
+$ bin/anond -j public.key secret.key
+$ cat public.key 
+3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0=
+$ cat secret.key 
+egH7VZb4rxu03BFWPWfuYeXJQepZxwT5SRKA1+ahjnrduWT0DymEIPMXcmgzhY0BlNXM4fTHYVZRTe/jIIl7/Q==
+```
+
+First we isssue a initial non-signed call to the `publish-node` method
+without and `Node-ID` or `Content-HMAC` HTTP headers:
+
+```
+$ curl -H "Content-Type: application/json" -k -X POST -d '{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": "3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' https://127.0.0.1:6700/jsonrpc
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "ds-id": 472742719,
+    "node-id": 12,
+    "shared-key": "lyKwRDcabkmoa2IqfeaTHMdTzJDKokx0aVlE8bfFeU4=",
+    "node-ttl": 10800000
+  },
+  "id": 1
+```
+
+In return we got a unique `node-id` and a `shared-key`.
+
+Next we call 'publish-node' again in order to get a new `shared-key`:
+
+```
+$ echo -n '{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": "3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' > http_request.body 
+$ bin/anond -l secret.key http_request.body 
+IwP1RRntuTELY0+qIeXABKWH4uTBOBevdsCZ9mycOKGhjLyCEZBqArb3+6OefDHzfsS5OCu48NBSeB7U2AwZASNLit+wWrVFp4xLvruU33sR0pDJgFgWD2/Olrc/wjtQb7b1/bFJArWn+Scbin4mvKneB2m8UAzEC4NCFxlHF/8=
+$ curl -H "Content-Type: application/json" -H "Node-ID: 12" -H "Content-HMAC: IwP1RRntuTELY0+qIeXABKWH4uTBOBevdsCZ9mycOKGhjLyCEZBqArb3+6OefDHzfsS5OCu48NBSeB7U2AwZASNLit+wWrVFp4xLvruU33sR0pDJgFgWD2/Olrc/wjtQb7b1/bFJArWn+Scbin4mvKneB2m8UAzEC4NCFxlHF/8=" -k -X POST -d '{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": "3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' https://127.0.0.1:6700/jsonrpc
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "ds-id": 472742719,
+    "node-id": 12,
+    "shared-key": "t8ieEJrAwbhgObSRGWbiULYxgWB6XaeEVIEa4mg0R2A=",
+    "node-ttl": 10800000
+  },
+  "id": 1
+}
+```
+
+We got a new `shared-key` back. We could have specified a new
+`public-key` as well in order to renegotiare a new public signing key
+but this is left out as a excercise for the reader.

@@ -28,9 +28,10 @@ create_sign_keypair_files(KeyFilenames) ->
 create_keypair_files([PublicKeyFile, SecretKeyFile], KeyFunction) ->
     salt_server:start_link(),
     {PublicKey, SecretKey} = salt_server:KeyFunction(),
-    case file:write_file(PublicKeyFile, base64:encode(PublicKey)) of
+    case file:write_file(PublicKeyFile, [base64:encode(PublicKey), $\n]) of
         ok ->
-            case file:write_file(SecretKeyFile, base64:encode(SecretKey)) of
+            case file:write_file(SecretKeyFile,
+                                 [base64:encode(SecretKey), $\n]) of
                 ok ->
                     erlang:halt(0);
                 {error, Reason} ->
@@ -60,7 +61,7 @@ sign_data([SecretKeyFile, DataFile]) ->
                                 base64:encode(
                                   salt:crypto_sign(salt:crypto_hash(Data),
                                                    DecodedSecretKey)),
-                            io:format("~s", [Signature]),
+                            io:format("~s~n", [Signature]),
                             erlang:halt(0);
                         {error, Reason} ->
                             stderr:print(1, true, "~s: ~s",
