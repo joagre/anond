@@ -61,7 +61,7 @@ call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
         EncodedRequest when is_binary(EncodedRequest) ->
             ExtraHeaders =
                 if
-                    NodeId == -1 ->
+                    NodeId == 0 ->
                         [];
                     true ->
                         [{<<"Content-HMAC">>, hmac(EncodedRequest, PrivateKey)},

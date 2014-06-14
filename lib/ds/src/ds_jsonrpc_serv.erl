@@ -68,30 +68,33 @@ ds_handler(_NodeId, <<"get-random-nodes">>, _Params, _S) ->
     JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
     {error, JsonError};
 %%% publish-node
-ds_handler(NodeId, <<"publish-node">>,
-           [{<<"my-na">>, MyNa}, {<<"public-key">>, PublicKey}], _S)
-  when is_binary(PublicKey) ->
-    case ds_jsonrpc_conversion:decode_na(MyNa) of
-        {ok, DecodedMyNa} ->
-            Nd = #node_descriptor{node_id = NodeId,
-                                  na = DecodedMyNa,
-                                  public_key = base64:decode(PublicKey)},
-            case ds_serv:publish_node(Nd) of
-                {ok, DsId, NewNodeId, SharedKey, NodeTTL} ->
-                    Result = [{<<"ds-id">>, DsId},
-                              {<<"node-id">>, NewNodeId},
-                              {<<"shared-key">>, base64:encode(SharedKey)},
-                              {<<"node-ttl">>, NodeTTL}],
-                    {ok, Result};
-                {error, broken_simulation} ->
-                    {error, #json_error{code = ?DS_JSONRPC_BROKEN_SIMULATION}}
-            end;
-        {error, Reason} ->
-            {error, Reason}
+ds_handler(NodeId, <<"publish-node">>, Params, _S) ->
+    try
+        ok = jsonrpc_serv:valid_params(
+               [<<"public-key">>, <<"my-na">>], Params),
+        PublicKey = get_base64(<<"public-key">>, Params),
+        MyNa = get_na(<<"my-na">>, Params, {{0, 0, 0, 0}, 0}),
+        Nd = #node_descriptor{node_id = NodeId, na = MyNa,
+                              public_key = PublicKey},
+        case ds_serv:publish_node(Nd) of
+            {ok, DsId, NewNodeId, SharedKey, NodeTTL} ->
+                Result =
+                    [{<<"ds-id">>, DsId},
+                     {<<"node-id">>, NewNodeId},
+                     {<<"shared-key">>, base64:encode(SharedKey)},
+                     {<<"node-ttl">>, NodeTTL}],
+                {ok, Result};
+            {error, broken_simulation} ->
+                {error, #json_error{
+                   code = ?DS_JSONRPC_BROKEN_SIMULATION}}
+        end
+    catch
+        throw:JsonError when is_record(JsonError, json_error) ->
+            {error, JsonError};
+        Class:Reason ->
+            ?error_log({Class, Reason}),
+            {error, #json_error{code = ?JSONRPC_INTERNAL_ERROR}}
     end;
-ds_handler(_NodeId, <<"publish-node">>, _Params, _S) ->
-    JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},
-    {error, JsonError};
 %%% unpublish-node
 ds_handler(NodeId, <<"unpublish-node">>, undefined, _S) ->
     ok = ds_serv:unpublish_node(NodeId),
@@ -153,6 +156,46 @@ ds_handler(_NodeId, Method, Params, _S) ->
     ?error_log({invalid_request, Method, Params}),
     JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
     {error, JsonError}.
+
+get_base64(Param, Params) ->
+    Convert =
+        fun(Value) when is_binary(Value) ->
+                case catch base64:decode(Value) of
+                    DecodedPublicKey when is_binary(DecodedPublicKey) ->
+                        DecodedPublicKey;
+                    Error ->
+                        ?error_log(Error),
+                        throw(#json_error{
+                                 code = ?JSONRPC_INVALID_PARAMS,
+                                 data = Param})
+                end;
+           (Value) ->
+                ?error_log(Value),
+                throw(#json_error{
+                         code = ?JSONRPC_INVALID_PARAMS,
+                         data = Param})
+        end,
+    jsonrpc_serv:get_param(Param, Params, Convert).
+
+get_na(Param, Params, DefaultValue) ->
+    Convert =
+        fun(Value) when is_binary(Value) ->
+                case ds_jsonrpc_conversion:decode_na(Value) of
+                    {ok, DecodedNa} ->
+                        DecodedNa;
+                    {error, Reason} ->
+                        ?error_log(Reason),
+                        throw(#json_error{
+                                 code = ?JSONRPC_INVALID_PARAMS,
+                                 data = Param})
+                end;
+           (Value) ->
+                ?error_log(Value),
+                throw(#json_error{
+                         code = ?JSONRPC_INVALID_PARAMS,
+                         data = Param})
+        end,
+    jsonrpc_serv:get_param(Param, Params, Convert, DefaultValue).
 
 %%%
 %%% get-network-topology

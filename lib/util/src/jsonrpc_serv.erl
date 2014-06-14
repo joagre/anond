@@ -2,6 +2,8 @@
 
 %%% external exports
 -export([start_link/7]).
+-export([valid_params/2]).
+-export([get_param/2, get_param/3, get_param/4]).
 
 %%% internal exports
 -export([jsonrpc_handler/5]).
@@ -58,7 +60,7 @@ jsonrpc_handler(Socket, Options, Handler, Docroot, TransportModule) ->
                 httplib:get_headers(TransportModule, Socket,
                                     [{'content-length', <<"-1">>},
                                      {<<"content-hmac">>, not_set},
-                                     {<<"node-id">>, <<"-1">>}]),
+                                     {<<"node-id">>, <<"0">>}]),
             ok = TransportModule:setopts(Socket, [binary, {packet, 0}]),
             ContentLength =
                 httplib:lookup_header_value('content-length', HeaderValues),
@@ -87,7 +89,8 @@ jsonrpc_handler(Socket, Options, Handler, Docroot, TransportModule) ->
                 httplib:get_headers(TransportModule, Socket, []),
             ok = TransportModule:setopts(Socket, [binary, {packet, 0}]),
             send_file(Socket, Docroot, TransportModule, ?b2l(Path));
-        {ok, _} ->
+        {ok, HTTPRequest} ->
+            ?error_log(HTTPRequest),
             JsonError = #json_error{code = ?JSONRPC_INVALID_REQUEST},
             send(Socket, TransportModule, null, JsonError);
         {error, Reason} ->
@@ -134,6 +137,56 @@ handle_jsonrpc_request(
       message = <<"Content is too large">>,
       data = ContentLength},
     send(Socket, TransportModule, null, JsonError).
+
+%%%
+%%% exported: valid_params
+%%%
+
+valid_params(_ValidParams, []) ->
+    ok;
+valid_params(ValidParams, [{Param, _}|Rest]) ->
+    case lists:member(Param, ValidParams) of
+        true ->
+            valid_params(lists:delete(Param, ValidParams), Rest);
+        false ->
+            throw(#json_error{code = ?JSONRPC_INVALID_PARAMS, data = Param})
+    end.
+
+%%%
+%%% exported: get_param
+%%%
+
+get_param(Param, Params) ->
+    get_param(Param, Params, keep_as_is, '$no_default_value').
+
+get_param(Param, Params, Convert) ->
+    get_param(Param, Params, Convert, '$no_default_value').
+
+get_param(Param, Params, Convert, DefaultValue) ->
+    case lists:keyfind(Param, 1, Params) of
+        false when DefaultValue == '$no_default_value' ->
+            throw(#json_error{code = ?JSONRPC_INVALID_PARAMS,
+                              message = <<"Missing parameter">>,
+                              data = Param});
+        false ->
+            DefaultValue;
+        {_, Value} when Convert == keep_as_is ->
+            Value;
+        {_, Value} when is_boolean(Value) andalso Convert == bool ->
+            Value;
+        {_, Value} when is_binary(Value) andalso Convert == string ->
+            Value;
+        {_, Value} when is_integer(Value) andalso Convert == int ->
+            Value;
+        {_, Value} when is_list(Value) andalso Convert == array ->
+            Value;
+        {_, Value} when is_function(Convert) ->
+            Convert(Value);
+        {_, _Value} ->
+            throw(#json_error{code = ?JSONRPC_INVALID_PARAMS,
+                              message = <<"Bad value">>,
+                              data = Param})
+    end.
 
 %%%
 %%% recv
