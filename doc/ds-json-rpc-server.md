@@ -157,7 +157,9 @@ First we isssue a initial non-signed call to the `publish-node` method
 without and `Node-ID` or `Content-HMAC` HTTP headers:
 
 ```
-$ curl -H "Content-Type: application/json" -k -X POST -d '{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": "3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' https://127.0.0.1:6700/jsonrpc
+$ curl -H "Content-Type: application/json" -k -X POST -d '{"jsonrpc": "2.0", "method": "publish-node", \
+"params": {"public-key": "3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' \
+https://127.0.0.1:6700/jsonrpc
 {
   "jsonrpc": "2.0",
   "result": {
@@ -174,10 +176,16 @@ In return we got a unique `node-id` and a `shared-key`.
 Next we call 'publish-node' again in order to get a new `shared-key`:
 
 ```
-$ echo -n '{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": "3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' > http_request.body 
+$ echo -n '{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": \
+"3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' > http_request.body 
 $ bin/anond -l secret.key http_request.body 
-IwP1RRntuTELY0+qIeXABKWH4uTBOBevdsCZ9mycOKGhjLyCEZBqArb3+6OefDHzfsS5OCu48NBSeB7U2AwZASNLit+wWrVFp4xLvruU33sR0pDJgFgWD2/Olrc/wjtQb7b1/bFJArWn+Scbin4mvKneB2m8UAzEC4NCFxlHF/8=
-$ curl -H "Content-Type: application/json" -H "Node-ID: 12" -H "Content-HMAC: IwP1RRntuTELY0+qIeXABKWH4uTBOBevdsCZ9mycOKGhjLyCEZBqArb3+6OefDHzfsS5OCu48NBSeB7U2AwZASNLit+wWrVFp4xLvruU33sR0pDJgFgWD2/Olrc/wjtQb7b1/bFJArWn+Scbin4mvKneB2m8UAzEC4NCFxlHF/8=" -k -X POST -d '{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": "3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' https://127.0.0.1:6700/jsonrpc
+IwP1RRntuTELY0+qIeXABKWH4uTBOBevdsCZ9mycOKGhjLyCEZBqArb3+6OefDHzfsS5OCu48NBSeB7U2AwZASNLit+wWrVFp4xLvru\
+U33sR0pDJgFgWD2/Olrc/wjtQb7b1/bFJArWn+Scbin4mvKneB2m8UAzEC4NCFxlHF/8=
+$ curl -H "Content-Type: application/json" -H "Node-ID: 12" -H "Content-HMAC: \
+IwP1RRntuTELY0+qIeXABKWH4uTBOBevdsCZ9mycOKGhjLyCEZBqArb3+6OefDHzfsS5OCu48NBSeB7U2AwZASNLit+wWrVFp4xL\
+vruU33sR0pDJgFgWD2/Olrc/wjtQb7b1/bFJArWn+Scbin4mvKneB2m8UAzEC4NCFxlHF/8=" -k -X POST -d \
+'{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": \
+"3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' https://127.0.0.1:6700/jsonrpc
 {
   "jsonrpc": "2.0",
   "result": {
