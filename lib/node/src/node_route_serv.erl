@@ -54,7 +54,7 @@
                                           inet:port_number()},
           my_oa                       :: oa(),
 	  public_key                  :: binary(),
-	  private_key                 :: binary(),
+	  secret_key                  :: binary(),
           number_of_neighbours        :: non_neg_integer(),
           refresh_neighbours_interval :: non_neg_integer(),
           recalc_interval             :: non_neg_integer(),
@@ -271,7 +271,7 @@ loop(#state{parent = Parent,
             directory_server = DsIpAddressPort,
 	    my_oa = MyOa,
 	    public_key = PublicKey,
-	    private_key = PrivateKey,
+	    secret_key = SecretKey,
             number_of_neighbours = NumberOfNeighbours,
             refresh_neighbours_interval = RefreshNeighboursInterval,
             recalc_interval = RecalcInterval,
@@ -284,7 +284,7 @@ loop(#state{parent = Parent,
             loop(read_config(S));
         bootstrap ->
             case ds_jsonrpc_client:publish_node(
-                   MyNodeId, MyIpAddress, DsIpAddressPort, PrivateKey,
+                   MyNodeId, MyIpAddress, DsIpAddressPort, SecretKey,
                    MyNa, PublicKey) of
                 {ok, NewDsId, NewMyNodeId, NewTTL, NewSharedKey} ->
                     ?daemon_log("Node ~s published itself as node id ~w",
@@ -294,7 +294,7 @@ loop(#state{parent = Parent,
                            NodeRecvServ, NewMyNodeId, NewDsId, NewSharedKey),
                     case ds_jsonrpc_client:reserve_oa(
                            NewMyNodeId, MyIpAddress, DsIpAddressPort,
-                           PrivateKey, MyOa) of
+                           SecretKey, MyOa) of
                         ok ->
                             ?daemon_log(
                                "Node ~w (~s) reserved overlay address ~s",
@@ -355,7 +355,7 @@ loop(#state{parent = Parent,
             end;
         {republish_self, RestartTimer} ->
             case ds_jsonrpc_client:publish_node(
-                   MyNodeId, MyIpAddress, DsIpAddressPort, PrivateKey,
+                   MyNodeId, MyIpAddress, DsIpAddressPort, SecretKey,
                    MyNa, PublicKey) of
                 {ok, NewDsId, NewMyNodeId, NewTTL, NewSharedKey} ->
                     ?daemon_log("Node ~w (~s) republished itself",
@@ -385,7 +385,7 @@ loop(#state{parent = Parent,
             case refresh_neighbours(
                    NodeDb, RouteDb, PspDb, MyNodeId, NeighbourNodeIds,
                    NodeInstanceSup, NodeRecvServ, NodePathCostServ,
-                   DsIpAddressPort, Mode, MyNa, PrivateKey, NumberOfNeighbours,
+                   DsIpAddressPort, Mode, MyNa, SecretKey, NumberOfNeighbours,
                    AutoRecalc) of
                 {ok, NewNeighbourNodeIds} ->
                     timelib:start_timer(
@@ -506,9 +506,9 @@ read_config(_S, [{'overlay-addresses', _MyOas}|_Rest]) ->
 read_config(S, [{'public-key', Value}|Rest]) ->
     Key = cryptolib:read_key_file(Value),
     read_config(S#state{public_key = Key}, Rest);
-read_config(S, [{'private-key', Value}|Rest]) ->
+read_config(S, [{'secret-key', Value}|Rest]) ->
     Key = cryptolib:read_key_file(Value),
-    read_config(S#state{private_key = Key}, Rest);
+    read_config(S#state{secret_key = Key}, Rest);
 read_config(S, [{'number-of-neighbours', Value}|Rest]) ->
     read_config(S#state{number_of_neighbours = Value}, Rest);
 read_config(S, [{'refresh-neighbours-interval', Value}|Rest]) ->
@@ -540,12 +540,12 @@ set_my_node_id(SystemDb, MyNodeId) ->
 refresh_neighbours(
   NodeDb, RouteDb, PspDb, MyNodeId, NeighbourNodeIds, NodeInstanceSup,
   NodeRecvServ, NodePathCostServ, DsIpAddressPort, Mode,
-  MyNa = {MyIpAddress, _}, PrivateKey, NumberOfNeighbours, AutoRecalc) ->
+  MyNa = {MyIpAddress, _}, SecretKey, NumberOfNeighbours, AutoRecalc) ->
     MyNaStringAddress = net_tools:string_address(MyNa),
     ?daemon_log("Node ~w (~s) known neighbour nodes: ~w",
                 [MyNodeId, MyNaStringAddress, NeighbourNodeIds]),
     case ds_jsonrpc_client:still_published_nodes(
-           MyNodeId, MyIpAddress, DsIpAddressPort, PrivateKey,
+           MyNodeId, MyIpAddress, DsIpAddressPort, SecretKey,
            NeighbourNodeIds) of
         {ok, StillPublishedNeighbourNodeIds} ->
             ?daemon_log(
@@ -600,7 +600,7 @@ refresh_neighbours(
                     get_more_neighbours(
                       NodeDb, RouteDb, PspDb, MyNodeId, NeighbourNodeIds,
                       NodeInstanceSup, NodeRecvServ, NodePathCostServ,
-                      DsIpAddressPort, MyNa, PrivateKey, AutoRecalc,
+                      DsIpAddressPort, MyNa, SecretKey, AutoRecalc,
                       LivingNeighbourNodeIds, NumberOfMissingNeighbours);
                 true ->
                     {ok, LivingNeighbourNodeIds}
@@ -612,10 +612,10 @@ refresh_neighbours(
 get_more_neighbours(
   NodeDb, RouteDb, PspDb, MyNodeId, NeighbourNodeIds, NodeInstanceSup,
   NodeRecvServ, NodePathCostServ, DsIpAddressPort, {MyIpAddress, _} = MyNa,
-  PrivateKey, AutoRecalc, LivingNeighbourNodeIds,
+  SecretKey, AutoRecalc, LivingNeighbourNodeIds,
   NumberOfMissingNeighbours) ->
     case ds_jsonrpc_client:get_random_nodes(
-           MyNodeId, MyIpAddress, DsIpAddressPort, PrivateKey,
+           MyNodeId, MyIpAddress, DsIpAddressPort, SecretKey,
            NumberOfMissingNeighbours) of
         {ok, RandomNeighbourNodeIds} ->
             ?daemon_log(

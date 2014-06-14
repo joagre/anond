@@ -30,17 +30,17 @@ call(NodeId, MyIpAddress, IpAddressPort, Method) ->
     call(NodeId, MyIpAddress, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
          Method, undefined, undefined, ssl).
 
-call(NodeId, MyIpAddress, IpAddressPort, Method, PrivateKey) ->
+call(NodeId, MyIpAddress, IpAddressPort, Method, SecretKey) ->
     call(NodeId, MyIpAddress, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
-         Method, PrivateKey, undefined, ssl).
+         Method, SecretKey, undefined, ssl).
 
-call(NodeId, MyIpAddress, IpAddressPort, Method, PrivateKey, Params) ->
+call(NodeId, MyIpAddress, IpAddressPort, Method, SecretKey, Params) ->
     call(NodeId, MyIpAddress, IpAddressPort, ?CALL_TIMEOUT, <<"/jsonrpc">>,
-         Method, PrivateKey, Params, ssl).
+         Method, SecretKey, Params, ssl).
 
-call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, SecretKey,
      Params) ->
-    call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+    call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, SecretKey,
          Params, ssl).
 
 -spec call(integer(), inet:ip_address() | 'undefined',
@@ -49,7 +49,7 @@ call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
            httplib:transport_module()) ->
                   {'ok', jsx:json_term()} | {'error', error_reason()}.
 
-call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
+call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, SecretKey,
      Params, TransportModule) ->
     Id = new_id(),
     Request =
@@ -64,7 +64,7 @@ call(NodeId, MyIpAddress, IpAddressPort, Timeout, Uri, Method, PrivateKey,
                     NodeId == 0 ->
                         [];
                     true ->
-                        [{<<"Content-HMAC">>, hmac(EncodedRequest, PrivateKey)},
+                        [{<<"Content-HMAC">>, hmac(EncodedRequest, SecretKey)},
                          {<<"Node-ID">>, ?i2b(NodeId)}]
                 end,
             case httplib:post(
@@ -101,9 +101,8 @@ params_if_any(undefined) ->
 params_if_any(Params) ->
     [{<<"params">>, Params}].
 
-hmac(Message, PrivateKey) ->
-    base64:encode(
-      salt:crypto_sign(salt:crypto_hash(Message), PrivateKey)).
+hmac(Message, SecretKey) ->
+    base64:encode(salt:crypto_sign(salt:crypto_hash(Message), SecretKey)).
 
 handle_response(Id, _Response,
                 [{<<"error">>, [{<<"code">>, Code},

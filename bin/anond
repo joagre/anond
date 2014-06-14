@@ -9,10 +9,12 @@ usage()
     echo "    Stop anond"
     echo "$0 -r [-a IP-ADDRESS] [-p PORT]"
     echo "    Reread the anond config file"
-    echo "$0 -k <SELF-SIGNED CERTIFICATE FILENAME>"
+    echo "$0 -k <SELF-SIGNED CERTIFICATE FILE>"
     echo "    Generate a self-signed SSL certificate"
-    echo "$0 -j <PUBLIC KEY FILENAME> <PRIVATE KEY FILENAME>"
-    echo "    Generate a public/private key pair used for signing"
+    echo "$0 -j <PUBLIC KEY FILE> <SECRET KEY FILE>"
+    echo "    Generate a public/secret key pair used for signing"
+    echo "$0 -l <SECRET KEY FILE> <DATA FILE>"
+    echo "    Sign data using a secret signing key"
     echo "$0 -h"
     echo "    This help text"
     exit 1
@@ -88,7 +90,17 @@ while [ $# -gt 0 ]; do
             mode="create_sign_keypair_files"
             boot=" -boot ${bindir}/start_clean"
             public_key_file="$2"
-            private_key_file="$3"
+            secret_key_file="$3"
+            shift 2
+            ;;
+        -l)
+            if [ $# -lt 3 ]; then
+                usage
+            fi
+            mode="sign_data"
+            boot=" -boot ${bindir}/start_clean"
+            secret_key_file="$2"
+            data_file="$3"
             shift 2
             ;;
         --)
@@ -125,6 +137,9 @@ case ${mode} in
         exec ${erl}${shell}${pa}${boot}${address}${port} -run common_config_json_serv reload
         ;;
     create_sign_keypair_files)
-        exec ${erl}${shell}${pa}${boot}${address}${port} -run cryptolib create_sign_keypair_files ${public_key_file} ${private_key_file}
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run cryptolib create_sign_keypair_files ${public_key_file} ${secret_key_file}
+        ;;
+    sign_data)
+        exec ${erl}${shell}${pa}${boot}${address}${port} -run cryptolib sign_data ${secret_key_file} ${data_file}
         ;;
 esac
