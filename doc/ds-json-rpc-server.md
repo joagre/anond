@@ -143,61 +143,82 @@ it produces are specified using [JSON schemas](http://json-schema.org).
 
 #### Example:
 
-First we generate a set of signing keys:
+First we generate a set of signing keys using the `anond` and we also
+assign a number of environment variables to make life easier in the
+next part of the example:
 
 ```
 $ bin/anond -j public.key secret.key
 $ cat public.key 
-3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0=
-$ cat secret.key 
-egH7VZb4rxu03BFWPWfuYeXJQepZxwT5SRKA1+ahjnrduWT0DymEIPMXcmgzhY0BlNXM4fTHYVZRTe/jIIl7/Q==
+vOFs8Jc3zA8Rvax4Ot+kzNHIdcJZhvGAhioc/WoxD4Q=
+$ cat secret.key
+o0XiiJxdw8akZdg/NbXYyIT7HgEU4iSajoeI2OaDZxi84WzwlzfMDxG9rHg636TM0ch1wlmG8YCGKhz9ajEPhA==
+$ PK=`cat public.key`
+$ SK=`cat secret.key`
+$ cat > curlrc
+url="https://127.0.0.1:6700/jsonrpc"
+header="Content-Type: application/json"
+insecure
+request="POST"
+<Ctrl-D>
 ```
 
-First we isssue a initial non-signed call to the `publish-node` method
-without and `Node-ID` or `Content-HMAC` HTTP headers:
+Then we issue an initial non-signed call to the `publish-node` method
+without any `Node-ID` and `Content-HMAC` HTTP headers:
 
 ```
-$ curl -H "Content-Type: application/json" -k -X POST -d '{"jsonrpc": "2.0", "method": "publish-node", \
-"params": {"public-key": "3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' \
-https://127.0.0.1:6700/jsonrpc
+$ BODY='{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": "'${PK}'"}, "id": 1}'
+$ curl --config curlrc -d "${BODY}"
 {
   "jsonrpc": "2.0",
   "result": {
     "ds-id": 472742719,
-    "node-id": 12,
-    "shared-key": "lyKwRDcabkmoa2IqfeaTHMdTzJDKokx0aVlE8bfFeU4=",
-    "node-ttl": 10800000
-  },
-  "id": 1
-```
-
-In return we got a unique `node-id` and a `shared-key`.
-
-Next we call 'publish-node' again in order to get a new `shared-key`:
-
-```
-$ echo -n '{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": \
-"3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' > http_request.body 
-$ bin/anond -l secret.key http_request.body 
-IwP1RRntuTELY0+qIeXABKWH4uTBOBevdsCZ9mycOKGhjLyCEZBqArb3+6OefDHzfsS5OCu48NBSeB7U2AwZASNLit+wWrVFp4xLvru\
-U33sR0pDJgFgWD2/Olrc/wjtQb7b1/bFJArWn+Scbin4mvKneB2m8UAzEC4NCFxlHF/8=
-$ curl -H "Content-Type: application/json" -H "Node-ID: 12" -H "Content-HMAC: \
-IwP1RRntuTELY0+qIeXABKWH4uTBOBevdsCZ9mycOKGhjLyCEZBqArb3+6OefDHzfsS5OCu48NBSeB7U2AwZASNLit+wWrVFp4xL\
-vruU33sR0pDJgFgWD2/Olrc/wjtQb7b1/bFJArWn+Scbin4mvKneB2m8UAzEC4NCFxlHF/8=" -k -X POST -d \
-'{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": \
-"3blk9A8phCDzF3JoM4WNAZTVzOH0x2FWUU3v4yCJe/0="}, "id": 1}' https://127.0.0.1:6700/jsonrpc
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "ds-id": 472742719,
-    "node-id": 12,
-    "shared-key": "t8ieEJrAwbhgObSRGWbiULYxgWB6XaeEVIEa4mg0R2A=",
+    "node-id": 22,
+    "shared-key": "3CMFFX1G1ExgdNhYwB+JgCJ0A+VydTga9G5ZKEevXqw=",
     "node-ttl": 10800000
   },
   "id": 1
 }
 ```
 
-We got a new `shared-key` back. We could have specified a new
-`public-key` as well in order to renegotiare a new public signing key
-but this is left out as a excercise for the reader.
+In return we got a `ds-id`, `node-id` and a `shared-key`. The
+`node-ttl` value tell us that we need to republish the node within 3
+hours or else the node will be purged from the anond overlay network. 
+
+To republish a node we call 'publish-node' again and get a new
+`shared-key` back as a side effect.
+
+All method calls execept for the initial call to `publish-node` must
+be signed and the `Node-ID` and `Content-HMAC` HTTP headers must be
+specified. Inthis example we generate a HMAC with `anond`:
+
+```
+$ echo -n ${BODY} > body.dat
+$ HMAC=`bin/anond -l secret.key body.dat`
+$ echo ${HMAC}
+oSV4N9labmCL0dVzetktQtGbCikSA2Sl936bBEW39LUVJYqzVyQ+N9bSlNpKNre7vc6Ydq6DuMNg/2MHNiz/Ap8Hte3CRA/Cb997Esw+2MJpxF4Cgx9ekSxCHnh+7UcT4BeHQ3zRbLxjYlS7tv8UiTGKmt0+ygsffitoWF36e5k=
+```
+
+Then we republish the node:
+
+```
+$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" -d "${BODY}"
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "ds-id": 472742719,
+    "node-id": 22,
+    "shared-key": "oxEQBqIOnbzJPKJJqbjgKoknw3R7Pvythvu8DEL052Q=",
+    "node-ttl": 10800000
+  },
+  "id": 1
+}
+```
+
+We got a new `shared-key` back and could have specified a new
+`public-key` in the call as well, in order to renegotiate a new public
+signing key, but this is left out as an excercise to the reader.
+
+### 2.1) Method: *unpublish-node*
+
+#### Params:
