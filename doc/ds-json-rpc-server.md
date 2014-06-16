@@ -46,6 +46,8 @@ There is more to this. Please read on.
 In this section each server method's input parameters and the result
 it produces are specified using [JSON schemas](http://json-schema.org).
 
+<!------------------------------------------------------------------------->
+
 ### 2.1) Method: *publish-node*
 
 The *publish-node* method is usd to publish a node on the anond
@@ -179,7 +181,7 @@ without any `Node-ID` and `Content-HMAC` HTTP headers:
 
 ```
 $ BODY='{"jsonrpc": "2.0", "method": "publish-node", "params": {"public-key": "'${PK}'"}, "id": 1}'
-$ curl --config curlrc -d "${BODY}"
+$ curl --config curlrc --data "${BODY}"
 {
   "jsonrpc": "2.0",
   "result": {
@@ -214,7 +216,7 @@ oSV4N9labmCL0dVzetktQtGbCikSA2Sl936bBEW39LUVJYqzVyQ+N9bSlNpKNre7vc6Ydq6DuMNg/2MH
 Then we republish the node:
 
 ```
-$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" -d "${BODY}"
+$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" --data "${BODY}"
 {
   "jsonrpc": "2.0",
   "result": {
@@ -231,14 +233,16 @@ We got a new `shared-key` back and could have specified a new
 `public-key` in the call as well, in order to renegotiate a new public
 signing key, but this is left out as an exercise to the reader.
 
-### 2.1) Method: *unpublish-node*
+<!------------------------------------------------------------------------->
+
+### 2.2) Method: *unpublish-node*
 
 The *unpublish-node* method is used to unpublish a node in the anond
 overlay network.
 
 #### Params:
 
-No parameters is needed, i.e. the `node-id` specified in the `Node-ID`
+No parameters are needed, i.e. the `node-id` specified in the `Node-ID`
 HTTP header in the HTTP request will be unpublished.
 
 #### Result:
@@ -262,7 +266,7 @@ HTTP header in the HTTP request will be unpublished.
 
 ```
 $ BODY='{"jsonrpc": "2.0", "method": "unpublish-node"}, "id": 1}'
-$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" -d "${BODY}"
+$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" --data "${BODY}"
 {
   "jsonrpc": "2.0",
   "result": true,
@@ -273,10 +277,74 @@ $ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" -d "${BODY}"
  The HMAC is calculated as seen in the *publish-node* example. The
 `curlrc` file is as defined in that example as well.
 
-### 2.2) Method: *get-random-nodes*
+<!------------------------------------------------------------------------->
 
-The *get-random-nodes* method returns a random set of nodes which is
-suitable to use as direct neighbours in the anond overlay network.
+### 2.3) Method: *still-published-nodes*
+
+The *still-published-nodes* method takes an array of `node-ids` as
+input and returns an array of all `node-ids` that still are published
+on the anond overlay network.
+
+#### Params:
+
+```json
+{
+    "$schema": "http://json-schema.org/draft-03/schema#",
+    "name": "still-published-nodes params",
+    "description":
+        "An array of node-ids to be checked if they still are published.",
+    "type": "array",
+    "items": {
+        "type": "integer"
+    },
+    "uniqueItems": true
+}
+```
+
+#### Result:
+
+```json
+{
+    "$schema": "http://json-schema.org/draft-03/schema#",
+    "name": "still-published-nodes result",
+    "description": "An array of still published node-ids.",
+    "type": "array",
+    "items": {
+         "type": "integer"
+    },
+    "uniqueItems": true
+}
+```
+
+#### Error codes:
+
+`JSONRPC_PARSE_ERROR` (-32700), `JSONRPC_INVALID_REQUEST` (-32600),
+`JSONRPC_METHOD_NOT_FOUND` (-32601), `JSONRPC_INVALID_PARAMS`
+(-32602), `JSONRPC_INTERNAL_ERROR` (-32603)
+
+#### Example:
+
+```
+$ BODY='{"jsonrpc": "2.0", "method": "still-published-nodes"}, "params": [1281, 3410, 52]}, "id": 1}'
+$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" --data "${BODY}"
+{
+  "jsonrpc": "2.0",
+  "result": [1281, 3410],
+  "id": 1
+}
+```
+
+> The HMAC is calculated as seen in the
+[*publish-node*](#user-content-example) example. The
+[`curlcrc`](#user-content-example) file is also defined in that example.
+
+<!------------------------------------------------------------------------->
+
+### 2.4) Method: *get-random-nodes*
+
+The *get-random-nodes* method returns an array of random `node-ids`
+which are suitable to be used as neighbour nodes in the anond overlay
+network.
 
 #### Params:
 
@@ -286,7 +354,7 @@ suitable to use as direct neighbours in the anond overlay network.
     "name": "get-random-nodes params",
     "description": "The number of random node-ids to return.",
     "type": "integer",
-    "minimum": 0,
+    "minimum": 1,
     "required": true
 }
 ```
@@ -311,14 +379,14 @@ suitable to use as direct neighbours in the anond overlay network.
 `DS_JSONRPC_TOO_FEW_NODES`(3), `DS_JSONRPC_TOO_MANY_NODES`(5),
 `DS_JSONRPC_BROKEN_SIMULATION` (7), `JSONRPC_PARSE_ERROR` (-32700),
 `JSONRPC_INVALID_REQUEST` (-32600), `JSONRPC_METHOD_NOT_FOUND`
-(-32601), `JSONRPC_INVALID_PARAMS` (-32602), JSONRPC_INTERNAL_ERROR
+(-32601), `JSONRPC_INVALID_PARAMS` (-32602), `JSONRPC_INTERNAL_ERROR`
 (-32603)
 
 #### Example:
 
 ```
 $ BODY='{"jsonrpc": "2.0", "method": "get-random-nodes"}, "params": 5}, "id": 1}'
-$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" -d "${BODY}"
+$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" --data "${BODY}"
 {
   "jsonrpc": "2.0",
   "result": [21212, 23121, 44439, 3882, 81819],
@@ -326,6 +394,301 @@ $ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" -d "${BODY}"
 }
 ```
 
-Note: The HMAC is calculated as seen in the *publish-node*
-example. The curlrc file is as defined in that example as well.
-k
+> The HMAC is calculated as seen in the
+[*publish-node*](#user-content-example) example. The
+[`curlcrc`](#user-content-example) file is also defined in that
+example.
+
+<!------------------------------------------------------------------------->
+
+### 2.5) Method: *reserve-oa*
+
+The *reserve-oa* method reserves an overlay address (OA), i.e. an
+ipv6-address from certain range, to be the node's identity on the
+anond overlay network. A node typically registers several OAs and pick
+new ones now and then to improve node anonymity.
+
+#### Params:
+
+```json
+{
+    "$schema": "http://json-schema.org/draft-03/schema#",
+    "name": "reserve-oa params",
+    "description": "A random OA, i.e. a random ipv6-address in a given range.",
+    "type": "string",
+    "required": true
+}
+```
+
+#### Result:
+
+```json
+{
+    "$schema": "http://json-schema.org/draft-03/schema#",
+    "name": "reserve-oa result",
+    "description": "Signals if the reservation was successful or not."
+    "type": "boolean"
+}
+```
+
+#### Error codes:
+
+`DS_JSONRPC_PERMISSION_DENIED` (1), `DS_JSONRPC_UNKNOWN_NODE` (2),
+`JSONRPC_PARSE_ERROR` (-32700), `JSONRPC_INVALID_REQUEST` (-32600),
+`JSONRPC_METHOD_NOT_FOUND` (-32601), `JSONRPC_INVALID_PARAMS`
+(-32602), `JSONRPC_INTERNAL_ERROR` (-32603)
+
+#### Example:
+
+```
+$ BODY='{"jsonrpc": "2.0", "method": "reserve-oa"}, "params": "fe80::230:48ff:fe33:bc33"}, "id": 1}'
+$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" --data "${BODY}"
+{
+  "jsonrpc": "2.0",
+  "result": true,
+  "id": 1
+}
+```
+
+> The HMAC is calculated as seen in the
+[*publish-node*](#user-content-example) example. The
+[`curlcrc`](#user-content-example) file is also defined in that
+example.
+
+
+<!------------------------------------------------------------------------->
+
+### 2.6) Method: *get-network-topology*
+
+The *get-network-topology* method can only be called if the
+experimental API has been enabled in the DS. This method uses the bit
+oriented [DS-Node UDP protocol](s) to extract the routing entries from
+each node in the anond overlay network and then generates a global
+network topology. The experimental API enables functionality which
+obviously defeats the purpose of anond altogether but its nice for
+experimentation and development purposes.
+
+> You have been duly warned.
+
+#### Params:
+
+No parameters are needed.
+
+#### Result:
+
+```json
+{
+    "$schema": "http://json-schema.org/draft-03/schema#",
+    "name": "reserve-oa result",
+    "description": "The network topology."
+    "type": "array",
+    "items": {
+         "description":
+             "An array of all nodes and their neighbour nodes and
+             routing entries.",
+         "type": "object",
+         "properties": {
+             "node-id": {
+                 "type": "integer",
+                 "minimum": 1,
+                 "maximum": 2147483647
+             },
+             "na": {
+                 "description":
+                     "The node address (NA), i.e. the node's
+                     external/outside ipv4-address."
+                 "type": "string"
+             },
+             "neighbours": {
+                 "type": "array",
+                 "items": {
+                     "description": "An array of all neighbour nodes.",
+                     "type": "object",
+                     "properties": {
+                         "node-id": {
+                             "type": "integer",
+                             "minimum": 1,
+                             "maximum": 2147483647
+                         },
+                         "na": {
+                             "description":
+                                 "The node address (NA), i.e. the
+                                 node's external/outside published
+                                 ipv4-address.",
+                             "type": "string"
+                         },
+                         "path-cost": {
+                             "description":
+                                 "The path cost to reach this node.", 
+                             "type": "integer"
+                             "minimum": 0,
+                             "maximum": 65535
+                         },
+                         "incoming-neighbour": {
+                             "description":
+                                 "Signals if this node is chosen as an
+                                 explicit neighbor node, or if another
+                                 node has chosen this node as its
+                                 neighbour node.",
+                             "type": "boolean"
+                         }
+                     }
+                 }
+             },
+             "route-entries": {
+                 "type": "array",
+                 "items": {
+                     "description":
+                         "An array of route entries, i.e. which nodes
+                         has to be traversed in order to send data
+                         from this node to all other nodes in the a in
+                         the anond overlay network.",
+                     "type": "object",
+                     "properties": {
+                         "path-cost": {
+                             "description":
+                                 "The path cost to travel this route."
+                             "type": "integer"
+                             "minimum": 0,
+                             "maximum": 65535
+                         },
+                     "route": {
+                         "type": "array",
+                         "items": {
+                             "description":
+                                 "An array of node-ids constituting
+                                 the route.",
+                             "type": "integer"
+                         }
+                     }
+                 }
+             }
+         }
+     }
+}
+```
+
+#### Error codes:
+
+`JSONRPC_PARSE_ERROR` (-32700), `JSONRPC_INVALID_REQUEST` (-32600),
+`JSONRPC_METHOD_NOT_FOUND` (-32601), `JSONRPC_INVALID_PARAMS`
+(-32602), `JSONRPC_INTERNAL_ERROR` (-32603)
+
+#### Example:
+
+```
+$ BODY='{"jsonrpc": "2.0", "method": "get-network-topology", "id": 1}'
+$ curl --config curlrc --data "${BODY}"
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "node-id": 2,
+      "na": "127.0.0.1:50009",
+      "neighbours": [
+        {
+          "node-id": 3,
+          "na": "127.0.0.1:50010",
+          "path-cost": 509,
+          "incoming-neighbour": true
+        },
+        {
+          "node-id": 5,
+          "na": "127.0.0.1:50008",
+          "path-cost": 502,
+          "incoming-neighbour": false
+        },
+        {
+          "node-id": 7,
+          "na": "127.0.0.1:50005",
+          "path-cost": 515,
+          "incoming-neighbour": false
+        }
+      ],
+      "route-entries": [
+        {
+          "path-cost": 1078,
+          "route": [
+            7,
+            11
+          ]
+        },
+        {
+          "path-cost": 1026,
+          "route": [
+            7,
+            9
+          ]
+        },
+        {
+          "path-cost": 898,
+          "route": [
+            5,
+            10
+          ]
+        },
+        {
+          "path-cost": 1030,
+          "route": [
+            7,
+            6
+          ]
+        },
+        {
+          "path-cost": 1450,
+          "route": [
+            5,
+            10,
+            4
+          ]
+        },
+        {
+          "path-cost": 524,
+          "route": [
+            7
+          ]
+        },
+        {
+          "path-cost": 396,
+          "route": [
+            5
+          ]
+        },
+        {
+          "path-cost": 560,
+          "route": [
+            3
+          ]
+        },
+        {
+          "path-cost": 831,
+          "route": [
+            5,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "node-id": 3,
+      "na": "127.0.0.1:50010",
+      "neighbours": [
+        {
+          "node-id": 8,
+          "na": "127.0.0.1:50004",
+          "path-cost": 502,
+          "incoming-neighbour": true
+        }
+        ...
+      }
+      ...
+    }
+    ...
+  },
+  "id": 1
+}
+```
+
+> No HMAC is need when calling methods in the experimemtal API. The
+[`curlcrc`](#user-content-example) file is as seen in the
+[*publish-node*](#user-content-example) example.
