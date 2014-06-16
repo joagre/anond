@@ -48,6 +48,9 @@ it produces are specified using [JSON schemas](http://json-schema.org).
 
 ### 2.1) Method: *publish-node*
 
+The *publish-node* method is usd to publish a node on the anond
+overlay network.
+
 #### Params:
 
 ```json
@@ -142,6 +145,13 @@ it produces are specified using [JSON schemas](http://json-schema.org).
 }
 ```
 
+#### Error codes:
+
+`DS_JSONRPC_BROKEN_SIMULATION` (7), `JSONRPC_PARSE_ERROR` (-32700),
+`JSONRPC_INVALID_REQUEST` (-32600), `JSONRPC_METHOD_NOT_FOUND`
+(-32601),  `JSONRPC_INVALID_PARAMS` (-32602), JSONRPC_INTERNAL_ERROR
+(-32603)
+
 #### Example:
 
 First we generate a set of signing keys using the `anond` and we also
@@ -223,4 +233,99 @@ signing key, but this is left out as an exercise to the reader.
 
 ### 2.1) Method: *unpublish-node*
 
+The *unpublish-node* method is used to unpublish a node in the anond
+overlay network.
+
 #### Params:
+
+No parameters is needed, i.e. the `node-id` specified in the `Node-ID`
+HTTP header in the HTTP request will be unpublished.
+
+#### Result:
+
+```json
+{
+    "$schema": "http://json-schema.org/draft-03/schema#",
+    "name": "unpublish-node result",
+    "description": "Signals if the unpublish was successful or not.",
+    "type": "boolean"
+}
+```
+
+#### Error codes:
+
+`JSONRPC_PARSE_ERROR` (-32700),`JSONRPC_INVALID_REQUEST` (-32600),
+`JSONRPC_METHOD_NOT_FOUND` (-32601), `JSONRPC_INVALID_PARAMS`
+(-32602), JSONRPC_INTERNAL_ERROR (-32603)
+
+#### Example:
+
+```
+$ BODY='{"jsonrpc": "2.0", "method": "unpublish-node"}, "id": 1}'
+$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" -d "${BODY}"
+{
+  "jsonrpc": "2.0",
+  "result": true,
+  "id": 1
+}
+```
+
+ The HMAC is calculated as seen in the *publish-node* example. The
+`curlrc` file is as defined in that example as well.
+
+### 2.2) Method: *get-random-nodes*
+
+The *get-random-nodes* method returns a random set of nodes which is
+suitable to use as direct neighbours in the anond overlay network.
+
+#### Params:
+
+```json
+{
+    "$schema": "http://json-schema.org/draft-03/schema#",
+    "name": "get-random-nodes params",
+    "description": "The number of random node-ids to return.",
+    "type": "integer",
+    "minimum": 0,
+    "required": true
+}
+```
+
+#### Result:
+
+```json
+{
+    "$schema": "http://json-schema.org/draft-03/schema#",
+    "name": "get-random-nodes result",
+    "description": "A random set of node-ids.",
+    "type": "array",
+    "items": {
+         "type": "integer"
+    },
+    "uniqueItems": true
+}
+```
+
+#### Error codes:
+
+`DS_JSONRPC_TOO_FEW_NODES`(3), `DS_JSONRPC_TOO_MANY_NODES`(5),
+`DS_JSONRPC_BROKEN_SIMULATION` (7), `JSONRPC_PARSE_ERROR` (-32700),
+`JSONRPC_INVALID_REQUEST` (-32600), `JSONRPC_METHOD_NOT_FOUND`
+(-32601), `JSONRPC_INVALID_PARAMS` (-32602), JSONRPC_INTERNAL_ERROR
+(-32603)
+
+#### Example:
+
+```
+$ BODY='{"jsonrpc": "2.0", "method": "get-random-nodes"}, "params": 5}, "id": 1}'
+$ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" -d "${BODY}"
+{
+  "jsonrpc": "2.0",
+  "result": [21212, 23121, 44439, 3882, 81819],
+  "id": 1
+}
+```
+
+Note: The HMAC is calculated as seen in the *publish-node*
+example. The curlrc file is as defined in that example as well.
+k
