@@ -33,7 +33,7 @@ The result returned from the call to the *publish-node* method is a
 unique `node-id` (and more) and the node must send it along with each
 HTTP request it sends to the server as a `Node-ID` HTTP header. After
 this initial call the DS knows about the association between a
-specific `node-id` and the public signing key.
+specific `node-id` and a public signing key.
 
 From here on the node must sign all HTTP requests it sends to the
 server and to do this it calculates a HMAC from the hashed body of the
@@ -46,14 +46,10 @@ There is more to this. Please read on.
 
 In this section each server method's input parameters and the result
 it produces are specified using [JSON schema](http://json-schema.org)
-specifications. Do not be scared.  if
-your are new the JSON schema.
-
-
-
-Instead of trying to read the opaque
-JSON schema specification you could sift through [Understanding JSON
-Schema](http://spacetelescope.github.io/understanding-json-schema)
+specifications. Do not be scared. If your are new to JSON schema you
+can sift through something like [Understanding JSON
+Schema](http://spacetelescope.github.io/understanding-json-schema)  
+instead of digging into the opaque JSON schema specification.
 
 <!------------------------------------------------------------------------->
 

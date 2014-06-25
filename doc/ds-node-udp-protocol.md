@@ -6,9 +6,9 @@ The DS-Node UDP protocol is bit oriented and each protocol message is
 encrypted within a 74 bytes cell. It provides a number of services
 aimed at the member nodes of an anond overlay network:
 
-* Node registration
-* Node keepalive handling
-* Node-node tunnel establishment
+* Node Registration
+* DS-Node Kepalive Handling
+* Node-Node Tunnel Establishment
 * Network topology extraction (experimental)
 
 [UDP Hole punching](http://en.wikipedia.org/wiki/UDP_hole_punching) is
@@ -44,7 +44,7 @@ to make these ports available.
 The upcoming sections describe the possible protocol interactions
 between the DS and nodes.
 
-## 2) Node registration
+## 2) Node Registration
 
 The node registration is done by each node after it has called the
 `publish-node` method, in the [DS JSON-RPC
@@ -130,7 +130,7 @@ Direction: `directory server -> node`
 |     72|  576|                                               |
 ```
 
-## 3) Node keepalive handling towards DS
+## 3) Node Keepalive Handling
 
 Most nodes sit behind NAT/firewalls and the DS needs to be able to
 reach the nodes on their external ip-addresses and UDP ports as
@@ -178,7 +178,7 @@ Direction: `node -> [directory server]`
 |     72|  576|                                               |
 ```
 
-## 4) Tunnel Establishment
+## 4) Node-Node Tunnel Establishment
 
 A node typically calls the 'get-random-nodes' method in [DS
 JSON-RPC/HTTPS server](ds-json-rpc-server.md) to maintain a healthy
