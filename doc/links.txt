@@ -1,0 +1,3 @@
+http://www.fclose.com/1372/setting-up-gateway-using-iptables-and-route-on-linux/
+https://www.virtualbox.org/manual/ch08.html
+http://serverfault.com/questions/284056/simulated-nat-traversal-on-virtual-box
