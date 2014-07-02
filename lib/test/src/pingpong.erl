@@ -18,11 +18,11 @@ loop(IpAddress, Port, RemoteIpAddress, RemotePort,  Socket) ->
         ping ->
             ok = gen_udp:send(Socket, RemoteIpAddress, RemotePort, "ping"),
             loop(IpAddress, Port, RemoteIpAddress, RemotePort, Socket);
-        {udp, Socket, RemoteIpAddress, RemotePort, Packet} ->
+        {udp, Socket, PeerIpAddress, PeerPort, Packet} ->
             io:format("Incoming from ~p:~w -> ~p~n",
-                      [RemoteIpAddress, RemotePort, Packet]),
+                      [PeerIpAddress, PeerPort, Packet]),
             timer:sleep(5000),
-            ok = gen_udp:send(Socket, RemoteIpAddress, RemotePort, Packet),
+            ok = gen_udp:send(Socket, PeerIpAddress, PeerPort, Packet),
             loop(IpAddress, Port, RemoteIpAddress, RemotePort, Socket);
         UnknownMessage ->
             io:format("Unknown message: ~p~n", [UnknownMessage])
