@@ -14,6 +14,8 @@ all: rebuild clean
 	strip ${TARGET_DIR}/erts-*/bin/inet_gethost
 	sed '/# @DEVEL_ONLY_START/,/# @DEVEL_ONLY_STOP/d' ../bin/anond > ${TARGET_DIR}/bin/anond
 	chmod +x ${TARGET_DIR}/bin/anond
+	cp ../LICENSE ../README.md ../THANKS ${TARGET_DIR}
+	cp -r ../etc ../doc ${TARGET_DIR}
 	tar --exclude=.svn -z -c -v -f ${ARCHIVE_FILE} ${TARGET_DIR}
 
 rebuild:
