@@ -8,6 +8,5 @@ fi
 
 ROOT_PASSWD=${1}
 IP=${2}
+sshpass -p ${ROOT_PASSWD} ssh -o StrictHostKeyChecking=no root@${IP} "/sbin/halt" || exit 100
 
-# Stop firewall
-sshpass -p ${ROOT_PASSWD} ssh -o StrictHostKeyChecking=no root@${IP} "/sbin/halt"

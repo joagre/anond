@@ -413,9 +413,14 @@ validate(ConfigDir, [{Name, NestedJsonSchema}|JsonSchemaRest],
     [{Name, validate(ConfigDir, NestedJsonSchema, NestedJsonTerm,
                      [Name|JsonPath])}|
      validate(ConfigDir, JsonSchemaRest, JsonTermRest, JsonPath)];
-validate(_ConfigDir, [{Name, _NestedJsonSchema}|_JsonSchemaRest],
-         [{AnotherName, _NestedJsonTerm}|_JsonTermRest], JsonPath) ->
-    throw({expected, [Name|JsonPath],[AnotherName|JsonPath]});
+% Too strict. Keep clause for future reference.
+%validate(_ConfigDir, [{Name, _NestedJsonSchema}|_JsonSchemaRest],
+%         [{AnotherName, _NestedJsonTerm}|_JsonTermRest], JsonPath) ->
+%    throw({expected, [Name|JsonPath], [AnotherName|JsonPath]});
+validate(ConfigDir, [_|JsonSchemaRest],
+         [{AnotherName, NestedJsonTerm}|JsonTermRest], JsonPath) ->
+    validate(ConfigDir, JsonSchemaRest,
+             [{AnotherName, NestedJsonTerm}|JsonTermRest], JsonPath);
 %% array of objects
 validate(ConfigDir, [JsonSchema|JsonSchemaRest],
          [JsonTerm|JsonTermRest], JsonPath)

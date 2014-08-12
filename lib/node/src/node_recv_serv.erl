@@ -642,6 +642,12 @@ udp_receiver(#udp_receiver_state{
                             udp_receiver(S)
                     end
             end;
+        {ok, {DsIpAddress, DsPort, Data}} ->
+            ?error_log({unknown_data_from_ds, DsIpAddress, DsPort, Data}),
+            udp_receiver(S);
+        {ok, {IpAddress, Port, Data}} ->
+            ?error_log({unknown_data, IpAddress, Port, Data}),
+            udp_receiver(S);
         {error, Reason} ->
             ?error_log(Reason),
             udp_receiver(S)

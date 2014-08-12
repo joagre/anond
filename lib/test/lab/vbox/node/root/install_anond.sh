@@ -1,40 +1,38 @@
 #!/bin/sh
 
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <distro>"
-    echo "Example: $0 anond-0.2"
+if [ $# -ne 3 ]; then
+    echo "Usage: $0 <distro> <directory-server> node | ds"
+    echo "Example: $0 anond-0.2 84.54.133.2:6700 node"
+    echo "Example: $0 anond-0.2 0.0.0.0:6700 ds"
     exit 1
 fi
 
 DISTRO=${1}
-NA=1.1.1.1:5000
-DS=2.2.2.2:6700
-MODE=node
+DIRECTORY_SERVER=${2}
+TYPE=${3}
 
-# Kill and remove all
-killall -q beam.smp
-killall -q tail
-killall -q screen
-rm -fr local
+# Stop anond and remove old distro
+./stop_anond.sh
+rm -fr anond *.log *.db
 
-# Unpack distro
-mkdir local
-mv ${DISTRO}.tgz local
-cd local
+# Unpack new distro
 tar xf ${DISTRO}.tgz
-cd ${DISTRO}
+mv ${DISTRO} anond
 
-# Prepare etc/local-anond.conf
-if [ "${MODE}" = "node" ]; then
-    sed -e "s/ds.anond.org:6700/${DS}/g" etc/anond.conf > etc/local-anond.conf
-else
-    cp etc/anond.conf etc/local-anond.conf
-fi
+# Create anond/etc/local-anond.conf
+case ${TYPE} in
+    node)
+	sed -e "s/127.0.0.1:6700/${DIRECTORY_SERVER}/g" anond/etc/anond.conf > anond/etc/local-anond.conf
+	;;
+    ds)
+	sed -e "s/127.0.0.1:6700/${DIRECTORY_SERVER}/g" anond/etc/anond-ds-only.conf > anond/etc/local-anond.conf
+	;;
+esac
 
 # A handy screenrc
 cat > screenrc <<EOF
-screen -t anond 1 tail --follow=name --retry bin/anond -i -c etc/local-anond.conf
-screen -t daemon.log 0 tail --follow=name --retry daemon.log
-screen -t dbg 1 tail --follow=name --retry dbg.log
-screen -t error 1 tail --follow=name --retry error.log
+screen -t anond 1 anond/bin/anond -i -c anond/etc/local-anond.conf
+screen -t daemon.log 2 tail --follow=name --retry daemon.log
+screen -t dbg.log 3 tail --follow=name --retry dbg.log
+screen -t error.log 4 tail --follow=name --retry error.log
 EOF
