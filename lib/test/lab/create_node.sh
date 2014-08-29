@@ -6,9 +6,9 @@ if [ $# -ne 2 ]; then
     exit 1
 fi
 
+ROOT_PASSWD=mortuta42
 ORIGIN_HOST_ONLY_IP=11.0.0.2
 ORIGIN_FIREWALL_IP=11.0.1.2
-ROOT_PASSWD=mortuta42
 HOST_ONLY_IP=${1}
 FIREWALL_IP=${2}
 
