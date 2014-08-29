@@ -6,12 +6,7 @@ ARCHIVE_FILE=anond-${VSN}.tgz
 all: rebuild clean
 	mkdir ${TARGET_DIR}
 	./mktarget ../bin/config.reltool ${TARGET_DIR}
-	strip ${TARGET_DIR}/erts-*/bin/beam.smp
-	strip ${TARGET_DIR}/erts-*/bin/child_setup
-	strip ${TARGET_DIR}/erts-*/bin/ct_run
-	strip ${TARGET_DIR}/erts-*/bin/erl
-	strip ${TARGET_DIR}/erts-*/bin/erlexec
-	strip ${TARGET_DIR}/erts-*/bin/inet_gethost
+	strip ${TARGET_DIR}/erts-*/bin/beam ${TARGET_DIR}/erts-*/bin/beam.smp ${TARGET_DIR}/erts-*/bin/child_setup ${TARGET_DIR}/erts-*/bin/ct_run ${TARGET_DIR}/erts-*/bin/erl ${TARGET_DIR}/erts-*/bin/erlexec ${TARGET_DIR}/erts-*/bin/inet_gethost
 	sed '/# @DEVEL_ONLY_START/,/# @DEVEL_ONLY_STOP/d' ../bin/anond > ${TARGET_DIR}/bin/anond
 	chmod +x ${TARGET_DIR}/bin/anond
 	cp ../LICENSE ../README.md ../THANKS ${TARGET_DIR}

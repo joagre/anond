@@ -12,6 +12,7 @@ ORIGIN_BRIDGE_IP=192.168.1.2
 ORIGIN_GATEWAY_IP=192.168.1.254
 HOST_ONLY_IP=${1}
 BRIDGE_IP=${2}
+GATEWAY_IP=${3}
 
 # Clone firewall
 VBoxManage clonevm --register --name firewall-${BRIDGE_IP} firewall || exit 100
