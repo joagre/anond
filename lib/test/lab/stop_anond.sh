@@ -1,7 +1,7 @@
 #!/bin/sh
 
 if [ $# -ne 1 ]; then
-    echo "Usage: $0 <host-only-ip> "
+    echo "Usage: $0 <host-only-ip>"
     echo "Example: $0 10.0.0.3"
     exit 1
 fi
