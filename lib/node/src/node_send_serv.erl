@@ -5,6 +5,10 @@
 -export([send/2]).
 -export([set_shared_key/2]).
 
+%%% system exports
+-export([system_continue/3, system_terminate/4, system_code_change/4,
+         system_get_state/1, system_replace_state/2]).
+
 %%% internal exports
 -export([init/6]).
 
@@ -226,6 +230,8 @@ loop(#state{parent = Parent,
 	    From ! {self(), ok};
         {'EXIT', Parent, Reason} ->
             exit(Reason);
+        {system, From, Msg} ->
+            sys:handle_system_msg(Msg, From, Parent, ?MODULE, [], S);
 	UnknownMessage ->
 	    ?error_log({unknown_message, UnknownMessage}),
 	    loop(S)
@@ -240,6 +246,22 @@ loop(#state{parent = Parent,
                     loop(S#state{cell_buffer = [], cell_size = 0})
             end
     end.
+
+system_continue(_Parent, _Debug, S) ->
+    loop(S).
+
+system_terminate(Reason, _Parent, _Debug, _S) ->
+    exit(Reason).
+
+system_code_change(S, _Module, _OldVsn, _Extra) ->
+    {ok, S}.
+
+system_get_state(S) ->
+    {ok, S}.
+
+system_replace_state(StateFun, S) ->
+    NewS = StateFun(S),
+    {ok, NewS, NewS}.
 
 send_cell(MyNodeId, {NeighbourIpAddress, NeighbourPort}, Socket, SharedKey,
           CellBuffer, CellSize, MaxCellSize) ->

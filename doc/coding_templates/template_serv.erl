@@ -2,6 +2,8 @@
 
 %%% external exports
 -export([start_link/0, start_link/1, stop/1, stop/2]).
+
+%%% system exports
 -export([system_continue/3, system_terminate/4, system_code_change/4,
          system_get_state/1, system_replace_state/2]).
 

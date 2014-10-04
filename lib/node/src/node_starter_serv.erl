@@ -3,6 +3,10 @@
 %%% external exports
 -export([start_link/0, stop/1, stop/2]).
 
+%%% system exports
+-export([system_continue/3, system_terminate/4, system_code_change/4,
+         system_get_state/1, system_replace_state/2]).
+
 %%% internal exports
 -export([init/1]).
 
@@ -69,10 +73,28 @@ loop(#state{parent = Parent} = S) ->
 	    From ! {self(), ok};
 	{'EXIT', Parent, Reason} ->
             exit(Reason);
+        {system, From, Msg} ->
+            sys:handle_system_msg(Msg, From, Parent, ?MODULE, [], S);
 	UnknownMessage ->
 	    ?error_log({unknown_message, UnknownMessage}),
 	    loop(S)
     end.
+
+system_continue(_Parent, _Debug, S) ->
+    loop(S).
+
+system_terminate(Reason, _Parent, _Debug, _S) ->
+    exit(Reason).
+
+system_code_change(S, _Module, _OldVsn, _Extra) ->
+    {ok, S}.
+
+system_get_state(S) ->
+    {ok, S}.
+
+system_replace_state(StateFun, S) ->
+    NewS = StateFun(S),
+    {ok, NewS, NewS}.
 
 %%%
 %%% init
