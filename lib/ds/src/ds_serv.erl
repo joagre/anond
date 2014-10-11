@@ -639,22 +639,30 @@ allocate_node_id(NodeDb, LatestNodeId, DsId, SimulatedNodeIds, Na) ->
         {value, {Na, NodeId}} ->
             {ok, NodeId};
         false ->
-	    allocate_node_id(NodeDb, LatestNodeId, DsId, Na)
+	    do_allocate_node_id(NodeDb, LatestNodeId, DsId, SimulatedNodeIds,
+				Na)
     end.
 
-allocate_node_id(NodeDb, LatestNodeId, DsId, Na)
+do_allocate_node_id(NodeDb, LatestNodeId, DsId, SimulatedNodeIds, Na)
   when LatestNodeId == ?LARGEST_NODE_ID ->
-    allocate_node_id(NodeDb, 1, DsId, Na);
-allocate_node_id(NodeDb, LatestNodeId, DsId, Na) ->
+    do_allocate_node_id(NodeDb, 1, DsId, SimulatedNodeIds, Na);
+do_allocate_node_id(NodeDb, LatestNodeId, DsId, SimulatedNodeIds, Na) ->
     NextNodeId = LatestNodeId+1,
     if
         NextNodeId == DsId ->
-            allocate_node_id(NodeDb, NextNodeId, DsId, Na);
+            do_allocate_node_id(NodeDb, NextNodeId, DsId, SimulatedNodeIds, Na);
         true ->
             case dets:lookup(NodeDb, NextNodeId) of
                 [] ->
-                    {ok, NextNodeId};
+		    case lists:keymember(NextNodeId, 2, SimulatedNodeIds) of
+			true ->
+			    do_allocate_node_id(NodeDb, NextNodeId, DsId,
+						SimulatedNodeIds, Na);
+			false ->
+			    {ok, NextNodeId}
+		    end;
                 _ ->
-                    allocate_node_id(NodeDb, NextNodeId, DsId, Na)
+                    do_allocate_node_id(NodeDb, NextNodeId, DsId,
+					SimulatedNodeIds, Na)
             end
     end.
