@@ -33,19 +33,20 @@
 
 %%% records
 -record(state, {
-	  parent             :: pid(),
-	  node_db            :: atom(),
-          oa_db              :: dets:tid(),
-          latest_node_id = 1 :: non_neg_integer(),
-          ds_id              :: node_id(),
+	  parent                       :: pid(),
+	  node_db                      :: atom(),
+          oa_db                        :: dets:tid(),
+          latest_node_id = 1           :: non_neg_integer(),
+          ds_id                        :: node_id(),
           %% anond.conf parameters
-          mode               :: common_config_jsonrpc_serv:mode(),
-          db_directory       :: binary(),
-          db_clear_on_start  :: boolean(),
-          node_ttl           :: non_neg_integer(),
-          hard_node_ttl      :: non_neg_integer(),
-          max_random_nodes   :: non_neg_integer(),
-          max_oas_per_node   :: non_neg_integer()
+          db_directory                 :: binary(),
+          db_clear_on_start            :: boolean(),
+          node_ttl                     :: non_neg_integer(),
+          hard_node_ttl                :: non_neg_integer(),
+          max_random_nodes             :: non_neg_integer(),
+          max_oas_per_node             :: non_neg_integer(),
+	  simulated_node_ids           :: [{na(), node_id()}],
+	  simulated_neighbour_node_ids :: [{node_id(), [node_id()]}]
 	 }).
 
 %%% types
@@ -139,8 +140,7 @@ get_all_nodes() ->
                               {'ok', [#node_descriptor{}]} |
                               {'error',
                                'too_few_nodes' |
-                               {'too_many_nodes', non_neg_integer()} |
-                               'broken_simulation'}.
+                               {'too_many_nodes', non_neg_integer()}}.
 
 get_random_nodes(MyNodeId, N) ->
     serv:call(?MODULE, {get_random_nodes, MyNodeId, N}).
@@ -151,8 +151,7 @@ get_random_nodes(MyNodeId, N) ->
 
 -spec publish_node(#node_descriptor{}) ->
                           {'ok', ds_id(), node_id(), SharedKey :: binary(),
-                           NodeTTL :: non_neg_integer()} |
-                          {'error', 'broken_simulation'}.
+                           NodeTTL :: non_neg_integer()}.
 
 publish_node(Nd) ->
     serv:call(?MODULE, {publish_node, Nd}).
@@ -245,7 +244,7 @@ init(Parent) ->
                         {ok, OaDb} ->
                             timelib:start_timer(
                               ?HOUSEKEEPING_INTERVAL, {housekeeping, true}),
-                            DsId = mk_random_ds_id(S#state.mode),
+                            DsId = mk_random_ds_id(S#state.simulated_node_ids),
                             Parent ! {self(), started},
                             loop(S#state{parent = Parent, node_db = NodeDb,
                                          oa_db = OaDb, ds_id = DsId});
@@ -266,13 +265,14 @@ loop(#state{parent = Parent,
             oa_db = OaDb,
             latest_node_id = LatestNodeId,
             ds_id = DsId,
-            mode = Mode,
             db_directory = _DbDirectory,
             db_clear_on_start = _DbCLearOnStart,
             node_ttl = NodeTTL,
             hard_node_ttl = HardNodeTTL,
             max_random_nodes = MaxRandomNodes,
-            max_oas_per_node = MaxOasPerNode} = S) ->
+            max_oas_per_node = MaxOasPerNode,
+	    simulated_node_ids = SimulatedNodeIds,
+	    simulated_neighbour_node_ids = SimulatedNeighbourNodeIds} = S) ->
     receive
         config_updated ->
             ?daemon_log(
@@ -361,62 +361,52 @@ loop(#state{parent = Parent,
             AllNds = dets:foldl(fun(Nd, Acc) -> [Nd|Acc] end, [], NodeDb),
             From ! {self(), {ok, AllNds}},
             loop(S);
-        %% see doc/small_simulation.jpg; return two non-random nodes
-        {From, {get_random_nodes, MyNodeId, _N}} when Mode == simulation ->
-            %% NOTE: In simulation mode we always return 2 nodes,
-            %% i.e. _N is ignored.
-            case get_simulated_nodes(MyNodeId) of
-                {ok, SimulatedNodeIds} ->
-                    ?daemon_log(
-                       "Node ~w was presented with the following random "
-                       "neighbours: ~w", [MyNodeId, SimulatedNodeIds]),
-                    From ! {self(), {ok, SimulatedNodeIds}},
-                    loop(S);
-                {error, Reason} ->
-                    ?daemon_log(
-                       "Node ~w could not be presented with 2 random "
-                       "neighbours", [MyNodeId]),
-                    From ! {self(), {error, Reason}},
-                    loop(S)
-            end;
         {From, {get_random_nodes, MyNodeId, N}}
           when is_integer(N) andalso N < MaxRandomNodes ->
-            case dets:info(NodeDb, size) of
-                Size when N >= Size ->
+            case get_simulated_nodes(SimulatedNeighbourNodeIds, MyNodeId) of
+                {ok, NeighbourNodeIds} ->
                     ?daemon_log(
-                       "Node ~w could not be presented with ~w random "
-                       "neighbours. Only ~w are available.",
-                       [MyNodeId, N, Size]),
-                    From ! {self(), {error, too_few_nodes}},
+                       "Node ~w was presented with the following simulated "
+                       "neighbours: ~w", [MyNodeId, NeighbourNodeIds]),
+                    From ! {self(), {ok, NeighbourNodeIds}},
                     loop(S);
-                _Size ->
-                    RandomNodeIds = get_random_nodes(NodeDb, DsId, MyNodeId, N),
-                    ?daemon_log(
-                       "Node ~w was presented with the following random "
-                       "neighbours: ~w", [MyNodeId, RandomNodeIds]),
-                    From ! {self(), {ok, RandomNodeIds}},
-                    loop(S)
-            end;
+		not_simulated ->
+		    case dets:info(NodeDb, size) of
+			Size when N >= Size ->
+			    ?daemon_log(
+			       "Node ~w could not be presented with ~w random "
+			       "neighbours. Only ~w are available.",
+			       [MyNodeId, N, Size]),
+			    From ! {self(), {error, too_few_nodes}},
+			    loop(S);
+			_Size ->
+			    RandomNodeIds =
+				get_random_nodes(NodeDb, DsId, MyNodeId, N),
+			    ?daemon_log(
+			       "Node ~w was presented with the following "
+			       "random neighbours: ~w",
+			       [MyNodeId, RandomNodeIds]),
+			    From ! {self(), {ok, RandomNodeIds}},
+			    loop(S)
+		    end
+	    end;
         {From, {get_random_nodes, _MyNodeId, N}} when is_integer(N) ->
             From ! {self(), {error, {too_many_nodes, MaxRandomNodes}}},
             loop(S);
         {From, {publish_node, #node_descriptor{node_id = 0, na = Na} = Nd}} ->
-            case allocate_node_id(NodeDb, LatestNodeId, DsId, Mode, Na) of
-                {ok, NewNodeId} ->
-                    SharedKey = salt:crypto_random_bytes(32),
-                    UpdatedNd =
-                        Nd#node_descriptor{node_id = NewNodeId,
-                                           na = undefined,
-                                           shared_key = SharedKey,
-                                           last_updated = timelib:ugnow()},
-                    ok = dets:insert(NodeDb, UpdatedNd),
-                    ?daemon_log("Node ~w has been published", [NewNodeId]),
-                    From ! {self(), {ok, DsId, NewNodeId, SharedKey, NodeTTL}},
-                    loop(S#state{latest_node_id = NewNodeId});
-                {error, Reason} ->
-                    From ! {self(), {error, Reason}},
-                    loop(S)
-            end;
+	    {ok, NewNodeId} =
+		allocate_node_id(NodeDb, LatestNodeId, DsId, SimulatedNodeIds,
+				 Na),
+	    SharedKey = salt:crypto_random_bytes(32),
+	    UpdatedNd =
+		Nd#node_descriptor{node_id = NewNodeId,
+				   na = undefined,
+				   shared_key = SharedKey,
+				   last_updated = timelib:ugnow()},
+	    ok = dets:insert(NodeDb, UpdatedNd),
+	    ?daemon_log("Node ~w has been published", [NewNodeId]),
+	    From ! {self(), {ok, DsId, NewNodeId, SharedKey, NodeTTL}},
+	    loop(S#state{latest_node_id = NewNodeId});
         {From, {publish_node, #node_descriptor{node_id = NodeId} = Nd}} ->
             SharedKey = salt:crypto_random_bytes(32),
             UpdatedNd = Nd#node_descriptor{shared_key = SharedKey,
@@ -542,25 +532,36 @@ system_replace_state(StateFun, S) ->
 %%%
 
 read_config(S) ->
-    Mode = ?config([mode]),
     DbDirectory = ?config(['directory-server', db, directory]),
     DbClearOnStart = ?config(['directory-server', db, 'clear-on-start']),
     NodeTTL = ?config(['directory-server', 'node-ttl']),
     HardNodeTTL = ?config(['directory-server', 'hard-node-ttl']),
     MaxRandomNodes = ?config(['directory-server', 'max-random-nodes']),
     MaxOasPerNode = ?config(['directory-server', 'max-oas-per-node']),
-    S#state{mode = Mode, db_directory = DbDirectory,
-            db_clear_on_start = DbClearOnStart, node_ttl = NodeTTL,
-            hard_node_ttl = HardNodeTTL, max_random_nodes = MaxRandomNodes,
-            max_oas_per_node = MaxOasPerNode}.
+    SimulatedNodeIds =
+	[{Na, NodeId} ||
+	    [{'node-address', Na},
+	     {simulation, [{'node-id', NodeId}|_]}|_] <- ?config(['nodes'])],
+    SimulatedNeighbourNodeIds =
+	[{NodeId,
+	  [NeighbourNodeId ||
+	      [{'node-id', NeighbourNodeId}|_] <- Neighbours]} ||
+	    [{'node-address', _Na},
+	     {simulation, [{'node-id', NodeId},
+			   {'neighbours', Neighbours}|_]}|_] <-
+		?config(['nodes'])],
+    S#state{db_directory = DbDirectory, db_clear_on_start = DbClearOnStart,
+	    node_ttl = NodeTTL, hard_node_ttl = HardNodeTTL,
+	    max_random_nodes = MaxRandomNodes, max_oas_per_node = MaxOasPerNode,
+	    simulated_node_ids = SimulatedNodeIds,
+	    simulated_neighbour_node_ids = SimulatedNeighbourNodeIds
+	   }.
 
-mk_random_ds_id(normal) ->
-    random:uniform(?LARGEST_NODE_ID-1)+1;
-mk_random_ds_id(simulation) ->
+mk_random_ds_id(SimulatedNodeIds) ->
     DsId = random:uniform(?LARGEST_NODE_ID-1)+1,
-    case lists:keymember(DsId, 2, ?SIMULATED_NODE_IDS) of
+    case lists:keymember(DsId, 2, SimulatedNodeIds) of
         true ->
-            mk_random_ds_id(simulation);
+            mk_random_ds_id(SimulatedNodeIds);
         false ->
             DsId
     end.
@@ -569,12 +570,12 @@ mk_random_ds_id(simulation) ->
 %%% get_random_nodes
 %%%
 
-get_simulated_nodes(MyNodeId) ->
-    case lists:keysearch(MyNodeId, 1, ?SIMULATED_NEIGHBOUR_NODE_IDS) of
+get_simulated_nodes(SimulatedNeighbourNodeIds, MyNodeId) ->
+    case lists:keysearch(MyNodeId, 1, SimulatedNeighbourNodeIds) of
         {value, {MyNodeId, NeighbourNodeIds}} ->
             {ok, NeighbourNodeIds};
         false ->
-            {error, broken_simulation}
+            not_simulated
     end.
 
 %% http://en.wikipedia.org/wiki/Reservoir_sampling
@@ -633,26 +634,27 @@ extract_node_sample(NodeDb, DsId, MyNodeId, NodeId, N, Tid, M) ->
 %%% publish_node
 %%%
 
-allocate_node_id(_NodeDb, _LatestNodeId, _DsId, simulation, Na) ->
-    case lists:keysearch(Na, 1, ?SIMULATED_NODE_IDS) of
+allocate_node_id(NodeDb, LatestNodeId, DsId, SimulatedNodeIds, Na) ->
+    case lists:keysearch(Na, 1, SimulatedNodeIds) of
         {value, {Na, NodeId}} ->
             {ok, NodeId};
         false ->
-            {error, broken_simulation}
-    end;
-allocate_node_id(NodeDb, LatestNodeId, DsId, Mode, Na)
+	    allocate_node_id(NodeDb, LatestNodeId, DsId, Na)
+    end.
+
+allocate_node_id(NodeDb, LatestNodeId, DsId, Na)
   when LatestNodeId == ?LARGEST_NODE_ID ->
-    allocate_node_id(NodeDb, 1, DsId, Mode, Na);
-allocate_node_id(NodeDb, LatestNodeId, DsId, Mode, Na) ->
+    allocate_node_id(NodeDb, 1, DsId, Na);
+allocate_node_id(NodeDb, LatestNodeId, DsId, Na) ->
     NextNodeId = LatestNodeId+1,
     if
         NextNodeId == DsId ->
-            allocate_node_id(NodeDb, NextNodeId, DsId, Mode, Na);
+            allocate_node_id(NodeDb, NextNodeId, DsId, Na);
         true ->
             case dets:lookup(NodeDb, NextNodeId) of
                 [] ->
                     {ok, NextNodeId};
                 _ ->
-                    allocate_node_id(NodeDb, NextNodeId, DsId, Mode, Na)
+                    allocate_node_id(NodeDb, NextNodeId, DsId, Na)
             end
     end.

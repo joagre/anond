@@ -3,7 +3,6 @@
 %%% external exports
 -export([start_link/0]).
 -export([stop/0, reload/0]).
--export_type([mode/0]).
 
 %%% internal exports
 -export([config_handler/1]).
@@ -18,12 +17,7 @@
 -define(DEFAULT_CONTROL_ADDRESS, {127, 0, 0, 1}).
 -define(DEFAULT_CONTROL_PORT, 23313).
 -define(JSON_SCHEMA,
-        [{mode,
-          #json_type{name = string, typical = normal,
-                     convert = fun(<<"normal">>) -> normal;
-                                  (<<"simulation">>) -> simulation
-                               end}},
-         {'directory-server',
+        [{'directory-server',
           [{listen,
             #json_type{name = 'ipv4address:port',
                        typical = {{192,168,1,80}, 6700},
@@ -52,6 +46,14 @@
          {nodes,
           [[{'node-address',
              #json_type{name = 'ipv4address:port', reloadable = false}},
+	    {simulation,
+	     [{'node-id', 
+	       #json_type{name = {int, 0, 4294967295}, typical = 100}},
+	      {neighbours,
+	       [[{'node-id', 
+		  #json_type{name = {int, 0, 4294967295}, typical = 100}},
+		 {'path-cost', 
+		  #json_type{name = {int, 0, 1024}, typical = 100}}]]}]},
             {'logging',
              #json_type{name = bool, typical = true}},
             {'experimental-api',
@@ -158,7 +160,6 @@
 %%% records
 
 %%% types
--type mode() :: 'normal' | 'simulation'.
 
 %%%
 %%% exported: start_link

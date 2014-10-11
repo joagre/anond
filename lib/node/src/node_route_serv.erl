@@ -34,35 +34,35 @@
 
 %%% records
 -record(state, {
-          parent                      :: pid(),
-          system_db                   :: dets:tid(),
-          node_db                     :: node_db(),
-          route_db                    :: route_db(),
-          psp_db                      :: node_psp:psp_db(),
-          ds_id                       :: ds_id(),
-          my_node_id                  :: node_id(),
-          shared_key                  :: binary(),
-          ttl                         :: non_neg_integer(),
-          neighbour_node_ids = []     :: [node_id()],
-          node_instance_sup           :: supervisor:child(),
-          node_recv_serv              :: pid(),
-          node_path_cost_serv         :: pid(),
+          parent                       :: pid(),
+	  simulated_neighbours = false :: boolean(),
+          system_db                    :: dets:tid(),
+          node_db                      :: node_db(),
+          route_db                     :: route_db(),
+          psp_db                       :: node_psp:psp_db(),
+          ds_id                        :: ds_id(),
+          my_node_id                   :: node_id(),
+          shared_key                   :: binary(),
+          ttl                          :: non_neg_integer(),
+          neighbour_node_ids = []      :: [node_id()],
+          node_instance_sup            :: supervisor:child(),
+          node_recv_serv               :: pid(),
+          node_path_cost_serv          :: pid(),
           %% anond.conf parameters
-          mode                        :: common_config_json_serv:mode(),
-          my_na                       :: na(),
-          logging                     :: boolean(),
-          experimental_api            :: boolean(),
-          db_directory                :: binary(),
-          db_clear_on_start           :: boolean(),
-          directory_server            :: {inet:ip4_address(),
-                                          inet:port_number()},
-          my_oa                       :: oa(),
-	  public_key                  :: binary(),
-	  secret_key                  :: binary(),
-          number_of_neighbours        :: non_neg_integer(),
-          refresh_neighbours_interval :: non_neg_integer(),
-          recalc_interval             :: non_neg_integer(),
-          auto_recalc                 :: boolean()
+          my_na                        :: na(),
+          logging                      :: boolean(),
+          experimental_api             :: boolean(),
+          db_directory                 :: binary(),
+          db_clear_on_start            :: boolean(),
+          directory_server             :: {inet:ip4_address(),
+					   inet:port_number()},
+          my_oa                        :: oa(),
+	  public_key                   :: binary(),
+	  secret_key                   :: binary(),
+          number_of_neighbours         :: non_neg_integer(),
+          refresh_neighbours_interval  :: non_neg_integer(),
+          recalc_interval              :: non_neg_integer(),
+          auto_recalc                  :: boolean()
 	 }).
 
 %%% types
@@ -254,6 +254,7 @@ init(Parent, MyNa, NodeInstanceSup) ->
     end.
 
 loop(#state{parent = Parent,
+	    simulated_neighbours = SimulatedNeighbours,
             system_db = SystemDb,
             node_db = NodeDb,
 	    route_db = RouteDb,
@@ -266,7 +267,6 @@ loop(#state{parent = Parent,
             node_instance_sup = NodeInstanceSup,
             node_recv_serv = NodeRecvServ,
             node_path_cost_serv = NodePathCostServ,
-            mode = Mode,
             my_na = {MyIpAddress, _} = MyNa,
             logging = _Logging,
             experimental_api = _ExperimentalApi,
@@ -368,7 +368,8 @@ loop(#state{parent = Parent,
                            NodeRecvServ, NewMyNodeId, NewDsId, NewSharedKey),
                     if
                         RestartTimer ->
-                            timelib:start_timer(trunc(NewTTL/2), {republish_self, true});
+                            timelib:start_timer(trunc(NewTTL/2),
+						{republish_self, true});
                         true ->
                             ok
                     end,
@@ -380,17 +381,18 @@ loop(#state{parent = Parent,
                        "Node ~w (~s) could not republish itself and will retry "
                        "in 5 seconds",
                        [MyNodeId, net_tools:string_address(MyNa)]),
-                    timelib:start_timer({5, seconds}, {republish_self, RestartTimer}),
+                    timelib:start_timer({5, seconds},
+					{republish_self, RestartTimer}),
                     loop(S)
             end;
         refresh_neighbours ->
             ?daemon_log("Node ~w (~s) starts to refresh its neighbour nodes",
                         [MyNodeId, net_tools:string_address(MyNa)]),
             case refresh_neighbours(
-                   NodeDb, RouteDb, PspDb, MyNodeId, NeighbourNodeIds,
-                   NodeInstanceSup, NodeRecvServ, NodePathCostServ,
-                   DsIpAddressPort, Mode, MyNa, SecretKey, NumberOfNeighbours,
-                   AutoRecalc) of
+                   SimulatedNeighbours, NodeDb, RouteDb, PspDb, MyNodeId,
+		   NeighbourNodeIds, NodeInstanceSup, NodeRecvServ,
+		   NodePathCostServ, DsIpAddressPort, MyNa, SecretKey,
+		   NumberOfNeighbours, AutoRecalc) of
                 {ok, NewNeighbourNodeIds} ->
                     timelib:start_timer(
                       RefreshNeighboursInterval, refresh_neighbours),
@@ -505,13 +507,16 @@ system_replace_state(StateFun, S) ->
 %%%
 
 read_config(S) ->
-    Mode = ?config([mode]),
     NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
-    read_config(S#state{mode = Mode}, NodeInstance).
+    read_config(S#state{}, NodeInstance).
 
 read_config(S, []) ->
     S;
-read_config(S, [{'logging', Value}|Rest]) ->
+read_config(S, [{simulation, [{'node-id', NodeId},
+			      {'neighbours', Neighbours}|_]}|Rest])
+  when Neighbours /= [] ->
+    read_config(S#state{simulated_neighbours = true}, Rest);
+read_config(S, [{logging, Value}|Rest]) ->
     read_config(S#state{logging = Value}, Rest);
 read_config(S, [{'directory-server', Value}|Rest]) ->
     read_config(S#state{directory_server = Value}, Rest);
@@ -560,8 +565,8 @@ set_my_node_id(SystemDb, MyNodeId) ->
 %%%
 
 refresh_neighbours(
-  NodeDb, RouteDb, PspDb, MyNodeId, NeighbourNodeIds, NodeInstanceSup,
-  NodeRecvServ, NodePathCostServ, DsIpAddressPort, Mode,
+  SimulatedNeighbours, NodeDb, RouteDb, PspDb, MyNodeId, NeighbourNodeIds,
+  NodeInstanceSup, NodeRecvServ, NodePathCostServ, DsIpAddressPort,
   MyNa = {MyIpAddress, _}, SecretKey, NumberOfNeighbours, AutoRecalc) ->
     MyNaStringAddress = net_tools:string_address(MyNa),
     ?daemon_log("Node ~w (~s) known neighbour nodes: ~w",
@@ -583,32 +588,32 @@ refresh_neighbours(
                 StillPublishedNeighbourNodeIds--UnreachableNeighbourNodeIds,
             ?daemon_log("Node ~w (~s) living neighbour nodes: ~w",
                         [MyNodeId, MyNaStringAddress, LivingNeighbourNodeIds]),
-            %% NOTE: In simulation mode we always want to have the
-            %% nodes refered to in ?SIMULATED_NEIGHBOUR_NODE_IDS
-            %% (ds/include/ds.hrl) as neighbours. This means that we
-            %% are not satisfied with the number of neighbours even
-            %% though it has been satisified numerically according to
-            %% the settings in anond.conf, i.e. we do not count
-            %% incoming nodes in simulation mode. We do this to make
-            %% the simulation behave the same each time anond is started.
-            case Mode of
-                normal ->
+            %% NOTE: If simulated neighbours have been defined for
+	    %% this node, in anond.conf, we are not satisfied with the
+	    %% number of neighbours even though it has been satisified
+	    %% numerically according to the "number-of-neighbours"
+	    %% settings in anond.conf, i.e. we do not count incoming
+	    %% nodes. We do this to make the neighbour simulation
+	    %% behave the same each time anond is started, i.e. always
+	    %% get the same number of neighbours.
+            case SimulatedNeighbours of
+                false ->
                     NumberOfMissingNeighbours =
                         NumberOfNeighbours-length(LivingNeighbourNodeIds);
-                simulation ->
+                true ->
                     LivingNonIncomingNeighbourNodeIds =
                         lists:foldl(
                           fun(LivingNeighbourNodeId, Acc) ->
-                              case node_route:lookup_node(
-                                     NodeDb, LivingNeighbourNodeId) of
-                                  [#node{flags = Flags}]
-                                    when ?bit_is_set(
-                                            Flags,
-                                            ?F_NODE_IS_INCOMING_NEIGHBOUR) ->
-                                      Acc;
-                                  [_] ->
-                                      [LivingNeighbourNodeId|Acc]
-                              end
+			      case node_route:lookup_node(
+				     NodeDb, LivingNeighbourNodeId) of
+				  [#node{flags = Flags}]
+				    when ?bit_is_set(
+					    Flags,
+					    ?F_NODE_IS_INCOMING_NEIGHBOUR) ->
+				      Acc;
+				  [_] ->
+				      [LivingNeighbourNodeId|Acc]
+			      end
                           end, [], LivingNeighbourNodeIds),
                     NumberOfMissingNeighbours =
                         NumberOfNeighbours-

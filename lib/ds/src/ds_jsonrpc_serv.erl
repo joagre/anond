@@ -61,18 +61,14 @@ ds_handler(NodeId, <<"publish-node">>, Params, _S) ->
         MyNa = get_na(<<"my-na">>, Params, {{0, 0, 0, 0}, 0}),
         Nd = #node_descriptor{node_id = NodeId, na = MyNa,
                               public_key = PublicKey},
-        case ds_serv:publish_node(Nd) of
-            {ok, DsId, NewNodeId, SharedKey, NodeTTL} ->
-                Result =
-                    [{<<"ds-id">>, DsId},
-                     {<<"node-id">>, NewNodeId},
-                     {<<"shared-key">>, base64:encode(SharedKey)},
-                     {<<"node-ttl">>, NodeTTL}],
-                {ok, Result};
-            {error, broken_simulation} ->
-                {error, #json_error{
-                   code = ?DS_JSONRPC_BROKEN_SIMULATION}}
-        end
+	{ok, DsId, NewNodeId, SharedKey, NodeTTL} =
+	    ds_serv:publish_node(Nd),
+	Result =
+	    [{<<"ds-id">>, DsId},
+	     {<<"node-id">>, NewNodeId},
+	     {<<"shared-key">>, base64:encode(SharedKey)},
+	     {<<"node-ttl">>, NodeTTL}],
+	{ok, Result}
     catch
         throw:JsonError when is_record(JsonError, json_error) ->
             {error, JsonError};
@@ -113,9 +109,7 @@ ds_handler(NodeId, <<"get-random-nodes">>, N, _S) when is_integer(N) ->
             {error, #json_error{code = ?DS_JSONRPC_TOO_FEW_NODES}};
         {error, {too_many_nodes, MaxRandomNodes}} ->
             {error, #json_error{code = ?DS_JSONRPC_TOO_MANY_NODES,
-                                data = MaxRandomNodes}};
-        {error, broken_simulation} ->
-            {error, #json_error{code = ?DS_JSONRPC_BROKEN_SIMULATION}}
+                                data = MaxRandomNodes}}
     end;
 ds_handler(_NodeId, <<"get-random-nodes">>, _Params, _S) ->
     JsonError = #json_error{code = ?JSONRPC_INVALID_PARAMS},

@@ -31,12 +31,12 @@
           node_db                           :: node_db(),
           route_db                          :: route_db(),
           node_route_serv                   :: pid(),
-          my_node_id = 0                   :: node_id(),
+          my_node_id = 0                    :: node_id(),
           neighbour_node_ids = []           :: [node_id()],
           unique_id = 0                     :: non_neg_integer(),
           %% anond.conf parameters
-          mode                              :: common_config_json_serv:mode(),
           my_na                             :: na(),
+	  simulated_path_costs = []         :: [{node_id(), path_cost()}],
           logging                           :: boolean(),
           number_of_echo_requests           :: non_neg_integer(),
           acceptable_number_of_echo_replies :: non_neg_integer(),
@@ -125,8 +125,8 @@ loop(#state{parent = Parent,
             my_node_id = MyNodeId,
             neighbour_node_ids = NeighbourNodeIds,
             unique_id = UniqueId,
-            mode = Mode,
             my_na = MyNa,
+	    simulated_path_costs = SimulatedPcs,
             logging = _Logging,
             number_of_echo_requests = NumberOfEchoRequests,
             acceptable_number_of_echo_replies = AcceptableNumberOfEchoReplies,
@@ -146,13 +146,22 @@ loop(#state{parent = Parent,
         measure when MyNodeId == 0 ->
             NewMyNodeId = node_route_serv:get_my_node_id(NodeRouteServ),
             timelib:start_timer(DelayBetweenMeasurements, measure),
-            loop(S#state{my_node_id = NewMyNodeId});
+	    NewSimulatedPcs =
+		read_simulated_path_costs(NewMyNodeId, ?config(['nodes'])),
+            loop(S#state{my_node_id = NewMyNodeId,
+			 simulated_path_costs = NewSimulatedPcs});
         measure ->
             NeighbourNodeId = hd(NeighbourNodeIds),
             RotatedNeighbourNodeIds =
                 rotate_neighbour_node_ids(NeighbourNodeIds),
-            case Mode of
-                normal ->
+	    case get_simulated_path_cost(SimulatedPcs, NeighbourNodeId) of
+		{ok, SimulatedPc} ->
+                    Pc = nudge_path_cost(SimulatedPc, ?PERCENT_NUDGE),
+                    ok = node_route_serv:update_path_cost(
+                           NodeRouteServ, NeighbourNodeId, Pc),
+                    timelib:start_timer(DelayBetweenMeasurements, measure),
+                    loop(S#state{neighbour_node_ids = RotatedNeighbourNodeIds});
+		not_simulated ->
                     Pc = measure_path_cost(
                            NodeDb, RouteDb, UniqueId, MyNodeId,
                            NumberOfEchoRequests, AcceptableNumberOfEchoReplies,
@@ -162,18 +171,8 @@ loop(#state{parent = Parent,
                            NodeRouteServ, NeighbourNodeId, Pc),
                     timelib:start_timer(DelayBetweenMeasurements, measure),
                     loop(S#state{neighbour_node_ids = RotatedNeighbourNodeIds,
-                                 unique_id = UniqueId+1});
-                %% see doc/small_simulation.jpg
-                simulation ->
-                    {value, {_, StoredPc}} =
-                        lists:keysearch({MyNodeId, NeighbourNodeId}, 1,
-                                        ?SIMULATED_PATH_COSTS),
-                    Pc = nudge_path_cost(StoredPc, ?PERCENT_NUDGE),
-                    ok = node_route_serv:update_path_cost(
-                           NodeRouteServ, NeighbourNodeId, Pc),
-                    timelib:start_timer(DelayBetweenMeasurements, measure),
-                    loop(S#state{neighbour_node_ids = RotatedNeighbourNodeIds})
-            end;
+                                 unique_id = UniqueId+1})
+	    end;
 	{From, stop} ->
 	    From ! {self(), ok};
         {'EXIT', Parent, Reason} ->
@@ -236,12 +235,12 @@ measure_path_cost(
             ?NODE_UNREACHABLE
     end.
 
-truncate_path_cost(PathCost) ->
-    case trunc(PathCost) of
-        TruncatedPathCost when TruncatedPathCost >= ?NODE_UNREACHABLE ->
+truncate_path_cost(Pc) ->
+    case trunc(Pc) of
+        TruncatedPc when TruncatedPc >= ?NODE_UNREACHABLE ->
             ?NODE_UNREACHABLE-1;
-        TruncatedPathCost ->
-            TruncatedPathCost
+        TruncatedPc ->
+            TruncatedPc
     end.
 
 send_echo_requests(_UniqueId, 0, _DelayBetweenEchoRequests, _NodeSendServ,
@@ -287,12 +286,53 @@ nudge_path_cost(Pc, Percent) ->
 %%%
 
 read_config(S) ->
-    Mode = ?config([mode]),
+    SimulatedPcs =
+	read_simulated_path_costs(S#state.my_node_id, ?config(['nodes'])),
     NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
-    NewS = read_config(S#state{mode = Mode}, NodeInstance),
-    {value, {'path-cost', PathCost}} =
-        lists:keysearch('path-cost', 1, NodeInstance),
-    read_config_path_cost(NewS, PathCost).
+    NewS = read_config(S#state{simulated_path_costs = SimulatedPcs},
+		       NodeInstance),
+    {value, {'path-cost', Pc}} = lists:keysearch('path-cost', 1, NodeInstance),
+    read_config_path_cost(NewS, Pc).
+
+read_simulated_path_costs(0, _Nodes) ->
+    [];
+read_simulated_path_costs(MyNodeId, Nodes) ->
+    read_simulated_path_costs(MyNodeId, Nodes, []).
+
+read_simulated_path_costs(_MyNodeId, [], Acc) ->
+    Acc;
+%% this node picked the following neighbour nodes
+read_simulated_path_costs(
+  MyNodeId,
+  [[{'node-address', _Na},
+    {simulation, [{'node-id', MyNodeId},
+		  {neighbours, Neighbours}|_]}|_]|Rest], Acc) ->
+    NeighbourNodePcs = [{NeighbourNodeId, Pc} ||	
+			   [{'node-id', NeighbourNodeId},
+			    {'path-cost', Pc}|_] <- Neighbours],
+    read_simulated_path_costs(MyNodeId, Rest, merge(NeighbourNodePcs, Acc));
+%% another node picked this node as neighbour
+read_simulated_path_costs(
+  MyNodeId,
+  [[{'node-address', _Na},
+    {simulation, [{'node-id', NeighbourNodeId},
+		  {neighbours, Neighbours}|_]}|_]|Rest], Acc) ->
+    NeighbourNodePcs = [{NeighbourNodeId, Pc} ||
+			   [{'node-id', NodeId},
+			    {'path-cost', Pc}|_] <- Neighbours,
+			   NodeId == MyNodeId],
+    read_simulated_path_costs(MyNodeId, Rest, merge(Acc, NeighbourNodePcs)).
+
+merge([], NeighbourNodePcs) ->
+    NeighbourNodePcs;
+merge([{NeighbourNodeId, Pc}|Rest], NeighbourNodePcs) ->
+    case lists:keymember(NeighbourNodeId, 1, NeighbourNodePcs) of
+	true ->
+	    merge(Rest, lists:keyreplace(NeighbourNodeId, 1, NeighbourNodePcs,
+					 {NeighbourNodeId, Pc}));
+	false ->
+	    merge(Rest, [{NeighbourNodeId, Pc}|NeighbourNodePcs])
+    end.
 
 read_config(S, []) ->
     S;
@@ -314,3 +354,15 @@ read_config_path_cost(S, [{'delay-between-measurements', Value}|Rest]) ->
     read_config_path_cost(S#state{delay_between_measurements = Value}, Rest);
 read_config_path_cost(S, [{'echo-reply-timeout', Value}|Rest]) ->
     read_config_path_cost(S#state{echo_reply_timeout = Value}, Rest).
+
+%%%
+%%% measure
+%%%
+
+get_simulated_path_cost(SimulatedPcs, NeighbourNodeId) ->
+    case lists:keysearch(NeighbourNodeId, 1, SimulatedPcs) of
+	{value, {_, SimulatedPc}} ->
+	    {ok, SimulatedPc};
+	false ->
+	    not_simulated
+    end.
