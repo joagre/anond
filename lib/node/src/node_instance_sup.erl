@@ -4,6 +4,7 @@
 %%% external exports
 -export([start_link/1]).
 -export([lookup_child/2]).
+-export([get_state/2]).
 
 %%% internal exports
 
@@ -34,7 +35,7 @@ start_link(Na) ->
 
 -spec lookup_child(supervisor:sup_ref(), supervisor:child_id()) ->
                           {'ok', supervisor:child()} |
-                          {'error', 'not_found'}.
+                          'not_found'.
 
 lookup_child(NodeInstanceSup, Id) ->
     Children = supervisor:which_children(NodeInstanceSup),
@@ -43,6 +44,34 @@ lookup_child(NodeInstanceSup, Id) ->
             {ok, Child};
         false ->
             not_found
+    end.
+
+%%%
+%%% exported: get_state
+%%%
+
+-spec get_state(supervisor:sup_ref(),
+		{'node_send_sup', node_id()}|supervisor:child_id()) ->
+		       'not_found' | term().
+
+get_state(NodeInstanceSup, {node_send_sup, NeighbourNodeId}) ->
+    case lookup_child(NodeInstanceSup, node_send_sup) of
+	{ok, NodeSendSup} ->
+	    case node_send_sup:lookup_send_serv(NodeSendSup, NeighbourNodeId) of
+		{ok, NodeSendServ} ->
+		    sys:get_state(NodeSendServ);
+		Error ->
+		    Error
+	    end;
+	Error ->
+	    Error
+    end;
+get_state(NodeInstanceSup, Id) ->
+    case lookup_child(NodeInstanceSup, Id) of
+	{ok, Child} ->
+	    sys:get_state(Child);
+	Error ->
+	    Error
     end.
 
 %%%

@@ -1,0 +1,12 @@
+JSON-RPC
+--------
+curl --insecure --data '{"jsonrpc": "2.0", "method": "get-network-topology", "id": 1}' https://127.0.0.1:6700/jsonpc
+
+Erlang shell
+------------
+rr(node_recv_serv), rp(node_sup:get_state({{127, 0, 0, 1}, 50001}, node_recv_serv)).
+rr(node_route_serv), rp(node_sup:get_state({{127, 0, 0, 1}, 50001}, node_route_serv)).
+rr(node_send_sup), rp(node_sup:get_state({{127, 0, 0, 1}, 50001}, node_send_sup)).
+rr(node_send_serv), rp(node_sup:get_state({{127, 0, 0, 1}, 50001}, {node_send_sup, 1})).
+rr(node_tun_serv), rp(node_sup:get_state({{127, 0, 0, 1}, 50001}, node_tun_serv)).
+rr(node_path_cost_serv), rp(node_sup:get_state({{127, 0, 0, 1}, 50001}, node_path_cost_serv)).

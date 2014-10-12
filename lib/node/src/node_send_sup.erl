@@ -3,7 +3,7 @@
 
 %%% external exports
 -export([start_link/0]).
--export([start_node_send_serv/7, stop_node_send_serv/2]).
+-export([start_node_send_serv/7, stop_node_send_serv/2, lookup_send_serv/2]).
 
 %%% internal exports
 
@@ -69,6 +69,24 @@ stop_node_send_serv(NodeInstanceSup, NeighbourNodeId) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+%%%
+%%% exported: lookup_send_serv
+%%%
+
+-spec lookup_send_serv(supervisor:sup_ref(), node_id()) ->
+			      {'ok', supervisor:child()} |
+			      'not_found'.
+
+lookup_send_serv(NodeSendSup, NeighbourNodeId) ->
+    Children = supervisor:which_children(NodeSendSup),
+    case lists:keysearch({node_send_serv, NeighbourNodeId}, 1, Children) of
+        {value, {_Id, NodeSendServ, _Type, _Modules}} ->
+            {ok, NodeSendServ};
+        false ->
+            not_found
+    end.
+
 
 %%%
 %%% exported: init

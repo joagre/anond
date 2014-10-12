@@ -3,7 +3,8 @@
 
 %%% external exports
 -export([start_link/1]).
--export([start_node_instance/1, stop_node_instance/1]).
+-export([start_node_instance/1, stop_node_instance/1, lookup_node_instance/1]).
+-export([get_state/2]).
 
 %%% internal exports
 
@@ -57,6 +58,38 @@ stop_node_instance(NodeInstanceSup) ->
             supervisor:delete_child(?MODULE, NodeInstanceSup);
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%%%
+%%% exported: lookup_node_instance
+%%%
+
+-spec lookup_node_instance(na()) ->
+				  {'ok', supervisor:child()} |
+				  'not_found'.
+
+lookup_node_instance(Na) ->
+    Children = supervisor:which_children(?MODULE),
+    case lists:keysearch({node_instance_sup, Na}, 1, Children) of
+        {value, {_Id, NodeInstanceSup, _Type, _Modules}} ->
+            {ok, NodeInstanceSup};
+        false ->
+            not_found
+    end.
+
+%%%
+%%% exported: get_state
+%%%
+
+-spec get_state(na(), supervisor:child_id()) ->
+		       'not_found' | term().
+
+get_state(Na, Id) ->
+    case lookup_node_instance(Na) of
+	{ok, NodeInstanceSup} ->
+	    node_instance_sup:get_state(NodeInstanceSup, Id);
+	Error ->
+	    Error
     end.
 
 %%%

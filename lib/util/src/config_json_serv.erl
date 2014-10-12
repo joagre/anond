@@ -293,12 +293,12 @@ loop(#state{parent = Parent,
             loop(S#state{subscribers = UpdatedSubscribers});
         reload ->
             case parse(ConfigFilename, JsonSchema) of
-                {ok, JsonTerm} ->
+                {ok, NewJsonTerm} ->
                     ?daemon_log("~s: load succeeded", [ConfigFilename]),
                     lists:foreach(fun(ClientPid) ->
                                           ClientPid ! config_updated
                                   end, Subscribers),
-                    loop(S#state{json_term = JsonTerm});
+                    loop(S#state{json_term = NewJsonTerm});
                 {error, Reason} ->
                     ?daemon_log("~s: syntax error: ~s",
                                 [ConfigFilename, format_error(Reason)]),

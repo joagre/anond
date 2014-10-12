@@ -284,7 +284,7 @@ loop(#state{parent = Parent,
         config_updated ->
             ?daemon_log("Node ~w (~s) starts to update its configuration",
                         [MyNodeId, net_tools:string_address(MyNa)]),
-            ?MODULE ! {republish_self, false},
+            self() ! {republish_self, false},
             loop(read_config(S));
         bootstrap ->
             case ds_jsonrpc_client:publish_node(
@@ -512,7 +512,7 @@ read_config(S) ->
 
 read_config(S, []) ->
     S;
-read_config(S, [{simulation, [{'node-id', NodeId},
+read_config(S, [{simulation, [{'node-id', _NodeId},
 			      {'neighbours', Neighbours}|_]}|Rest])
   when Neighbours /= [] ->
     read_config(S#state{simulated_neighbours = true}, Rest);
