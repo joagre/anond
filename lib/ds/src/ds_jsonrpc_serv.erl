@@ -213,12 +213,12 @@ wait_for_network_topology(NumberOfNds, Acc) ->
             NewAcc = [{NodeId, Na, Neighbours, Res}|Acc],
             if
                 length(NewAcc) == NumberOfNds ->
-                    NewAcc;
+                    lists:keysort(1, NewAcc);
                 true ->
                     wait_for_network_topology(NumberOfNds, NewAcc)
             end;
         timeout ->
-            Acc;
+            lists:keysort(1, Acc);
         UnknownMessage ->
             ?error_log({unknown_message, UnknownMessage}),
             wait_for_network_topology(NumberOfNds, Acc)

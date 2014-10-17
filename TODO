@@ -61,6 +61,7 @@ L Make it run on Windows
 
 Misc
 ----
+L Setup an autogen.sh and configure environment fotr the building
 L Write documentation (Use LyX)
   - A White paper (Use Lyx)
   - Protocol design (UDP messaging and json-rpc)

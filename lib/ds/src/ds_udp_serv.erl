@@ -368,7 +368,7 @@ decode_neighbours(NumberOfNeighbours, RemainingFragmentBuffer) ->
     decode_neighbours(NumberOfNeighbours, RemainingFragmentBuffer, []).
 
 decode_neighbours(0, RemainingFragmentBuffer, Acc) ->
-    {ok, lists:reverse(Acc), RemainingFragmentBuffer};
+    {ok, lists:keysort(1, Acc), RemainingFragmentBuffer};
 decode_neighbours(
   NumberOfNeighbours,
   <<NodeId:32, A:8, B:8, C:8, D:8, Port:16, Pc:16, Flags:8, Rest/binary>>,
