@@ -15,7 +15,7 @@
 -include_lib("util/include/shorthand.hrl").
 
 %%% constants
--define(GET_NETWORK_TOPOLOGY_TIMEOUT, 30000).
+-define(GET_NETWORK_TOPOLOGY_TIMEOUT, 4000).
 
 %%% records
 -record(state, {

@@ -21,3 +21,6 @@
 #description {
     font: 14px arial,sans-serif;
 }
+#toolbar {
+    text-align: right;
+}

@@ -1,6 +1,6 @@
 iframe {
-    border-width: 0px;
+    border-width: 0;
     padding: 0;
-    margin: 0;
+    margin: 10px;
     display: inline;
 }
