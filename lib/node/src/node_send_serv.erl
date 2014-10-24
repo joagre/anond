@@ -295,8 +295,14 @@ send_cell(MyNodeId, {NeighbourIpAddress, NeighbourPort}, Socket, SharedKey,
 %%%
 
 read_config(S) ->
-    NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
-    read_config(S, NodeInstance).
+    NodeInstancePath = [nodes, {'node-address', S#state.my_na}],
+    try
+        NodeInstance = ?config(NodeInstancePath),
+        read_config(S, NodeInstance)
+    catch
+        throw:{unknown_config_parameter, NodeInstancePath} ->
+            S
+    end.
 
 read_config(S, []) ->
     S;

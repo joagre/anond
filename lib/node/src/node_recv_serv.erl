@@ -839,9 +839,14 @@ decode_hops(Hops, Acc) ->
 %%%
 
 read_udp_receiver_config(S) ->
-    NodeInstance =
-        ?config([nodes, {'node-address', S#udp_receiver_state.my_na}]),
-    read_udp_receiver_config(S, NodeInstance).
+    NodeInstancePath = [nodes, {'node-address', S#udp_receiver_state.my_na}],
+    try
+        NodeInstance = ?config(NodeInstancePath),
+        read_udp_receiver_config(S, NodeInstance)
+    catch
+        throw:{unknown_config_parameter, NodeInstancePath} ->
+            S
+    end.
 
 read_udp_receiver_config(S, []) ->
     S;
@@ -858,8 +863,14 @@ read_udp_receiver_config(S, [_|Rest]) ->
     read_udp_receiver_config(S, Rest).
 
 read_config(S) ->
-    NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
-    read_config(S, NodeInstance).
+    NodeInstancePath = [nodes, {'node-address', S#state.my_na}],
+    try
+        NodeInstance = ?config(NodeInstancePath),
+        read_config(S, NodeInstance)
+    catch
+        throw:{unknown_config_parameter, NodeInstancePath} ->
+            S
+    end.
 
 read_config(S, []) ->
     S;

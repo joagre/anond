@@ -286,13 +286,20 @@ nudge_path_cost(Pc, Percent) ->
 %%%
 
 read_config(S) ->
-    SimulatedPcs =
-	read_simulated_path_costs(S#state.my_node_id, ?config(['nodes'])),
-    NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
-    NewS = read_config(S#state{simulated_path_costs = SimulatedPcs},
-		       NodeInstance),
-    {value, {'path-cost', Pc}} = lists:keysearch('path-cost', 1, NodeInstance),
-    read_config_path_cost(NewS, Pc).
+    NodeInstancePath = [nodes, {'node-address', S#state.my_na}],
+    try
+        NodeInstance = ?config(NodeInstancePath),
+        SimulatedPcs = read_simulated_path_costs(S#state.my_node_id,
+                                                 ?config(['nodes'])),
+        NewS = read_config(S#state{simulated_path_costs = SimulatedPcs},
+                           NodeInstance),
+        {value, {'path-cost', Pc}} =
+            lists:keysearch('path-cost', 1, NodeInstance),
+        read_config_path_cost(NewS, Pc)
+    catch
+        throw:{unknown_config_parameter, NodeInstancePath} ->
+            S
+    end.
 
 read_simulated_path_costs(0, _Nodes) ->
     [];

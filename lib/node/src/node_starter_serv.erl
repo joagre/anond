@@ -20,8 +20,8 @@
 
 %%% records
 -record(state, {
-          parent      :: pid(),
-          nas_db = [] :: [{na(), supervisor:sup_ref()}]
+          parent   :: pid(),
+          nas = [] :: [na()]
 	 }).
 
 %%% types
@@ -30,7 +30,7 @@
 %%% exported: start_link
 %%%
 
--spec start_link() -> {'ok', pid()}.
+-spec start_link() -> {'ok', pid()} | {'error', 'already_started'}.
 
 start_link() ->
     Args = [self()],
@@ -60,10 +60,15 @@ stop(Pid, Timeout) ->
 
 init(Parent) ->
     process_flag(trap_exit, true),
-    ok = config_json_serv:subscribe(),
-    Parent ! {self(), started},
-    S = read_config(#state{}),
-    loop(S#state{parent = Parent}).
+    case catch register(?MODULE, self()) of
+        true ->
+            ok = config_json_serv:subscribe(),
+            Parent ! {self(), started},
+            S = read_config(#state{}),
+            loop(S#state{parent = Parent});
+        _ ->
+            Parent ! {self(), already_started}
+    end.
 
 loop(#state{parent = Parent} = S) ->
     receive
@@ -100,45 +105,44 @@ system_replace_state(StateFun, S) ->
 %%% init
 %%%
 
-read_config(#state{nas_db = NasDb} = S) ->
-    Nas = [Na || [{'node-address', Na}|_] <- ?config([nodes])],
-    StillRunningNasDb = stop_node_instances(NasDb, Nas),
-    NowRunningNasDb = start_node_instances(StillRunningNasDb, Nas),
-    S#state{nas_db = NowRunningNasDb}.
+read_config(#state{nas = Nas} = S) ->
+    NewNas = [Na || [{'node-address', Na}|_] <- ?config([nodes])],
+    StillRunningNas = stop_node_instances(Nas, NewNas),
+    NowRunningNas = start_node_instances(StillRunningNas, NewNas),
+    S#state{nas = NowRunningNas}.
 
-stop_node_instances([], _Nas) ->
+stop_node_instances([], _NewNas) ->
     [];
-stop_node_instances([{Na, NodeInstanceSup}|Rest], Nas) ->
-    case lists:member(Na, Nas) of
+stop_node_instances([Na|Rest], NewNas) ->
+    case lists:member(Na, NewNas) of
         true ->
-            [{Na, NodeInstanceSup}|stop_node_instances(Rest, Nas)];
+            [Na|stop_node_instances(Rest, NewNas)];
         false ->
-            case node_sup:stop_node_instance(NodeInstanceSup) of
+            case node_sup:stop_node_instance(Na) of
                 ok ->
-                    stop_node_instances(Rest, Nas);
+                    stop_node_instances(Rest, NewNas);
                 {error, Reason} ->
                     ?error_log({could_not_stop_node, Reason}),
-                    stop_node_instances(Rest, Nas)
+                    stop_node_instances(Rest, NewNas)
             end
     end.
 
-start_node_instances(NasDb, Nas) ->
-    start_node_instances(NasDb, Nas, []).
+start_node_instances(StillRunningNas, NewNas) ->
+    start_node_instances(StillRunningNas, NewNas, []).
 
-start_node_instances(_NasDb, [], Acc) ->
+start_node_instances(_StillRunningNas, [], Acc) ->
     Acc;
-start_node_instances(NasDb, [Na|Rest], Acc) ->
-    case lists:keysearch(Na, 1, NasDb) of
-        {value, {Na, NodeInstanceSup}} ->
-            start_node_instances(NasDb, Rest, [{Na, NodeInstanceSup}|Acc]);
+start_node_instances(StillRunningNas, [Na|Rest], Acc) ->
+    case lists:member(Na, StillRunningNas) of
+        true ->
+            start_node_instances(StillRunningNas, Rest, [Na|Acc]);
         false ->
             case node_sup:start_node_instance(Na) of
-                {ok, NodeInstanceSup} ->
-                    start_node_instances(NasDb, Rest,
-                                         [{Na, NodeInstanceSup}|Acc]);
+                {ok, _NodeInstanceSup} ->
+                    start_node_instances(StillRunningNas, Rest, [Na|Acc]);
                 {error, Reason} ->
                     ?daemon_log("Could not start node ~s (~p)",
                                 [net_tools:string_address(Na), Reason]),
-                    start_node_instances(NasDb, Rest, Acc)
+                    start_node_instances(StillRunningNas, Rest, Acc)
             end
     end.

@@ -106,17 +106,22 @@ loop(#state{parent = Parent,
         config_updated ->
             ?daemon_log("~s starts to update its configuration",
                         [net_tools:string_address(MyNa)]),
-            UpdatedS = read_config(S),
-            {UpdatedTunFd, UpdatedTunPid} =
-                manage_tun_device(
-                  UpdatedS#state.tun_mtu, UpdatedS#state.create_tun_device,
-                  UpdatedS#state.my_oa, MyOa, TunPid,
-                  UpdatedS#state.restart_tun),
-            ok = node_recv_serv:handshake(NodeRecvServ,
-                                          {?MODULE, UpdatedTunFd}),
-            loop(UpdatedS#state{tun_fd = UpdatedTunFd,
-                                tun_pid = UpdatedTunPid,
-                                restart_tun = false});
+            case read_config(S) of
+                S ->
+                    loop(S);
+                UpdatedS ->
+                    {UpdatedTunFd, UpdatedTunPid} =
+                        manage_tun_device(
+                          UpdatedS#state.tun_mtu,
+                          UpdatedS#state.create_tun_device,
+                          UpdatedS#state.my_oa, MyOa, TunPid,
+                          UpdatedS#state.restart_tun),
+                    ok = node_recv_serv:handshake(NodeRecvServ,
+                                                  {?MODULE, UpdatedTunFd}),
+                    loop(UpdatedS#state{tun_fd = UpdatedTunFd,
+                                        tun_pid = UpdatedTunPid,
+                                        restart_tun = false})
+            end;
         %% ipv6 packet arrives on tun device
         {tuntap, TunPid,
          <<_:128, % skip leading 128 bits in ipv6 packet
@@ -176,8 +181,14 @@ send(DestOa, NodeDb, RouteDb, Ipv6Packet) ->
 %%%
 
 read_config(S) ->
-    NodeInstance = ?config([nodes, {'node-address', S#state.my_na}]),
-    read_config(S, NodeInstance).
+    NodeInstancePath = [nodes, {'node-address', S#state.my_na}],
+    try
+        NodeInstance = ?config(NodeInstancePath),
+        read_config(S, NodeInstance)
+    catch
+        throw:{unknown_config_parameter, NodeInstancePath} ->
+            S
+    end.
 
 read_config(S, []) ->
     S;
@@ -188,7 +199,7 @@ read_config(S, [{'create-tun-device', Value}|Rest]) ->
 read_config(S, [{'overlay-addresses', [Oa]}|Rest]) ->
     if
         S#state.my_oa == Oa ->
-            read_config(S);
+            read_config(S, Rest);
         true ->
             read_config(S#state{my_oa = Oa, restart_tun = true}, Rest)
     end;
@@ -200,7 +211,7 @@ read_config(S, [{'max-cell-size', Value}|Rest]) ->
     TunMtu = Value-47,
     if
         S#state.tun_mtu == TunMtu ->
-            read_config(S);
+            read_config(S, Rest);
         true ->
             read_config(S#state{tun_mtu = TunMtu, restart_tun = true}, Rest)
     end;

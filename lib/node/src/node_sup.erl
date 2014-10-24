@@ -13,6 +13,7 @@
 
 %%% include files
 -include_lib("node/include/node.hrl").
+-include_lib("util/include/shorthand.hrl").
 
 %%% constants
 
@@ -46,16 +47,17 @@ start_node_instance(Na) ->
 %%% exported: stop_node_instance
 %%%
 
--spec stop_node_instance(pid()) ->
+-spec stop_node_instance(na()) ->
                                 'ok' |
                                 {'error',
                                  'running' | 'restarting' | 'not_found' |
                                  'simple_one_for_one'}.
 
-stop_node_instance(NodeInstanceSup) ->
-    case supervisor:terminate_child(?MODULE, NodeInstanceSup) of
+stop_node_instance(Na) ->
+    Id = {node_instance_sup, Na},
+    case supervisor:terminate_child(?MODULE, Id) of
         ok ->
-            supervisor:delete_child(?MODULE, NodeInstanceSup);
+            supervisor:delete_child(?MODULE, Id);
         {error, Reason} ->
             {error, Reason}
     end.
