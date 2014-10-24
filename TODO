@@ -28,7 +28,6 @@ N Start a node->node keepalive in node_send_server.erl
 * Min acceptable neigbours, striving for wanted number of neighbours (bleed?)
 * unestablish_tunnels() needed?
 * Split up large route entries in smaller cells
-* Add static floating number multiplicators for path costs for each node
 * Only send route entries to a neighbour if the path cost to the
   neighbour itself or the path costvto the via node changes the total
   path cost more than 20%?
