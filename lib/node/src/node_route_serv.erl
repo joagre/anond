@@ -407,6 +407,8 @@ loop(#state{parent = Parent,
                     loop(S)
             end;
 	{From, stop} ->
+            ds_jsonrpc_client:unpublish_node(
+              MyNodeId, MyIpAddress, DsIpAddressPort, SecretKey),
 	    ok = node_route:delete_node_db(NodeDb),
 	    ok = node_route:delete_route_db(RouteDb),
 	    From ! {self(), ok};
@@ -476,6 +478,8 @@ loop(#state{parent = Parent,
 	    ok = node_route:update_path_cost(NodeDb, NeighbourNodeId, Pc),
 	    loop(S);
 	{'EXIT', Parent, Reason} ->
+            ds_jsonrpc_client:unpublish_node(
+              MyNodeId, MyIpAddress, DsIpAddressPort, SecretKey),
 	    ok = node_route:delete_node_db(NodeDb),
 	    ok = node_route:delete_route_db(RouteDb),
             exit(Reason);
