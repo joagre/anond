@@ -54,7 +54,7 @@ potentially aggravating your service provider.
 A DS makes a HTTPS/JSON-RPC API available which nodes use to join its
 overlay network, i.e. it provides methods such as `publish-node`,
 `get-random-nodes` and `reserve-oa`. This API is described in the (DS
-JSON-RPC Server)[ds-json-rpc-server.md) document. 
+JSON-RPC Server)[ds-json-rpc-server.md] document. 
 
 An anond node typically sits behind a NATing firewall and its external
 ip-address may vary over time and it can not just listen on a TCP (or
@@ -69,7 +69,7 @@ exchange, without requiring firewall reconfigurations in the
 nodes. This adds the need of [UDP hole punching]() but it fairly will
 known well known technique these days. The protocol messages flowing
 between the DS and nodes are described in the (DS-Node UDP
-Protocol)[ds-node-udp-protocol.md) document.
+Protocol)[ds-node-udp-protocol.md] document.
 
 The actual traffic flowing between nodes over the encrypted tunnels is
 described in the (Node-Node UDP Protocol)[node-node-udp-protocol.md)
