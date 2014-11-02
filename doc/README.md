@@ -33,7 +33,7 @@ going any further:
 
 * [Anonymous overlay network supporting authenticated routing](Schlegel-Wong-3.pdf)
 * [Low Latency High Bandwidth Anonymous Overlay Network with Anonymous Routing](Schlegel-Wong-1.pdf)
-* [Monotonically Increasing Bit Vector for Authenticated Anonymous Routing(Schlegel-Wong-2.pdf)
+* [Monotonically Increasing Bit Vector for Authenticated Anonymous Routing](Schlegel-Wong-2.pdf)
 
 The anond design documents focus on describing the API and protocol
 messages flowing between nodes and the central directory server and
@@ -53,8 +53,8 @@ potentially aggravating your service provider.
 
 A DS makes a HTTPS/JSON-RPC API available which nodes use to join its
 overlay network, i.e. it provides methods such as `publish-node`,
-`get-random-nodes` and `reserve-oa`. This API is described in the (DS
-JSON-RPC Server)[ds-json-rpc-server.md] document. 
+`get-random-nodes` and `reserve-oa`. This API is described in the [DS
+JSON-RPC Server](ds-json-rpc-server.md) document. 
 
 An anond node typically sits behind a NATing firewall and its external
 ip-address may vary over time and it can not just listen on a TCP (or
@@ -68,11 +68,11 @@ feasible for both the DS and nodes to initiate a protocol message
 exchange, without requiring firewall reconfigurations in the
 nodes. This adds the need of [UDP hole punching]() but it fairly will
 known well known technique these days. The protocol messages flowing
-between the DS and nodes are described in the (DS-Node UDP
-Protocol)[ds-node-udp-protocol.md] document.
+between the DS and nodes are described in the [DS-Node UDP
+Protocol](ds-node-udp-protocol.md) document.
 
 The actual traffic flowing between nodes over the encrypted tunnels is
-described in the (Node-Node UDP Protocol)[node-node-udp-protocol.md)
+described in the [Node-Node UDP Protocol](node-node-udp-protocol.md)
 document.
 
 ## 2) Coding templates
