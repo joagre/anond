@@ -228,9 +228,10 @@ measure_path_cost(
                             0, EchoReplyLatencies)/NumberOfEchoReplies,
             truncate_path_cost(AverageEchoReplyLatency);
         NumberOfEchoReplies ->
-            PacketLoss = trunc(NumberOfEchoReplies/NumberOfEchoRequests*100),
-            ?daemon_log("Echo requests sent from ~w to ~w resulted in more "
-                        "than ~w% packet loss",
+            PacketLoss =
+                100-trunc(NumberOfEchoReplies/NumberOfEchoRequests*100),
+            ?daemon_log("Echo requests sent from ~w to ~w resulted in ~w% "
+                        "packet loss",
                         [MyNodeId, NeighbourNodeId, PacketLoss]),
             ?NODE_UNREACHABLE
     end.
