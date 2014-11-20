@@ -8,6 +8,7 @@ N Update get-network-topology in udp-message-protocol.md
 N Cleanup of udp-message-protocol.md
 N Document Node-Node bit protocol in udp-message-protocol.md
 N Write json-rpc-protocol.md
+L Document anond.conf
 
 Directory server
 ----------------
@@ -29,8 +30,11 @@ N Start a node->node keepalive in node_send_server.erl
 * unestablish_tunnels() needed?
 * Split up large route entries in smaller cells
 * Only send route entries to a neighbour if the path cost to the
-  neighbour itself or the path costvto the via node changes the total
-  path cost more than 20%?
+  neighbour itself or if the the total path cost has chnaged more than 20%.
+* Do not distribute the node's own routing entry until a randomized
+  period of time!!
+* Propagate a node's route entries to its neighbour nodes "slowly" to
+  avoid route entry storms.
 
 d3.js
 -----
