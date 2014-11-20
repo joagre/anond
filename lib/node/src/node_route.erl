@@ -8,7 +8,7 @@
          foreach_route_entry/2, map_route_entry/2, foldl_route_entry/3,
          update_route_entry/2]).
 -export([recalc/4]).
--export([update_path_cost/3, update_path_costs/3]).
+-export([update_node_path_cost/3, update_route_entry_path_costs/3]).
 
 %%% internal exports
 
@@ -101,13 +101,14 @@ get_nodes(NodeDb) ->
 %%% exported: foreach_node
 %%%
 
--spec foreach_node(foreach_node_fun(), node_db()) -> any().
+-spec foreach_node(foreach_node_fun(), node_db()) -> 'ok'.
 
 foreach_node(Fun, NodeDb) ->
     ets:foldl(fun(Node, []) ->
                       Fun(Node),
                       []
-              end, [], NodeDb).
+              end, [], NodeDb),
+    ok.
 
 %%%
 %%% exported: map_node
@@ -195,13 +196,14 @@ get_route_entries(RouteDb) ->
 %%% exported: foreach_route_entry
 %%%
 
--spec foreach_route_entry(foreach_route_entry_fun(), route_db()) -> any().
+-spec foreach_route_entry(foreach_route_entry_fun(), route_db()) -> 'ok'.
 
 foreach_route_entry(Fun, RouteDb) ->
     ets:foldl(fun(Re, []) ->
                       Fun(Re),
                       []
-              end, [], RouteDb).
+              end, [], RouteDb),
+    ok.
 
 %%%
 %%% exported: map_route_entry
@@ -272,10 +274,10 @@ update_route_entry(RouteDb,
 -spec recalc(node_id(), node_db(), route_db(), node_psp:psp_db()) -> 'ok'.
 
 recalc(MyNodeId, NodeDb, RouteDb, PspDb) ->
-    touch_route_entries(NodeDb, RouteDb),
-    propagate_route_entries(MyNodeId, NodeDb, RouteDb, PspDb),
-    clear_node_flags(NodeDb),
-    clear_route_entry_flags(RouteDb),
+    ok = touch_route_entries(NodeDb, RouteDb),
+    ok = propagate_route_entries(MyNodeId, NodeDb, RouteDb, PspDb),
+    ok = clear_node_flags(NodeDb),
+    ok = clear_route_entry_flags(RouteDb),
     true = ets:match_delete(
              RouteDb, #route_entry{path_cost = ?NODE_UNREACHABLE, _ = '_'}),
     ok.
@@ -408,12 +410,12 @@ clear_route_entry_flags(RouteDb) ->
       end, RouteDb).
 
 %%%
-%%% exported: update_path_cost
+%%% exported: update_node_path_cost
 %%%
 
--spec update_path_cost(node_db(), node_id(), path_cost()) -> ok.
+-spec update_node_path_cost(node_db(), node_id(), path_cost()) -> 'ok'.
 
-update_path_cost(NodeDb, NeighbourNodeId, UpdatedPc) ->
+update_node_path_cost(NodeDb, NeighbourNodeId, UpdatedPc) ->
     case ets:lookup(NodeDb, NeighbourNodeId) of
         [#node{path_cost = Pc} = Node]
           when Pc /= UpdatedPc ->
@@ -427,12 +429,12 @@ update_path_cost(NodeDb, NeighbourNodeId, UpdatedPc) ->
     end.
 
 %%%
-%%% exported: update_path_costs
+%%% exported: update_route_entry_path_costs
 %%%
 
--spec update_path_costs(route_db(), node_id(), path_cost()) -> ok.
+-spec update_route_entry_path_costs(route_db(), node_id(), path_cost()) -> 'ok'.
 
-update_path_costs(RouteDb, NeighbourNodeId, UpdatedPc) ->
+update_route_entry_path_costs(RouteDb, NeighbourNodeId, UpdatedPc) ->
     foreach_route_entry(
       fun(#route_entry{node_id = ReNodeId} = Re)
             when ReNodeId == NeighbourNodeId ->

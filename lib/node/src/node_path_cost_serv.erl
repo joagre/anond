@@ -154,25 +154,16 @@ loop(#state{parent = Parent,
             NeighbourNodeId = hd(NeighbourNodeIds),
             RotatedNeighbourNodeIds =
                 rotate_neighbour_node_ids(NeighbourNodeIds),
-	    case get_simulated_path_cost(SimulatedPcs, NeighbourNodeId) of
-		{ok, SimulatedPc} ->
-                    Pc = nudge_path_cost(SimulatedPc, ?PERCENT_NUDGE),
-                    ok = node_route_serv:update_path_cost(
-                           NodeRouteServ, NeighbourNodeId, Pc),
-                    timelib:start_timer(DelayBetweenMeasurements, measure),
-                    loop(S#state{neighbour_node_ids = RotatedNeighbourNodeIds});
-		not_simulated ->
-                    Pc = measure_path_cost(
-                           NodeDb, RouteDb, UniqueId, MyNodeId,
-                           NumberOfEchoRequests, AcceptableNumberOfEchoReplies,
-                           DelayBetweenEchoRequests, EchoReplyTimeout,
-                           NeighbourNodeId),
-                    ok = node_route_serv:update_path_cost(
-                           NodeRouteServ, NeighbourNodeId, Pc),
-                    timelib:start_timer(DelayBetweenMeasurements, measure),
-                    loop(S#state{neighbour_node_ids = RotatedNeighbourNodeIds,
-                                 unique_id = UniqueId+1})
-	    end;
+	    SimulatedPc = get_simulated_path_cost(SimulatedPcs, NeighbourNodeId),
+            Pc = measure_path_cost(
+                   NodeDb, RouteDb, UniqueId, MyNodeId, NumberOfEchoRequests,
+                   AcceptableNumberOfEchoReplies, DelayBetweenEchoRequests,
+                   EchoReplyTimeout, NeighbourNodeId, SimulatedPc),
+            ok = node_route_serv:update_node_path_cost(
+                   NodeRouteServ, NeighbourNodeId, Pc),
+            timelib:start_timer(DelayBetweenMeasurements, measure),
+            loop(S#state{neighbour_node_ids = RotatedNeighbourNodeIds,
+                         unique_id = UniqueId+1});
 	{From, stop} ->
 	    From ! {self(), ok};
         {'EXIT', Parent, Reason} ->
@@ -210,7 +201,7 @@ rotate_neighbour_node_ids([NeighbourNodeId|Rest]) ->
 measure_path_cost(
   NodeDb, RouteDb, UniqueId, MyNodeId, NumberOfEchoRequests,
   AcceptableNumberOfEchoReplies, DelayBetweenEchoRequests, EchoReplyTimeout,
-  NeighbourNodeId) ->
+  NeighbourNodeId, SimulatedPc) ->
     {ok, NodeSendServ} =
         node_route:lookup_node_send_serv(NodeDb, RouteDb, NeighbourNodeId),
     StartTimestamp = timelib:mk_timestamp(),
@@ -222,11 +213,16 @@ measure_path_cost(
     case length(EchoReplyLatencies) of
         NumberOfEchoReplies
           when NumberOfEchoReplies > AcceptableNumberOfEchoReplies ->
-            AverageEchoReplyLatency =
-                lists:foldl(fun(EchoReplyLatency, Sum) ->
-                                    EchoReplyLatency+Sum end,
-                            0, EchoReplyLatencies)/NumberOfEchoReplies,
-            truncate_path_cost(AverageEchoReplyLatency);
+            case SimulatedPc of
+                not_simulated ->
+                    AverageEchoReplyLatency =
+                        lists:foldl(fun(EchoReplyLatency, Sum) ->
+                                            EchoReplyLatency+Sum end,
+                                    0, EchoReplyLatencies)/NumberOfEchoReplies,
+                    truncate_path_cost(AverageEchoReplyLatency);
+                _ ->
+                    SimulatedPc
+            end;
         NumberOfEchoReplies ->
             PacketLoss =
                 100-trunc(NumberOfEchoReplies/NumberOfEchoRequests*100),
@@ -278,9 +274,6 @@ wait_for_echo_replies(UniqueId, EchoReplyTimeout, StartTimestamp,
     after EchoReplyTimeout ->
             EchoReplyLatencies
     end.
-
-nudge_path_cost(Pc, Percent) ->
-    trunc(random:uniform(Percent)/100*Pc+Pc).
 
 %%%
 %%% init
@@ -370,7 +363,10 @@ read_config_path_cost(S, [{'echo-reply-timeout', Value}|Rest]) ->
 get_simulated_path_cost(SimulatedPcs, NeighbourNodeId) ->
     case lists:keysearch(NeighbourNodeId, 1, SimulatedPcs) of
 	{value, {_, SimulatedPc}} ->
-	    {ok, SimulatedPc};
+	    nudge_path_cost(SimulatedPc, ?PERCENT_NUDGE);
 	false ->
 	    not_simulated
     end.
+
+nudge_path_cost(Pc, Percent) ->
+    trunc(random:uniform(Percent)/100*Pc+Pc).

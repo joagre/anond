@@ -9,7 +9,7 @@
 -export([get_route_entries/1, new_route_entry/2]).
 -export([get_nodes/1]).
 -export([enable_recalc/1, disable_recalc/1, recalc/1]).
--export([update_path_cost/3]).
+-export([update_node_path_cost/3]).
 
 %%% system exports
 -export([system_continue/3, system_terminate/4, system_code_change/4,
@@ -198,13 +198,13 @@ recalc(Pid) ->
     ok.
 
 %%%
-%%% exported: update_path_cost
+%%% exported: update_node_path_cost
 %%%
 
--spec update_path_cost(pid(), node_id(), path_cost()) -> 'ok'.
+-spec update_node_path_cost(pid(), node_id(), path_cost()) -> 'ok'.
 
-update_path_cost(Pid, NeighbourNodeId, Pc) ->
-    Pid ! {update_path_cost, NeighbourNodeId, Pc},
+update_node_path_cost(Pid, NeighbourNodeId, Pc) ->
+    Pid ! {update_node_path_cost, NeighbourNodeId, Pc},
     ok.
 
 %%%
@@ -474,9 +474,16 @@ loop(#state{parent = Parent,
                 true ->
                     loop(S)
             end;
-	{update_path_cost, NeighbourNodeId, Pc}  ->
-	    ok = node_route:update_path_cost(NodeDb, NeighbourNodeId, Pc),
-	    loop(S);
+	{update_node_path_cost, NeighbourNodeId, Pc}  ->
+	    ok = node_route:update_node_path_cost(NodeDb, NeighbourNodeId, Pc),
+            case Pc of
+                ?NODE_UNREACHABLE ->
+                    ok = node_route:update_route_entry_path_costs(
+                           RouteDb, NeighbourNodeId, Pc),
+                    loop(S);
+                _ ->
+                    loop(S)
+            end;
 	{'EXIT', Parent, Reason} ->
             ds_jsonrpc_client:unpublish_node(
               MyNodeId, MyIpAddress, DsIpAddressPort, SecretKey),
@@ -715,7 +722,7 @@ purge_neighbours(
             ok = node_route:delete_node(NodeDb, NeighbourNodeId),
             ok = node_send_sup:stop_node_send_serv(
                    NodeInstanceSup, NeighbourNodeId),
-            ok = node_route:update_path_costs(
+            ok = node_route:update_route_entry_path_costs(
                    RouteDb, NeighbourNodeId, ?NODE_UNREACHABLE),
             purge_neighbours(NodeDb, RouteDb, MyNodeId, NodeInstanceSup,
                              LivingNeighbourNodeIds, Rest);
