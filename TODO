@@ -4,10 +4,8 @@ L = Later
 
 Documentation
 -------------
-N Update get-network-topology in udp-message-protocol.md
-N Cleanup of udp-message-protocol.md
-N Document Node-Node bit protocol in udp-message-protocol.md
-N Write json-rpc-protocol.md
+N Update get-network-topology in ds-node-udp-protocol.md
+N Write node-node-udp-protocol.md
 L Document anond.conf
 
 Directory server

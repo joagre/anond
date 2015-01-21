@@ -156,6 +156,8 @@ format_error({config, {file_error, Filename, Reason}}) ->
 format_error({config, {trailing, JsonPath}}) ->
     io_lib:format("No configuration expected after ~s",
                   [json_path_to_string(JsonPath)]);
+format_error({config, {unexpected, Name}}) ->
+    io_lib:format("The configurable ~s was not expected", [Name]);
 format_error({config, {expected, ExpectedJsonPath, JsonPath}}) ->
     io_lib:format("Expected ~s, got ~s",
                   [json_path_to_string(ExpectedJsonPath),
@@ -401,6 +403,8 @@ atomify([JsonValue|Rest]) when is_list(Rest) ->
 
 validate(_ConfigDir, [], [], _JsonPath) ->
     [];
+validate(_ConfigDir, [], [{Name, _JsonTerm}|_], _JsonPath) ->
+    throw({unexpected, Name});
 validate(_ConfigDir, [], _JsonTerm, JsonPath) ->
     throw({trailing, JsonPath});
 validate(_ConfigDir, _JsonSchema, [], _JsonPath) ->

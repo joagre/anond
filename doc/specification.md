@@ -1,34 +1,36 @@
 # Anond APIs and Protocol Messages
 
-Each anond overlay network is governed by a central directory server
-(DS) handling node membership and the establishment of encrypted
-tunnels between nodes etc. A DS is indeed a single point of failure
-but it is easy to setup a DS and they can be as ephemeral as Tor
-bridges, i.e. ideally a multitude of anond DSs will be running at any
-time and you just have to pick one that you and your friends like or 
-indeed start your own, i.e. no data traffic will pass through a DS
-potentially aggravating your service provider.
+An Anond overlay network is governed by a central directory server
+(DS) handling node memberships and establishment of encrypted tunnels
+between nodes etc. A DS is never in the data path between nodes
+though, i.e. it just handles DS signalling.
 
-A DS makes a HTTPS/JSON-RPC API available which nodes use to join its
-overlay network, i.e. it provides methods such as `publish-node`,
-`get-random-nodes` and `reserve-oa`. This API is described in the [DS
-JSON-RPC Server](ds-json-rpc-server.md) document. 
+A DS is a single point of failure but it is easy to setup a DS and
+they can be as ephemeral as [Tor
+bridges](https://www.torproject.org/docs/bridges.html.en),
+i.e. ideally a multitude of DSs will running at any time.
 
-An anond node typically sits behind a NATing firewall and its external
-ip-address may vary over time and it can not just listen on a TCP (or
-UDP) port without doing firewall reconfiguration. Nodes still need to
-be reachable by the DS though in order for it to be able to
-orchestrate the establishment of encrypted tunnels between nodes.
+N.B transparent bridging between different Anond overlay networks (and
+its DSs) is a pending topic, as well as the removal of the single
+point of failure characteristics. Do not hold your breath though. 
 
-For this purpose anond defines a UDP based protocol which the DS and
-the nodes uses to communicate. UDP was chosen over TCP to make it
-feasible for both the DS and nodes to initiate a protocol message
-exchange, without requiring firewall reconfigurations in the
-nodes. This adds the need of [UDP hole punching]() but it fairly will
-known well known technique these days. The protocol messages flowing
-between the DS and nodes are described in the [DS-Node UDP
-Protocol](ds-node-udp-protocol.md) document.
+A DS makes a HTTPS/JSON-RPC API available which nodes use to join an
+overlay network, i.e. the DS provides JSON-RPC methods such as
+`publish-node`, `get-random-nodes` and `reserve-oa`. This API is
+described in the [DS JSON-RPC Server](ds-json-rpc-server.md)
+document. 
+
+An node typically sits behind a NATing firewall and the DS uses [UDP
+hole punching](http://en.wikipedia.org/wiki/UDP_hole_punching)
+techniques in order to make nodes reachable from the DS and other
+nodes.
+
+An Anond node uses the DS JSON-RPC API to establish itself as a member
+of the overlay network and after that point all Anond signalling is
+multiplexed into the normal flow of underlying 512 bytes fixed size
+encrypted UDP packets. The UDP based signalling protocol is described
+in the [DS-Node UDP Protocol](ds-node-udp-protocol.md) document.
 
 The actual traffic flowing between nodes over the encrypted tunnels is
 described in the [Node-Node UDP Protocol](node-node-udp-protocol.md)
-document.
+(**NOT YET WRITTEN**) document.

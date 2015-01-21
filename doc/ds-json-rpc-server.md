@@ -4,7 +4,7 @@
 
 The *Directory Server* (DS) JSON-RPC server (from now on referred to as
 the *server*) publish a number of methods to be used by nodes in order
-for them to be a part of an anond overlay network. The server provides
+for them to be a part of an Anond overlay network. The server provides
 the central functionality provided by the *Public Directory Server* as
 introduced in the paper [Anonymous overlay network supporting
 authenticated routing](Schlegel-Wong-3.pdf) by Schlegel and Wong. 
@@ -55,7 +55,7 @@ instead of digging into the opaque JSON schema specification.
 
 ### 2.1) Method: *publish-node*
 
-The *publish-node* method is used to publish a node in an anond
+The *publish-node* method is used to publish a node in an Anond
 overlay network.
 
 #### Params:
@@ -94,7 +94,7 @@ overlay network.
             "description":
                 "A 'ds-id' is an id in the same number space as the
                 node ids. DS picks this id in order to identify itself
-                when it communicates with nodes using anond's
+                when it communicates with nodes using Anond's
                 encrypted and bit oriented protocol used for node
                 tunnel establishment etc. Read more about this bit
                 protocol in ds-node-udp-protocol.md.",
@@ -121,7 +121,7 @@ overlay network.
                 i.e. a key suitable for encryption based on a
                 Salsa20/20 encryption scheme. This shared stream key
                 is used by the node when it communicates with the DS
-                using anond's encrypted bit oriented protocol used for
+                using Anond's encrypted bit oriented protocol used for
                 node tunnel establishment etc. Read more about this
                 bit protocol in ds-node-udp-protocol.md",
             "type": "string",
@@ -132,7 +132,7 @@ overlay network.
         "node-ttl": {
             "description":
                 "A node must republish itself within this number of
-                milli-seconds or else it will be purged from the anond
+                milli-seconds or else it will be purged from the Anond
                 overlay network. A node republish itself with a new
                 call to the 'publish-node' method and is then provided
                 with a new shared stream key but it also has the
@@ -200,7 +200,7 @@ $ curl --config curlrc --data "${BODY}"
 
 In return we got a `ds-id`, `node-id` and a `shared-key`. The
 `node-ttl` tell us that we need to republish the node within 3 hours
-or else the node will be purged from the anond overlay network. 
+or else the node will be purged from the Anond overlay network. 
 
 To republish a node we call *publish-node* again and get a new
 `shared-key` back as a side effect.
@@ -241,7 +241,7 @@ key, but this is left out as an exercise to the reader.
 
 ### 2.2) Method: *unpublish-node*
 
-The *unpublish-node* method is used to unpublish a node in an anond
+The *unpublish-node* method is used to unpublish a node in an Anond
 overlay network.
 
 #### Params:
@@ -412,7 +412,7 @@ $ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" --data "${BOD
 ### 2.5) Method: *reserve-oa*
 
 The *reserve-oa* method reserves an *Overlay Address* (OA), i.e. an
-ipv6-address from certain range, to be the node's address on the anond
+ipv6-address from certain range, to be the node's address on the Anond
 overlay network. A node typically registers several OAs and pick new
 ones now and then to improve node anonymity.
 
@@ -469,10 +469,10 @@ $ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" --data "${BOD
 The *get-network-topology* method can only be called if the
 experimental API has been enabled in the DS. This method uses the bit
 oriented [DS-Node UDP protocol](ds-node-udp-protocol.md) to extract
-the neighbour nodes and routing entries from each node in the anond
+the neighbour nodes and routing entries from each node in the Anond
 overlay network and then generates a global network topology. The
 experimental API enables functionality which obviously defeats the
-purpose of anond but it is nice for experimentation and development
+purpose of Anond but it is nice for experimentation and development
 purposes.
 
 > You have been duly warned.
@@ -534,7 +534,7 @@ No parameters are needed.
                          "incoming-neighbour": {
                              "description":
                                  "Signals if this node is chosen as an
-                                 explicit neighbor node, or if another
+                                 explicit neighbour node, or if another
                                  node has chosen this node as its
                                  neighbour node.",
                              "type": "boolean"
@@ -549,7 +549,7 @@ No parameters are needed.
                          "An array of route entries, i.e. which nodes
                          has to be traversed in order to send data
                          from this node to all other nodes in the the
-                         anond overlay network.",
+                         Anond overlay network.",
                      "type": "object",
                      "properties": {
                          "path-cost": {

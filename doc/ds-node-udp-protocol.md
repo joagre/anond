@@ -7,7 +7,7 @@ encrypted within a 74 bytes cell. It provides a number of services
 aimed at the member nodes of an anond overlay network:
 
 * Node Registration
-* DS-Node Kepalive Handling
+* DS-Node Keepalive Handling
 * Node-Node Tunnel Establishment
 * Network topology extraction (experimental)
 
@@ -388,7 +388,7 @@ Direction: `directory server -> node`
 
 Direction: `node -> directory server`
 
-HMMMM
+NOTE TO AUTHOR: The part below must be updated!!!
 
 A node's chosen neighbour nodes and its routing table (from now on
 called network topology) contains a route entry for each member node in the overlay network, i.e. it can
@@ -398,7 +398,7 @@ fragments (not larger than 480 bytes) when being sent to the DS.
 For this purpose a fragment counter and a fragment size are
 incorporated into this protocol message. The last bit in the fragment
 counter signals if it was the last fragment to be sent and the
-fragment size defines the size of the upcoming fragmen in the protocol 
+fragment size defines the size of the upcoming fragment in the protocol 
 message (obviously).
 
 If duplicated or reordered `ds-get-network-topology` protocol messages
