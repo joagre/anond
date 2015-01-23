@@ -1,16 +1,21 @@
 # This is Anond
 
-## 1) Overview
+## 1) The why
 
-Anond provides transparent IP-level anonymization using virtual
-network interfaces, peer-to-peer and overlay network techniques. This
-is indeed nothing new in itself and has been researched in projects
-such as
+Anond is something I am writing as a vehicle for further
+experimentation when it comes to network anonymization.
+
+## 2) The what
+
+Anond strives to provide transparent IP-level anonymization using
+virtual network interfaces, peer-to-peer and overlay network
+techniques. This is indeed nothing new in itself and has been
+researched in projects such as
 [*Tarzan*](https://gnunet.org/sites/default/files/tarzan-ccs02.pdf)
 (2002) and
 [*ANON*](http://www.eecs.harvard.edu/~htk/publication/2002-milcom-kung-bradner-tan.pdf)
 (2002) to mention a few. Anond is another take on this but in its
-heart is an anonymous routing protocol with ideas taken from the paper
+heart is an anonymous routing protocol with ideas taken from
 [*Anonymous overlay network supporting authenticated
 routing*](doc/Schlegel-Wong-3.pdf) (2010) by Roman Schlegel and Duncan
 S. Wong.
@@ -24,10 +29,10 @@ overlay network. To facilitate this each node has an official
 ipv4-address and a number of ephemeral overlay ipv6-addresses (in an
 ipv6 subnet annexed by Anond).
 
-The animated illustration below is what to expect if the simulation
-mentioned below is started, i.e. a ten node overlay network with the
-experimental network topology [d3.js](http://d3js.org) renderer engine
-enabled.
+The animated illustration below is what to expect if the Anond routing
+simulation mentioned below is started, i.e. a ten node overlay
+network with the experimental network topology [d3.js](http://d3js.org)
+renderer engine enabled.
 
 ![Ten nodes in an Anond overlay network](doc/neighbours.gif "Ten nodes
  in an Anond overlay network")
@@ -35,7 +40,7 @@ enabled.
 The routing protocol provides authentication for route announcement
 messages and ensures network topology opaqueness, i.e. routing
 information is distributed throughout the nodes and can not be
-gathered into a network topology (expect in experimental mode). The
+gathered into a network topology (except in experimental mode). The
 authentication also ensures that malicious nodes can not arbitrarily
 reduce the path cost value carried in anonymous route announcement
 messages for the purpose of negatively influencing routing efficiency
@@ -72,7 +77,7 @@ Anond furthermore instructs the operating system to transparently
 intercept DNS traffic aimed at `.anond` domains, effectively letting
 Anond resolve these mappings, i.e. no DNS leaks.
 
-Anond does not provide [End-to-end
+Anond is about anonymization and does not provide [End-to-end
 encryption](http://en.wikipedia.org/wiki/End-to-end_encryption) but
 counts on application level encryption, e.g. `HTTPS` and [BitTorrent
 protocol
@@ -81,9 +86,9 @@ encryption](http://en.wikipedia.org/wiki/BitTorrent_protocol_encryption).
 The Anond protocol specification and the gory details can be found in
 the [Anond APIs and Protocol Messages](doc/specification.md) document.
 
-## 2) Building Anond (Debian/Ubuntu specific)
+## 3) Building Anond (Debian/Ubuntu specific)
 
-### 2.1) Pre-requisites
+### 3.1) Pre-requisites
 
 Install Erlang (17B or better):
 
@@ -104,7 +109,7 @@ $ make
 $ sudo make install
 ```
 
-### 2.2) Building
+### 3.2) Building
 
 Check out Anond and build it:
 
@@ -119,7 +124,7 @@ $ make
 Anond is now ready to be run from the code repository itself,
 i.e. without the need to build a release package.
 
-### 2.3) Building a release package (optional)
+### 3.3) Building a release package (optional)
 
 Anond is typically shipped as a self-contained release package bundled
 with a stream-lined Erlang run-time system:
@@ -134,7 +139,7 @@ $ ls -l build/*.tgz
 
 Send it to your best friend (or worst).
 
-## 3) Starting Anond
+## 4) Starting Anond
 
 The Anond start script has the following options:
 
@@ -158,18 +163,17 @@ bin/anond -h
 ```
 
 The behaviour of Anond is governed by a json based configuration file
-which is read by the Anond on startup, e.g.
+which is read by Anond on startup, e.g.
 
 ```json
 {
-    "mode": "normal",
     "nodes": [
         {
-            "node-address": "0.0.0.0:50000",
+            "node-address": "127.0.0.1:50000",
             "logging": true,
             "experimental-api": true,
             "db": {
-                "directory": "./",
+                "directory": "/tmp/node",
                 "clear-on-start": true
             },
             "directory-server": "127.0.0.1:6700",
@@ -177,17 +181,17 @@ which is read by the Anond on startup, e.g.
             "overlay-addresses": ["fe80::c685:8ff:fe46:a"],
             "public-key": "${CONFIG_DIR}/public-signing.key",
             "secret-key": "${CONFIG_DIR}/secret-signing.key",
-            "number-of-neighbours": 2,
+            "number-of-neighbours": 5,
             "refresh-neighbours-interval": 1800,
             "recalc-interval": 30,
             "auto-recalc": true,
             "max-cell-size": 977,
             "cell-sending-timeout": 500,
             "path-cost": {
-                "number-of-echo-requests": 16,
-                "acceptable-number-of-echo-replies": 8,
+                "number-of-echo-requests": 4,
+                "acceptable-number-of-echo-replies": 2,
                 "delay-between-echo-requests": 1000,
-                "delay-between-measurements": 5000,
+                "delay-between-measurements": 2000,
                 "echo-reply-timeout": 2
             }
         }
@@ -205,7 +209,7 @@ which is read by the Anond on startup, e.g.
             "tty": false,
             "file": {
                 "enabled": true,
-                "path": "./daemon.log"
+                "path": "/tmp/node/daemon.log"
             }
         },
         "dbg": {
@@ -217,7 +221,7 @@ which is read by the Anond on startup, e.g.
             "tty": false,
             "file": {
                 "enabled": true,
-                "path": "./dbg.log"
+                "path": "/tmp/node/dbg.log"
             }
         },
         "error": {
@@ -225,7 +229,7 @@ which is read by the Anond on startup, e.g.
             "tty": true,
             "file": {
                 "enabled": true,
-                "path": "./error.log"
+                "path": "/tmp/node/error.log"
             }
         }
     }
@@ -233,16 +237,16 @@ which is read by the Anond on startup, e.g.
 ```
 
 The content of a configuration file is at the moment undocumented but
-most configurables are self-explanatory. If not try to take a look at
-the *internal* configuration file schema in
+most configurables are self-explanatory. If in doubt not try to take a
+look at the *internal* configuration file schema in
 [lib/common/src/common_config_json_serv.erl](lib/common/src/common_config_json_serv.erl).
 
-A configuration file can be written to instruct anond to start
+A configuration file can be written to instruct Anond to start
 several nodes. This comes handy during development of anond.conf and
 for demo/simulation purposes.
 
-To start a small simulation with ten nodes and a directory server (all
-on a single machine) a configuration file such as
+To start a small Anond simulation with ten nodes and a directory
+server (all on a single machine) a configuration file such as
 [anond-small-simulation.conf](lib/test/etc/anond-small-simulation.conf)
 can be used. It realises the small simulation as written on the back
 of this envelope:
@@ -261,24 +265,25 @@ To start this simulation run:
 
 Note that Anond writes log entries to three log files, i.e.
 
-* `./daemon.log` - events during normal operation
-* `./error.log` - unexpected errors (there are no expected errors :-)
-* `./dbg.log` - debug information
+* `/tmp/daemon.log` - events during normal operation
+* `/tmp/error.log` - unexpected errors (there are no expected errors :-)
+* `/tmp/dbg.log` - debug information
 
 The characteristics of these log files are specified in the
 configuration file, e.g. file paths and log filtering expressions.
 
 As an experimental feature the routing information in each node can be
 extracted by the directory server and merged into a network
-topology. This network topology can then be used by the Anond renderer
-engine, built using the the [d3.js](http://d3js.org) library, to
-visualise the topology of the overlay network.
+topology. This network topology can then be used by the Anond topologu
+render engine, built using the the [d3.js](http://d3js.org) library,
+to visualise the topology of the overlay network.
 
 To inspect the topology of the small simulation point a browser to
 [https://127.0.0.1:6700/index.html](https://127.0.0.1:6700/index.html)
-in order to monitor the state of the overlay network.
+in order to monitor the live state of the routing choices in the
+overlay network.
 
-## 4) Implementation details
+## 5) Implementation details
 
 Anond is written using the [Erlang](http://www.erlang.org) programming
 language and uses its strengths when it comes to building large scale
@@ -287,7 +292,7 @@ achieve fault tolerance.
 
 The Anond code base does not use the Erlang OTP [gen_server
 behaviour](http://www.erlang.org/doc/design_principles/gen_server_concepts.html)
-because the it hides Erlang's message passing mechanism and turns
+because it hides Erlang's message passing mechanism and turns
 concurrent programming into a boring slush of callback functions. It
 must be fun to compute. So say Mundungus.
 

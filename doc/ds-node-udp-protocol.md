@@ -58,7 +58,7 @@ to orchestrate the establishment of an encrypted tunnels between nodes
 node ip-addresses and UDP ports are used as endpoints for the
 encrypted node-node tunnels. Note: The protocol messages sent between
 nodes within these encrypted tunnels are described in a separate
-[document](node-node-udp-protocol.md).
+[document](node-node-udp-protocol.md) (**TO BE WRITTEN**).
 
 To register itself a node sends a `ds-register` message to the DS
 until it gets a `node-registered` message in the return from the DS

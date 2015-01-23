@@ -48,7 +48,7 @@ In this section each server method's input parameters and the result
 it produces are specified using [JSON schema](http://json-schema.org)
 specifications. Do not be scared. If your are new to JSON schema you
 can sift through something like [Understanding JSON
-Schema](http://spacetelescope.github.io/understanding-json-schema)  
+Schema](http://spacetelescope.github.io/understanding-json-schema)
 instead of digging into the opaque JSON schema specification.
 
 <!------------------------------------------------------------------------->
@@ -153,10 +153,9 @@ overlay network.
 
 #### Error codes:
 
-`DS_JSONRPC_BROKEN_SIMULATION` (7), `JSONRPC_PARSE_ERROR` (-32700),
-`JSONRPC_INVALID_REQUEST` (-32600), `JSONRPC_METHOD_NOT_FOUND`
-(-32601),  `JSONRPC_INVALID_PARAMS` (-32602), `JSONRPC_INTERNAL_ERROR`
-(-32603)
+`JSONRPC_PARSE_ERROR` (-32700), `JSONRPC_INVALID_REQUEST` (-32600),
+`JSONRPC_METHOD_NOT_FOUND` (-32601), `JSONRPC_INVALID_PARAMS` (-32602),
+ `JSONRPC_INTERNAL_ERROR` (-32603)
 
 #### Example:
 
@@ -386,10 +385,9 @@ which are suitable to be used as neighbour nodes.
 #### Error codes:
 
 `DS_JSONRPC_TOO_FEW_NODES`(3), `DS_JSONRPC_TOO_MANY_NODES`(5),
-`DS_JSONRPC_BROKEN_SIMULATION` (7), `JSONRPC_PARSE_ERROR` (-32700),
-`JSONRPC_INVALID_REQUEST` (-32600), `JSONRPC_METHOD_NOT_FOUND`
-(-32601), `JSONRPC_INVALID_PARAMS` (-32602), `JSONRPC_INTERNAL_ERROR`
-(-32603)
+`JSONRPC_PARSE_ERROR` (-32700), `JSONRPC_INVALID_REQUEST` (-32600),
+`JSONRPC_METHOD_NOT_FOUND` (-32601), `JSONRPC_INVALID_PARAMS`
+(-32602), `JSONRPC_INTERNAL_ERROR` (-32603)
 
 #### Example:
 
@@ -412,9 +410,9 @@ $ curl --config curlrc -H "Node-ID: 22" -H "Content-HMAC: ${HMAC}" --data "${BOD
 ### 2.5) Method: *reserve-oa*
 
 The *reserve-oa* method reserves an *Overlay Address* (OA), i.e. an
-ipv6-address from certain range, to be the node's address on the Anond
-overlay network. A node typically registers several OAs and pick new
-ones now and then to improve node anonymity.
+ipv6-address from the ipv6 subnet annexed by Anond, to be the node's
+address on the Anond overlay network. A node typically registers
+several OAs and pick new ones now and then to improve node anonymity.
 
 #### Params:
 

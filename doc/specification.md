@@ -12,7 +12,7 @@ i.e. ideally a multitude of DSs will running at any time.
 
 N.B transparent bridging between different Anond overlay networks (and
 its DSs) is a pending topic, as well as the removal of the single
-point of failure characteristics. Do not hold your breath though. 
+point of failure characteristics.
 
 A DS makes a HTTPS/JSON-RPC API available which nodes use to join an
 overlay network, i.e. the DS provides JSON-RPC methods such as
