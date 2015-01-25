@@ -1,8 +1,8 @@
-# Anond - Anonymization Daemon
+# Anond - An experimental anonymization daemon
 
 ## 1) Overview
 
-Anond is a continous experiment striving to provide transparent
+Anond is a ongoing experiment striving to provide transparent
 IP-level anonymization using virtual network interfaces, peer-to-peer
 and overlay network techniques. This is indeed nothing new in itself
 and has been researched in projects such as
