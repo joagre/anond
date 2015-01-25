@@ -1,6 +1,6 @@
 JSON-RPC
 --------
-curl --insecure --data '{"jsonrpc": "2.0", "method": "get-network-topology", "id": 1}' https://127.0.0.1:6700/jsonpc
+curl --insecure --data '{"jsonrpc": "2.0", "method": "get-network-topology", "id": 1}' https://127.0.0.1:6700/jsonrpc
 
 Erlang shell
 ------------
