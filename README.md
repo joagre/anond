@@ -273,7 +273,8 @@ topology. This network topology can then be used by the Anond topologu
 render engine, built using the the [d3.js](http://d3js.org) library,
 to visualise the topology of the overlay network.
 
-To inspect the topology of the small simulation point a browser to
+To inspect the topology of the small simulation, wait 30 seconds,
+point a browser to
 [https://127.0.0.1:6700/index.html](https://127.0.0.1:6700/index.html)
 in order to monitor the live state of the routing choices in the
 overlay network.
