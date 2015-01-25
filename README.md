@@ -1,4 +1,4 @@
-# Anond - An experimental anonymization daemon
+# Anond - An anonymization daemon
 
 ## 1) Overview
 
