@@ -1,16 +1,11 @@
-# This is Anond
+# Anond - Anonymization Daemon
 
-## 1) The why
+## 1) Overview
 
-Anond is something I am writing as a vehicle for further
-experimentation when it comes to network anonymization.
-
-## 2) The what
-
-Anond strives to provide transparent IP-level anonymization using
-virtual network interfaces, peer-to-peer and overlay network
-techniques. This is indeed nothing new in itself and has been
-researched in projects such as
+Anond is a continous experiment striving to provide transparent
+IP-level anonymization using virtual network interfaces, peer-to-peer
+and overlay network techniques. This is indeed nothing new in itself
+and has been researched in projects such as
 [*Tarzan*](https://gnunet.org/sites/default/files/tarzan-ccs02.pdf)
 (2002) and
 [*ANON*](http://www.eecs.harvard.edu/~htk/publication/2002-milcom-kung-bradner-tan.pdf)
@@ -86,9 +81,9 @@ encryption](http://en.wikipedia.org/wiki/BitTorrent_protocol_encryption).
 The Anond protocol specification and the gory details can be found in
 the [Anond APIs and Protocol Messages](doc/specification.md) document.
 
-## 3) Building Anond (Debian/Ubuntu specific)
+## 2) Building Anond (Debian/Ubuntu specific)
 
-### 3.1) Pre-requisites
+### 2.1) Pre-requisites
 
 Install Erlang (17B or better):
 
@@ -109,7 +104,7 @@ $ make
 $ sudo make install
 ```
 
-### 3.2) Building
+### 2.2) Building
 
 Check out Anond and build it:
 
@@ -124,7 +119,7 @@ $ make
 Anond is now ready to be run from the code repository itself,
 i.e. without the need to build a release package.
 
-### 3.3) Building a release package (optional)
+### 2.3) Building a release package (optional)
 
 Anond is typically shipped as a self-contained release package bundled
 with a stream-lined Erlang run-time system:
@@ -139,7 +134,7 @@ $ ls -l build/*.tgz
 
 Send it to your best friend (or worst).
 
-## 4) Starting Anond
+## 3) Starting Anond
 
 The Anond start script has the following options:
 
@@ -283,7 +278,7 @@ To inspect the topology of the small simulation point a browser to
 in order to monitor the live state of the routing choices in the
 overlay network.
 
-## 5) Implementation details
+## 4) Implementation details
 
 Anond is written using the [Erlang](http://www.erlang.org) programming
 language and uses its strengths when it comes to building large scale

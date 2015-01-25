@@ -1,0 +1,12 @@
+anond-small-simulation.conf
+        The simulation mentioned in the top-level README.md file
+anond-small-simulation-debug.conf
+        The same as anond-small-simulation.conf but logging is only
+        enabled for a single node, i.e. the node with node-address
+        127.0.0.1:50002. All log messages generated from the directory
+        server is also disabled.
+anond-small-simulation-debug-127.0.0.1:50008-removed.conf
+        The same as anond-small-simulation-debug.conf but the node
+        with node-address 127.0.0.1:50008 has been removed.
+anond-mini-simulation-removed.conf
+        The same as anond-small-simulation.conf but with only 4 nodes.

@@ -8,4 +8,4 @@
              node_send_sup, node_starter_serv, node_sup, node_tun_serv]},
   {mod, {node_app, []}},
   {env, []},
-  {applications, [kernel, sasl, stdlib, ds]}]}.
+  {applications, [kernel, sasl, stdlib, common, ds]}]}.

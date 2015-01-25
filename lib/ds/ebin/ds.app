@@ -7,4 +7,4 @@
   {registered, [ds_serv, ds_sup, ds_udp_serv]},
   {mod, {ds_app, []}},
   {env, []},
-  {applications, [kernel, sasl, stdlib]}]}.
+  {applications, [kernel, sasl, stdlib, common]}]}.
